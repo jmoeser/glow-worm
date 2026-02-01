@@ -1,0 +1,283 @@
+{% extends "base.html" %}
+{% block title %}Salary Allocation — Glow Worm{% endblock %}
+{% block content %}
+<div class="max-w-5xl">
+    <h2 class="text-2xl font-bold mb-6">Salary Allocation Settings</h2>
+
+    <div id="salary-message" class="mb-4"></div>
+
+    <!-- Sankey Diagram -->
+    <div class="mb-8">
+        <h3 class="text-lg font-semibold mb-3">Salary Breakdown</h3>
+        <div id="sankey-chart" class="bg-gray-50 rounded-md p-4 flex items-center justify-center">
+            <p class="text-sm text-gray-400">Enter a salary to see the breakdown</p>
+        </div>
+    </div>
+
+    <div class="max-w-md">
+        <form hx-post="/salary" hx-target="#salary-message" hx-swap="innerHTML" class="space-y-6">
+
+                <!-- Monthly Salary -->
+                <div>
+                    <label for="monthly_salary_amount" class="block text-sm font-medium text-gray-700 mb-1">Monthly Salary</label>
+                    <input type="number" id="monthly_salary_amount" name="monthly_salary_amount"
+                           step="0.01" min="0"
+                           value="{{ allocation.monthly_salary_amount if allocation else '' }}"
+                           oninput="calculateRemainder()"
+                           class="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                           placeholder="0.00" required>
+                </div>
+
+                <!-- Monthly Budget Allocation -->
+                <div>
+                    <label for="monthly_budget_allocation" class="block text-sm font-medium text-gray-700 mb-1">Monthly Budget Allocation</label>
+                    <input type="number" id="monthly_budget_allocation" name="monthly_budget_allocation"
+                           step="0.01" min="0"
+                           value="{{ allocation.monthly_budget_allocation if allocation else '' }}"
+                           oninput="calculateRemainder()"
+                           class="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                           placeholder="0.00">
+                </div>
+
+                <!-- Bills Fund Allocation -->
+                <fieldset class="border border-gray-200 rounded-md p-4">
+                    <legend class="text-sm font-medium text-gray-700 px-1">Bills Fund Allocation</legend>
+                    <div class="space-y-3">
+                        <label class="flex items-center space-x-2">
+                            <input type="radio" name="bills_fund_allocation_type" value="recommended"
+                                   {{ 'checked' if not allocation or allocation.bills_fund_allocation_type == 'recommended' }}
+                                   onchange="toggleFixedAmount()">
+                            <span class="text-sm text-gray-700">Recommended (auto-calculated)</span>
+                        </label>
+                        <label class="flex items-center space-x-2">
+                            <input type="radio" name="bills_fund_allocation_type" value="fixed"
+                                   {{ 'checked' if allocation and allocation.bills_fund_allocation_type == 'fixed' }}
+                                   onchange="toggleFixedAmount()">
+                            <span class="text-sm text-gray-700">Fixed amount</span>
+                        </label>
+                        <div id="fixed-amount-container"
+                             class="{{ '' if allocation and allocation.bills_fund_allocation_type == 'fixed' else 'hidden' }}">
+                            <input type="number" id="bills_fund_fixed_amount" name="bills_fund_fixed_amount"
+                                   step="0.01" min="0"
+                                   value="{{ allocation.bills_fund_fixed_amount if allocation and allocation.bills_fund_fixed_amount else '' }}"
+                                   class="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                   placeholder="0.00">
+                        </div>
+                    </div>
+                </fieldset>
+
+                <!-- Sinking Fund Allocations -->
+                <fieldset class="border border-gray-200 rounded-md p-4">
+                    <legend class="text-sm font-medium text-gray-700 px-1">Sinking Fund Allocations</legend>
+                    {% if sinking_funds %}
+                    <div class="space-y-3">
+                        {% for fund in sinking_funds %}
+                        <div class="flex items-center space-x-3">
+                            <span class="inline-block w-3 h-3 rounded-full" style="background-color: {{ fund.color }}"></span>
+                            <label for="fund_{{ fund.id }}" class="text-sm text-gray-700 w-32">{{ fund.name }}</label>
+                            <input type="number" id="fund_{{ fund.id }}" name="fund_{{ fund.id }}"
+                                   step="0.01" min="0"
+                                   value="{{ fund_allocation_map.get(fund.id, '') }}"
+                                   oninput="calculateRemainder()"
+                                   class="flex-1 border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                   placeholder="0.00">
+                        </div>
+                        {% endfor %}
+                    </div>
+                    {% else %}
+                    <p class="text-sm text-gray-500">No active sinking funds.</p>
+                    {% endif %}
+                </fieldset>
+
+                <!-- Remainder Display -->
+                <div id="remainder-display" class="text-lg font-semibold p-3 bg-gray-50 rounded-md">
+                    Remainder: <span id="remainder-value">$0.00</span>
+                </div>
+
+                <!-- Save Button -->
+                <button type="submit"
+                        class="w-full bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                    Save Allocation
+                </button>
+            </form>
+    </div>
+</div>
+
+<script src="https://d3js.org/d3.v7.min.js"></script>
+<script src="https://unpkg.com/d3-sankey@0.12.3/dist/d3-sankey.min.js"></script>
+<script>
+const FUND_META = {{ sinking_funds_json | safe }};
+
+function calculateRemainder() {
+    const salary = parseFloat(document.getElementById('monthly_salary_amount').value) || 0;
+    const budget = parseFloat(document.getElementById('monthly_budget_allocation').value) || 0;
+
+    let fundTotal = 0;
+    document.querySelectorAll('input[name^="fund_"]').forEach(function(input) {
+        fundTotal += parseFloat(input.value) || 0;
+    });
+
+    const remainder = salary - budget - fundTotal;
+    const el = document.getElementById('remainder-value');
+    el.textContent = '$' + remainder.toFixed(2);
+
+    const container = document.getElementById('remainder-display');
+    if (remainder >= 0) {
+        container.className = 'text-lg font-semibold p-3 bg-green-50 text-green-700 rounded-md';
+    } else {
+        container.className = 'text-lg font-semibold p-3 bg-red-50 text-red-700 rounded-md';
+    }
+
+    renderSankey();
+}
+
+function toggleFixedAmount() {
+    const fixed = document.querySelector('input[name="bills_fund_allocation_type"][value="fixed"]');
+    const container = document.getElementById('fixed-amount-container');
+    if (fixed.checked) {
+        container.classList.remove('hidden');
+    } else {
+        container.classList.add('hidden');
+    }
+}
+
+function renderSankey() {
+    const container = document.getElementById('sankey-chart');
+    const salary = parseFloat(document.getElementById('monthly_salary_amount').value) || 0;
+
+    if (salary <= 0) {
+        container.innerHTML = '<p class="text-sm text-gray-400">Enter a salary to see the breakdown</p>';
+        return;
+    }
+
+    const budget = parseFloat(document.getElementById('monthly_budget_allocation').value) || 0;
+
+    // Collect fund allocations
+    const fundAllocations = [];
+    FUND_META.forEach(function(fund) {
+        const input = document.getElementById('fund_' + fund.id);
+        const amount = input ? (parseFloat(input.value) || 0) : 0;
+        if (amount > 0) {
+            fundAllocations.push({ id: fund.id, name: fund.name, color: fund.color, amount: amount });
+        }
+    });
+
+    const totalAllocated = budget + fundAllocations.reduce(function(sum, f) { return sum + f.amount; }, 0);
+    const remainder = salary - totalAllocated;
+
+    // Build nodes: index 0 = Salary (source)
+    const nodes = [{ name: 'Salary', color: '#22C55E' }];
+    const links = [];
+
+    if (budget > 0) {
+        const idx = nodes.length;
+        nodes.push({ name: 'Monthly Budget', color: '#3B82F6' });
+        links.push({ source: 0, target: idx, value: budget, color: '#3B82F6' });
+    }
+
+    fundAllocations.forEach(function(fund) {
+        const idx = nodes.length;
+        nodes.push({ name: fund.name, color: fund.color });
+        links.push({ source: 0, target: idx, value: fund.amount, color: fund.color });
+    });
+
+    if (remainder > 0) {
+        const idx = nodes.length;
+        nodes.push({ name: 'Unallocated', color: '#9CA3AF' });
+        links.push({ source: 0, target: idx, value: remainder, color: '#9CA3AF' });
+    }
+
+    if (links.length === 0) {
+        // Salary entered but nothing allocated, everything unallocated
+        nodes.push({ name: 'Unallocated', color: '#9CA3AF' });
+        links.push({ source: 0, target: 1, value: salary, color: '#9CA3AF' });
+    }
+
+    // Dimensions
+    const width = container.clientWidth;
+    const nodeCount = nodes.length;
+    const height = Math.max(250, nodeCount * 50);
+
+    const margin = { top: 16, right: 200, bottom: 16, left: 16 };
+    const innerWidth = width - margin.left - margin.right;
+    const innerHeight = height - margin.top - margin.bottom;
+
+    // Clear container and create SVG
+    container.innerHTML = '';
+    const svg = d3.select(container)
+        .append('svg')
+        .attr('width', width)
+        .attr('height', height);
+
+    // Define gradients
+    const defs = svg.append('defs');
+
+    // Sankey layout
+    const sankey = d3.sankey()
+        .nodeId(function(d) { return d.index; })
+        .nodeWidth(20)
+        .nodePadding(16)
+        .nodeAlign(d3.sankeyLeft)
+        .extent([[margin.left, margin.top], [margin.left + innerWidth, margin.top + innerHeight]]);
+
+    const graph = sankey({
+        nodes: nodes.map(function(d, i) { return Object.assign({}, d, { index: i }); }),
+        links: links.map(function(d) { return Object.assign({}, d); })
+    });
+
+    // Draw links
+    svg.append('g')
+        .selectAll('path')
+        .data(graph.links)
+        .join('path')
+        .attr('d', d3.sankeyLinkHorizontal())
+        .attr('fill', 'none')
+        .attr('stroke', function(d) { return d.color; })
+        .attr('stroke-opacity', 0.35)
+        .attr('stroke-width', function(d) { return Math.max(1, d.width); });
+
+    // Draw nodes
+    svg.append('g')
+        .selectAll('rect')
+        .data(graph.nodes)
+        .join('rect')
+        .attr('x', function(d) { return d.x0; })
+        .attr('y', function(d) { return d.y0; })
+        .attr('width', function(d) { return d.x1 - d.x0; })
+        .attr('height', function(d) { return Math.max(1, d.y1 - d.y0); })
+        .attr('fill', function(d) { return d.color; })
+        .attr('rx', 3);
+
+    // Format helpers
+    function fmt(amount) {
+        return '$' + amount.toLocaleString('en-AU', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    }
+    function pct(amount) {
+        return (amount / salary * 100).toFixed(1) + '%';
+    }
+
+    // Node labels
+    svg.append('g')
+        .selectAll('text')
+        .data(graph.nodes)
+        .join('text')
+        .attr('x', function(d) { return d.x1 + 8; })
+        .attr('y', function(d) { return (d.y0 + d.y1) / 2; })
+        .attr('dy', '0.35em')
+        .attr('font-size', '12px')
+        .attr('fill', '#374151')
+        .text(function(d) {
+            var val = d.sourceLinks.length > 0
+                ? d.sourceLinks.reduce(function(s, l) { return s + l.value; }, 0)
+                : d.targetLinks.reduce(function(s, l) { return s + l.value; }, 0);
+            return d.name + '  ' + fmt(val) + ' (' + pct(val) + ')';
+        });
+}
+
+// Run on page load to set initial state
+document.addEventListener('DOMContentLoaded', function() {
+    calculateRemainder();
+    toggleFixedAmount();
+});
+</script>
+{% endblock %}

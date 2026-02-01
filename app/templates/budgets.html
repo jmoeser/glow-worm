@@ -1,0 +1,177 @@
+{% if fragment == "table_body" %}
+{# --- Partial: full table body rows --- #}
+{% for budget in budgets %}
+<tr class="border-b border-gray-200 hover:bg-gray-50" id="budget-row-{{ budget.id }}">
+    <td class="px-4 py-3 text-sm">
+        <span class="inline-block w-3 h-3 rounded-full mr-2" style="background-color: {{ budget.category.color }}"></span>{{ budget.category.name }}
+    </td>
+    <td class="px-4 py-3 text-sm text-right">${{ "%.2f"|format(budget.allocated_amount) }}</td>
+    <td class="px-4 py-3 text-sm text-right">${{ "%.2f"|format(budget.spent_amount) }}</td>
+    <td class="px-4 py-3 text-sm text-right {% if budget.allocated_amount - budget.spent_amount < 0 %}text-red-600{% else %}text-green-600{% endif %}">
+        ${{ "%.2f"|format(budget.allocated_amount - budget.spent_amount) }}
+    </td>
+    <td class="px-4 py-3 text-sm text-right">${{ "%.2f"|format(budget.fund_balance) }}</td>
+    <td class="px-4 py-3 text-sm space-x-2">
+        <button hx-get="/budgets/{{ budget.id }}/edit" hx-target="#budget-row-{{ budget.id }}" hx-swap="outerHTML"
+                class="text-blue-600 hover:text-blue-800 text-sm font-medium">Edit</button>
+        <button hx-delete="/budgets/{{ budget.id }}" hx-target="#budget-row-{{ budget.id }}" hx-swap="delete"
+                hx-confirm="Delete this budget?"
+                class="text-red-600 hover:text-red-800 text-sm font-medium">Delete</button>
+    </td>
+</tr>
+{% endfor %}
+
+{% elif fragment == "budget_row" %}
+{# --- Partial: single display row --- #}
+<tr class="border-b border-gray-200 hover:bg-gray-50" id="budget-row-{{ budget.id }}">
+    <td class="px-4 py-3 text-sm">
+        <span class="inline-block w-3 h-3 rounded-full mr-2" style="background-color: {{ budget.category.color }}"></span>{{ budget.category.name }}
+    </td>
+    <td class="px-4 py-3 text-sm text-right">${{ "%.2f"|format(budget.allocated_amount) }}</td>
+    <td class="px-4 py-3 text-sm text-right">${{ "%.2f"|format(budget.spent_amount) }}</td>
+    <td class="px-4 py-3 text-sm text-right {% if budget.allocated_amount - budget.spent_amount < 0 %}text-red-600{% else %}text-green-600{% endif %}">
+        ${{ "%.2f"|format(budget.allocated_amount - budget.spent_amount) }}
+    </td>
+    <td class="px-4 py-3 text-sm text-right">${{ "%.2f"|format(budget.fund_balance) }}</td>
+    <td class="px-4 py-3 text-sm space-x-2">
+        <button hx-get="/budgets/{{ budget.id }}/edit" hx-target="#budget-row-{{ budget.id }}" hx-swap="outerHTML"
+                class="text-blue-600 hover:text-blue-800 text-sm font-medium">Edit</button>
+        <button hx-delete="/budgets/{{ budget.id }}" hx-target="#budget-row-{{ budget.id }}" hx-swap="delete"
+                hx-confirm="Delete this budget?"
+                class="text-red-600 hover:text-red-800 text-sm font-medium">Delete</button>
+    </td>
+</tr>
+
+{% elif fragment == "edit_row" %}
+{# --- Partial: inline edit row --- #}
+<tr class="border-b border-gray-200 bg-blue-50" id="budget-row-{{ budget.id }}">
+    <td class="px-4 py-2 text-sm">
+        <span class="inline-block w-3 h-3 rounded-full mr-2" style="background-color: {{ budget.category.color }}"></span>{{ budget.category.name }}
+    </td>
+    <td class="px-4 py-2">
+        <input type="number" name="allocated_amount" value="{{ "%.2f"|format(budget.allocated_amount) }}" step="0.01" min="0"
+               form="edit-form-{{ budget.id }}"
+               class="w-full border border-gray-300 rounded px-2 py-1 text-sm text-right">
+    </td>
+    <td class="px-4 py-2 text-sm text-right text-gray-500">${{ "%.2f"|format(budget.spent_amount) }}</td>
+    <td class="px-4 py-2 text-sm text-right text-gray-500">${{ "%.2f"|format(budget.allocated_amount - budget.spent_amount) }}</td>
+    <td class="px-4 py-2 text-sm text-right text-gray-500">${{ "%.2f"|format(budget.fund_balance) }}</td>
+    <td class="px-4 py-2 space-x-1">
+        <form id="edit-form-{{ budget.id }}" hx-post="/budgets/{{ budget.id }}" hx-target="#budget-row-{{ budget.id }}" hx-swap="outerHTML" class="inline">
+            <button type="submit"
+                    class="bg-green-600 text-white px-2 py-1 rounded text-xs hover:bg-green-700">Save</button>
+        </form>
+        <button hx-get="/budgets" hx-target="body" hx-swap="innerHTML"
+                class="bg-gray-400 text-white px-2 py-1 rounded text-xs hover:bg-gray-500"
+                onclick="event.preventDefault(); location.reload();">Cancel</button>
+    </td>
+</tr>
+
+{% else %}
+{# --- Full page --- #}
+{% extends "base.html" %}
+{% block title %}Monthly Budget — Glow Worm{% endblock %}
+{% block content %}
+<div class="max-w-5xl">
+    <h2 class="text-2xl font-bold mb-6">Monthly Budget</h2>
+
+    <!-- Month navigation -->
+    <div class="flex items-center justify-between mb-6 bg-white rounded-lg shadow px-4 py-3">
+        <a href="/budgets?month={{ prev_month }}&year={{ prev_year }}"
+           class="text-blue-600 hover:text-blue-800 font-medium">&larr; Previous</a>
+        <span class="text-lg font-semibold">{{ month_name }} {{ year }}</span>
+        <a href="/budgets?month={{ next_month }}&year={{ next_year }}"
+           class="text-blue-600 hover:text-blue-800 font-medium">Next &rarr;</a>
+    </div>
+
+    <div id="budgets-message" class="mb-4"></div>
+
+    <!-- Add Budget Category (collapsible) -->
+    <details class="mb-6 bg-white rounded-lg shadow p-4">
+        <summary class="cursor-pointer text-lg font-semibold text-gray-700">Add Budget Category</summary>
+        <form hx-post="/budgets" hx-target="#budgets-table-body" hx-swap="innerHTML"
+              hx-on::after-request="if(event.detail.successful) { this.reset(); document.getElementById('budgets-message').innerHTML = '<p class=\'text-green-600 text-sm\'>Budget added.</p>'; } else { document.getElementById('budgets-message').innerHTML = event.detail.xhr.responseText; }"
+              class="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+            <input type="hidden" name="month" value="{{ month }}">
+            <input type="hidden" name="year" value="{{ year }}">
+            <div>
+                <label for="budget-category" class="block text-sm font-medium text-gray-700 mb-1">Category</label>
+                <select id="budget-category" name="category_id" required
+                        class="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                    <option value="">Select a category</option>
+                    {% for cat in available_categories %}
+                    <option value="{{ cat.id }}">{{ cat.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div>
+                <label for="budget-allocated" class="block text-sm font-medium text-gray-700 mb-1">Allocated Amount</label>
+                <input type="number" id="budget-allocated" name="allocated_amount" step="0.01" min="0" required
+                       class="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                       placeholder="0.00">
+            </div>
+            <div class="md:col-span-2">
+                <button type="submit"
+                        class="bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                    Add Budget
+                </button>
+            </div>
+        </form>
+    </details>
+
+    <!-- Summary bar -->
+    <div class="mb-4 flex gap-6 bg-white rounded-lg shadow px-4 py-3">
+        <div class="text-sm">
+            <span class="text-gray-500">Total allocated:</span>
+            <span class="font-semibold">${{ total_allocated }}</span>
+        </div>
+        <div class="text-sm">
+            <span class="text-gray-500">Total spent:</span>
+            <span class="font-semibold">${{ total_spent }}</span>
+        </div>
+        <div class="text-sm">
+            <span class="text-gray-500">Remaining:</span>
+            <span class="font-semibold {% if total_remaining < 0 %}text-red-600{% else %}text-green-600{% endif %}">${{ total_remaining }}</span>
+        </div>
+    </div>
+
+    <!-- Budget table -->
+    <div class="bg-white rounded-lg shadow overflow-x-auto">
+        <table class="w-full">
+            <thead class="bg-gray-50 border-b border-gray-200">
+                <tr>
+                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Category</th>
+                    <th class="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Allocated</th>
+                    <th class="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Spent</th>
+                    <th class="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Remaining</th>
+                    <th class="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Fund Balance</th>
+                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
+                </tr>
+            </thead>
+            <tbody id="budgets-table-body">
+                {% for budget in budgets %}
+                <tr class="border-b border-gray-200 hover:bg-gray-50" id="budget-row-{{ budget.id }}">
+                    <td class="px-4 py-3 text-sm">
+                        <span class="inline-block w-3 h-3 rounded-full mr-2" style="background-color: {{ budget.category.color }}"></span>{{ budget.category.name }}
+                    </td>
+                    <td class="px-4 py-3 text-sm text-right">${{ "%.2f"|format(budget.allocated_amount) }}</td>
+                    <td class="px-4 py-3 text-sm text-right">${{ "%.2f"|format(budget.spent_amount) }}</td>
+                    <td class="px-4 py-3 text-sm text-right {% if budget.allocated_amount - budget.spent_amount < 0 %}text-red-600{% else %}text-green-600{% endif %}">
+                        ${{ "%.2f"|format(budget.allocated_amount - budget.spent_amount) }}
+                    </td>
+                    <td class="px-4 py-3 text-sm text-right">${{ "%.2f"|format(budget.fund_balance) }}</td>
+                    <td class="px-4 py-3 text-sm space-x-2">
+                        <button hx-get="/budgets/{{ budget.id }}/edit" hx-target="#budget-row-{{ budget.id }}" hx-swap="outerHTML"
+                                class="text-blue-600 hover:text-blue-800 text-sm font-medium">Edit</button>
+                        <button hx-delete="/budgets/{{ budget.id }}" hx-target="#budget-row-{{ budget.id }}" hx-swap="delete"
+                                hx-confirm="Delete this budget?"
+                                class="text-red-600 hover:text-red-800 text-sm font-medium">Delete</button>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}
+{% endif %}
