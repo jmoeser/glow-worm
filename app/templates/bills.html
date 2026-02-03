@@ -1,58 +1,58 @@
 {% if fragment == "table_body" %}
 {# --- Partial: full table body rows + summary --- #}
 {% for bill in bills %}
-<tr class="border-b border-gray-200 hover:bg-gray-50" id="bill-row-{{ bill.id }}">
-    <td class="px-4 py-3 text-sm">{{ bill.name }}</td>
-    <td class="px-4 py-3 text-sm">{{ bill.debtor_provider }}</td>
-    <td class="px-4 py-3 text-sm text-right">${{ "%.2f"|format(bill.amount) }}</td>
-    <td class="px-4 py-3 text-sm">{{ frequency_labels.get(bill.frequency, bill.frequency) }}</td>
-    <td class="px-4 py-3 text-sm">{{ bill.next_due_date }}</td>
+<tr class="border-b border-gray-700 hover:bg-gray-800" id="bill-row-{{ bill.id }}">
+    <td class="px-4 py-3 text-sm text-gray-100">{{ bill.name }}</td>
+    <td class="px-4 py-3 text-sm text-gray-300">{{ bill.debtor_provider }}</td>
+    <td class="px-4 py-3 text-sm text-right text-gray-100">${{ "%.2f"|format(bill.amount) }}</td>
+    <td class="px-4 py-3 text-sm text-gray-300">{{ frequency_labels.get(bill.frequency, bill.frequency) }}</td>
+    <td class="px-4 py-3 text-sm text-gray-300">{{ bill.next_due_date }}</td>
     <td class="px-4 py-3 text-sm space-x-2">
         <button hx-get="/bills/{{ bill.id }}/edit" hx-target="#bill-row-{{ bill.id }}" hx-swap="outerHTML"
-                class="text-blue-600 hover:text-blue-800 text-sm font-medium">Edit</button>
+                class="text-blue-400 hover:text-blue-300 text-sm font-medium">Edit</button>
         <button hx-delete="/bills/{{ bill.id }}" hx-target="#bill-row-{{ bill.id }}" hx-swap="delete"
                 hx-confirm="Deactivate this bill?"
-                class="text-red-600 hover:text-red-800 text-sm font-medium">Delete</button>
+                class="text-red-400 hover:text-red-300 text-sm font-medium">Delete</button>
     </td>
 </tr>
 {% endfor %}
 
 {% elif fragment == "bill_row" %}
 {# --- Partial: single display row --- #}
-<tr class="border-b border-gray-200 hover:bg-gray-50" id="bill-row-{{ bill.id }}">
-    <td class="px-4 py-3 text-sm">{{ bill.name }}</td>
-    <td class="px-4 py-3 text-sm">{{ bill.debtor_provider }}</td>
-    <td class="px-4 py-3 text-sm text-right">${{ "%.2f"|format(bill.amount) }}</td>
-    <td class="px-4 py-3 text-sm">{{ frequency_labels.get(bill.frequency, bill.frequency) }}</td>
-    <td class="px-4 py-3 text-sm">{{ bill.next_due_date }}</td>
+<tr class="border-b border-gray-700 hover:bg-gray-800" id="bill-row-{{ bill.id }}">
+    <td class="px-4 py-3 text-sm text-gray-100">{{ bill.name }}</td>
+    <td class="px-4 py-3 text-sm text-gray-300">{{ bill.debtor_provider }}</td>
+    <td class="px-4 py-3 text-sm text-right text-gray-100">${{ "%.2f"|format(bill.amount) }}</td>
+    <td class="px-4 py-3 text-sm text-gray-300">{{ frequency_labels.get(bill.frequency, bill.frequency) }}</td>
+    <td class="px-4 py-3 text-sm text-gray-300">{{ bill.next_due_date }}</td>
     <td class="px-4 py-3 text-sm space-x-2">
         <button hx-get="/bills/{{ bill.id }}/edit" hx-target="#bill-row-{{ bill.id }}" hx-swap="outerHTML"
-                class="text-blue-600 hover:text-blue-800 text-sm font-medium">Edit</button>
+                class="text-blue-400 hover:text-blue-300 text-sm font-medium">Edit</button>
         <button hx-delete="/bills/{{ bill.id }}" hx-target="#bill-row-{{ bill.id }}" hx-swap="delete"
                 hx-confirm="Deactivate this bill?"
-                class="text-red-600 hover:text-red-800 text-sm font-medium">Delete</button>
+                class="text-red-400 hover:text-red-300 text-sm font-medium">Delete</button>
     </td>
 </tr>
 
 {% elif fragment == "edit_row" %}
 {# --- Partial: inline edit row --- #}
-<tr class="border-b border-gray-200 bg-blue-50" id="bill-row-{{ bill.id }}">
+<tr class="border-b border-gray-700 bg-gray-800" id="bill-row-{{ bill.id }}">
     <td class="px-4 py-2">
         <input type="text" name="name" value="{{ bill.name }}" form="edit-form-{{ bill.id }}"
-               class="w-full border border-gray-300 rounded px-2 py-1 text-sm">
+               class="w-full bg-gray-700 border border-gray-600 text-gray-100 rounded px-2 py-1 text-sm">
     </td>
     <td class="px-4 py-2">
         <input type="text" name="debtor_provider" value="{{ bill.debtor_provider }}" form="edit-form-{{ bill.id }}"
-               class="w-full border border-gray-300 rounded px-2 py-1 text-sm">
+               class="w-full bg-gray-700 border border-gray-600 text-gray-100 rounded px-2 py-1 text-sm">
     </td>
     <td class="px-4 py-2">
         <input type="number" name="amount" value="{{ "%.2f"|format(bill.amount) }}" step="0.01" min="0.01"
                form="edit-form-{{ bill.id }}"
-               class="w-full border border-gray-300 rounded px-2 py-1 text-sm text-right">
+               class="w-full bg-gray-700 border border-gray-600 text-gray-100 rounded px-2 py-1 text-sm text-right">
     </td>
     <td class="px-4 py-2">
         <select name="frequency" form="edit-form-{{ bill.id }}"
-                class="w-full border border-gray-300 rounded px-2 py-1 text-sm">
+                class="w-full bg-gray-700 border border-gray-600 text-gray-100 rounded px-2 py-1 text-sm">
             {% for val, label in frequency_labels.items() %}
             <option value="{{ val }}" {{ 'selected' if bill.frequency == val }}>{{ label }}</option>
             {% endfor %}
@@ -60,7 +60,7 @@
     </td>
     <td class="px-4 py-2">
         <input type="date" name="next_due_date" value="{{ bill.next_due_date }}" form="edit-form-{{ bill.id }}"
-               class="w-full border border-gray-300 rounded px-2 py-1 text-sm">
+               class="w-full bg-gray-700 border border-gray-600 text-gray-100 rounded px-2 py-1 text-sm">
     </td>
     <td class="px-4 py-2 space-x-1">
         <form id="edit-form-{{ bill.id }}" hx-post="/bills/{{ bill.id }}" hx-target="#bill-row-{{ bill.id }}" hx-swap="outerHTML" class="inline">
@@ -68,7 +68,7 @@
                     class="bg-green-600 text-white px-2 py-1 rounded text-xs hover:bg-green-700">Save</button>
         </form>
         <button hx-get="/bills/{{ bill.id }}/cancel" hx-target="#bill-row-{{ bill.id }}" hx-swap="outerHTML"
-                class="bg-gray-400 text-white px-2 py-1 rounded text-xs hover:bg-gray-500"
+                class="bg-gray-600 text-white px-2 py-1 rounded text-xs hover:bg-gray-500"
                 onclick="event.preventDefault(); htmx.ajax('GET', '/bills', {target: document.body, swap: 'innerHTML'}).then(function(){}); location.reload();">Cancel</button>
     </td>
 </tr>
@@ -84,33 +84,33 @@
     <div id="bills-message" class="mb-4"></div>
 
     <!-- Add New Bill (collapsible) -->
-    <details class="mb-6 bg-white rounded-lg shadow p-4">
-        <summary class="cursor-pointer text-lg font-semibold text-gray-700">Add New Bill</summary>
+    <details class="mb-6 bg-gray-900 border border-gray-800 rounded-lg shadow p-4">
+        <summary class="cursor-pointer text-lg font-semibold text-gray-300">Add New Bill</summary>
         <form hx-post="/bills" hx-target="#bills-table-body" hx-swap="innerHTML"
-              hx-on::after-request="if(event.detail.successful) { this.reset(); document.getElementById('bills-message').innerHTML = '<p class=\'text-green-600 text-sm\'>Bill added.</p>'; } else { document.getElementById('bills-message').innerHTML = event.detail.xhr.responseText; }"
+              hx-on::after-request="if(event.detail.successful) { this.reset(); document.getElementById('bills-message').innerHTML = '<p class=\'text-green-400 text-sm\'>Bill added.</p>'; } else { document.getElementById('bills-message').innerHTML = event.detail.xhr.responseText; }"
               class="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
-                <label for="bill-name" class="block text-sm font-medium text-gray-700 mb-1">Name</label>
+                <label for="bill-name" class="block text-sm font-medium text-gray-300 mb-1">Name</label>
                 <input type="text" id="bill-name" name="name" required
-                       class="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                       class="w-full bg-gray-800 border border-gray-600 text-gray-100 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
                        placeholder="e.g. Rent">
             </div>
             <div>
-                <label for="bill-provider" class="block text-sm font-medium text-gray-700 mb-1">Provider</label>
+                <label for="bill-provider" class="block text-sm font-medium text-gray-300 mb-1">Provider</label>
                 <input type="text" id="bill-provider" name="debtor_provider" required
-                       class="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                       class="w-full bg-gray-800 border border-gray-600 text-gray-100 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
                        placeholder="e.g. Landlord">
             </div>
             <div>
-                <label for="bill-amount" class="block text-sm font-medium text-gray-700 mb-1">Amount</label>
+                <label for="bill-amount" class="block text-sm font-medium text-gray-300 mb-1">Amount</label>
                 <input type="number" id="bill-amount" name="amount" step="0.01" min="0.01" required
-                       class="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                       class="w-full bg-gray-800 border border-gray-600 text-gray-100 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
                        placeholder="0.00">
             </div>
             <div>
-                <label for="bill-frequency" class="block text-sm font-medium text-gray-700 mb-1">Frequency</label>
+                <label for="bill-frequency" class="block text-sm font-medium text-gray-300 mb-1">Frequency</label>
                 <select id="bill-frequency" name="frequency" required
-                        class="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                        class="w-full bg-gray-800 border border-gray-600 text-gray-100 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500">
                     <option value="monthly">Monthly</option>
                     <option value="quarterly">Quarterly</option>
                     <option value="yearly">Yearly</option>
@@ -118,9 +118,9 @@
                 </select>
             </div>
             <div>
-                <label for="bill-category" class="block text-sm font-medium text-gray-700 mb-1">Category</label>
+                <label for="bill-category" class="block text-sm font-medium text-gray-300 mb-1">Category</label>
                 <select id="bill-category" name="category_id" required
-                        class="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                        class="w-full bg-gray-800 border border-gray-600 text-gray-100 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500">
                     <option value="">Select category...</option>
                     {% for cat in categories %}
                     <option value="{{ cat.id }}">{{ cat.name }}</option>
@@ -128,14 +128,14 @@
                 </select>
             </div>
             <div>
-                <label for="bill-start-date" class="block text-sm font-medium text-gray-700 mb-1">Start Date</label>
+                <label for="bill-start-date" class="block text-sm font-medium text-gray-300 mb-1">Start Date</label>
                 <input type="date" id="bill-start-date" name="start_date" required
-                       class="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                       class="w-full bg-gray-800 border border-gray-600 text-gray-100 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500">
             </div>
             <div>
-                <label for="bill-next-due" class="block text-sm font-medium text-gray-700 mb-1">Next Due Date</label>
+                <label for="bill-next-due" class="block text-sm font-medium text-gray-300 mb-1">Next Due Date</label>
                 <input type="date" id="bill-next-due" name="next_due_date" required
-                       class="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                       class="w-full bg-gray-800 border border-gray-600 text-gray-100 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500">
             </div>
             <div class="md:col-span-2">
                 <button type="submit"
@@ -147,44 +147,44 @@
     </details>
 
     <!-- Summary bar -->
-    <div class="mb-4 flex gap-6 bg-white rounded-lg shadow px-4 py-3">
+    <div class="mb-4 flex gap-6 bg-gray-900 border border-gray-800 rounded-lg shadow px-4 py-3">
         <div class="text-sm">
-            <span class="text-gray-500">Monthly cost:</span>
-            <span class="font-semibold">${{ total_monthly }}</span>
+            <span class="text-gray-400">Monthly cost:</span>
+            <span class="font-semibold text-gray-100">${{ total_monthly }}</span>
         </div>
         <div class="text-sm">
-            <span class="text-gray-500">Annual cost:</span>
-            <span class="font-semibold">${{ total_annual }}</span>
+            <span class="text-gray-400">Annual cost:</span>
+            <span class="font-semibold text-gray-100">${{ total_annual }}</span>
         </div>
     </div>
 
     <!-- Bills table -->
-    <div class="bg-white rounded-lg shadow overflow-x-auto">
+    <div class="bg-gray-900 border border-gray-800 rounded-lg shadow overflow-x-auto">
         <table class="w-full">
-            <thead class="bg-gray-50 border-b border-gray-200">
+            <thead class="bg-gray-800 border-b border-gray-700">
                 <tr>
-                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Name</th>
-                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Provider</th>
-                    <th class="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Amount</th>
-                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Frequency</th>
-                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Next Due</th>
-                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
+                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase">Name</th>
+                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase">Provider</th>
+                    <th class="px-4 py-3 text-right text-xs font-medium text-gray-400 uppercase">Amount</th>
+                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase">Frequency</th>
+                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase">Next Due</th>
+                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase">Actions</th>
                 </tr>
             </thead>
             <tbody id="bills-table-body">
                 {% for bill in bills %}
-                <tr class="border-b border-gray-200 hover:bg-gray-50" id="bill-row-{{ bill.id }}">
-                    <td class="px-4 py-3 text-sm">{{ bill.name }}</td>
-                    <td class="px-4 py-3 text-sm">{{ bill.debtor_provider }}</td>
-                    <td class="px-4 py-3 text-sm text-right">${{ "%.2f"|format(bill.amount) }}</td>
-                    <td class="px-4 py-3 text-sm">{{ frequency_labels.get(bill.frequency, bill.frequency) }}</td>
-                    <td class="px-4 py-3 text-sm">{{ bill.next_due_date }}</td>
+                <tr class="border-b border-gray-700 hover:bg-gray-800" id="bill-row-{{ bill.id }}">
+                    <td class="px-4 py-3 text-sm text-gray-100">{{ bill.name }}</td>
+                    <td class="px-4 py-3 text-sm text-gray-300">{{ bill.debtor_provider }}</td>
+                    <td class="px-4 py-3 text-sm text-right text-gray-100">${{ "%.2f"|format(bill.amount) }}</td>
+                    <td class="px-4 py-3 text-sm text-gray-300">{{ frequency_labels.get(bill.frequency, bill.frequency) }}</td>
+                    <td class="px-4 py-3 text-sm text-gray-300">{{ bill.next_due_date }}</td>
                     <td class="px-4 py-3 text-sm space-x-2">
                         <button hx-get="/bills/{{ bill.id }}/edit" hx-target="#bill-row-{{ bill.id }}" hx-swap="outerHTML"
-                                class="text-blue-600 hover:text-blue-800 text-sm font-medium">Edit</button>
+                                class="text-blue-400 hover:text-blue-300 text-sm font-medium">Edit</button>
                         <button hx-delete="/bills/{{ bill.id }}" hx-target="#bill-row-{{ bill.id }}" hx-swap="delete"
                                 hx-confirm="Deactivate this bill?"
-                                class="text-red-600 hover:text-red-800 text-sm font-medium">Delete</button>
+                                class="text-red-400 hover:text-red-300 text-sm font-medium">Delete</button>
                     </td>
                 </tr>
                 {% endfor %}

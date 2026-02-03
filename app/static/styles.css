@@ -1,3 +1,7 @@
+:root {
+    color-scheme: dark;
+}
+
 .htmx-swapping {
     opacity: 0;
     transition: opacity 0.15s ease-out;

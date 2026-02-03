@@ -1,5 +1,6 @@
 import os
 import re
+from contextlib import asynccontextmanager
 
 from dotenv import load_dotenv
 from fastapi import FastAPI
@@ -22,7 +23,17 @@ load_dotenv()
 
 SECRET_KEY = os.getenv("SECRET_KEY", "change-me-to-a-random-string-of-at-least-32-characters")
 
-app = FastAPI(title="Glow-worm")
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    from app.scheduler import start_scheduler, stop_scheduler
+
+    start_scheduler()
+    yield
+    stop_scheduler()
+
+
+app = FastAPI(title="Glow-worm", lifespan=lifespan)
 
 # Middleware is added in reverse execution order.
 # The last added middleware runs outermost (first on request, last on response).

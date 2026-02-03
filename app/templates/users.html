@@ -1,17 +1,17 @@
 {% if fragment == "table_body" %}
 {# --- Partial: full table body rows --- #}
 {% for user in users %}
-<tr class="border-b border-gray-200 hover:bg-gray-50" id="user-row-{{ user.id }}">
-    <td class="px-4 py-3 text-sm">{{ user.username }}</td>
-    <td class="px-4 py-3 text-sm text-gray-500">{{ user.email or "—" }}</td>
-    <td class="px-4 py-3 text-sm text-gray-500">{{ user.created_at.strftime("%Y-%m-%d") }}</td>
+<tr class="border-b border-gray-700 hover:bg-gray-800" id="user-row-{{ user.id }}">
+    <td class="px-4 py-3 text-sm text-gray-100">{{ user.username }}</td>
+    <td class="px-4 py-3 text-sm text-gray-400">{{ user.email or "—" }}</td>
+    <td class="px-4 py-3 text-sm text-gray-400">{{ user.created_at.strftime("%Y-%m-%d") }}</td>
     <td class="px-4 py-3 text-sm space-x-2">
         <button hx-get="/users/{{ user.id }}/edit" hx-target="#user-row-{{ user.id }}" hx-swap="outerHTML"
-                class="text-blue-600 hover:text-blue-800 text-sm font-medium">Edit</button>
+                class="text-blue-400 hover:text-blue-300 text-sm font-medium">Edit</button>
         {% if user.id != current_user_id %}
         <button hx-delete="/users/{{ user.id }}" hx-target="#user-row-{{ user.id }}" hx-swap="delete"
                 hx-confirm="Delete this user?"
-                class="text-red-600 hover:text-red-800 text-sm font-medium">Delete</button>
+                class="text-red-400 hover:text-red-300 text-sm font-medium">Delete</button>
         {% endif %}
     </td>
 </tr>
@@ -19,36 +19,36 @@
 
 {% elif fragment == "user_row" %}
 {# --- Partial: single display row --- #}
-<tr class="border-b border-gray-200 hover:bg-gray-50" id="user-row-{{ user.id }}">
-    <td class="px-4 py-3 text-sm">{{ user.username }}</td>
-    <td class="px-4 py-3 text-sm text-gray-500">{{ user.email or "—" }}</td>
-    <td class="px-4 py-3 text-sm text-gray-500">{{ user.created_at.strftime("%Y-%m-%d") }}</td>
+<tr class="border-b border-gray-700 hover:bg-gray-800" id="user-row-{{ user.id }}">
+    <td class="px-4 py-3 text-sm text-gray-100">{{ user.username }}</td>
+    <td class="px-4 py-3 text-sm text-gray-400">{{ user.email or "—" }}</td>
+    <td class="px-4 py-3 text-sm text-gray-400">{{ user.created_at.strftime("%Y-%m-%d") }}</td>
     <td class="px-4 py-3 text-sm space-x-2">
         <button hx-get="/users/{{ user.id }}/edit" hx-target="#user-row-{{ user.id }}" hx-swap="outerHTML"
-                class="text-blue-600 hover:text-blue-800 text-sm font-medium">Edit</button>
+                class="text-blue-400 hover:text-blue-300 text-sm font-medium">Edit</button>
         {% if user.id != current_user_id %}
         <button hx-delete="/users/{{ user.id }}" hx-target="#user-row-{{ user.id }}" hx-swap="delete"
                 hx-confirm="Delete this user?"
-                class="text-red-600 hover:text-red-800 text-sm font-medium">Delete</button>
+                class="text-red-400 hover:text-red-300 text-sm font-medium">Delete</button>
         {% endif %}
     </td>
 </tr>
 
 {% elif fragment == "edit_row" %}
 {# --- Partial: inline edit row --- #}
-<tr class="border-b border-gray-200 bg-blue-50" id="user-row-{{ user.id }}">
+<tr class="border-b border-gray-700 bg-gray-800" id="user-row-{{ user.id }}">
     <td class="px-4 py-2">
         <input type="text" name="username" value="{{ user.username }}" form="edit-form-{{ user.id }}"
-               class="w-full border border-gray-300 rounded px-2 py-1 text-sm">
+               class="w-full bg-gray-700 border border-gray-600 text-gray-100 rounded px-2 py-1 text-sm">
     </td>
     <td class="px-4 py-2">
         <input type="email" name="email" value="{{ user.email or '' }}" form="edit-form-{{ user.id }}"
-               class="w-full border border-gray-300 rounded px-2 py-1 text-sm"
+               class="w-full bg-gray-700 border border-gray-600 text-gray-100 rounded px-2 py-1 text-sm"
                placeholder="Optional">
     </td>
     <td class="px-4 py-2">
         <input type="password" name="password" form="edit-form-{{ user.id }}"
-               class="w-full border border-gray-300 rounded px-2 py-1 text-sm"
+               class="w-full bg-gray-700 border border-gray-600 text-gray-100 rounded px-2 py-1 text-sm"
                placeholder="Leave blank to keep" autocomplete="new-password">
     </td>
     <td class="px-4 py-2 space-x-1">
@@ -56,7 +56,7 @@
             <button type="submit"
                     class="bg-green-600 text-white px-2 py-1 rounded text-xs hover:bg-green-700">Save</button>
         </form>
-        <button class="bg-gray-400 text-white px-2 py-1 rounded text-xs hover:bg-gray-500"
+        <button class="bg-gray-600 text-white px-2 py-1 rounded text-xs hover:bg-gray-500"
                 onclick="event.preventDefault(); location.reload();">Cancel</button>
     </td>
 </tr>
@@ -72,27 +72,27 @@
     <div id="users-message" class="mb-4"></div>
 
     <!-- Add New User (collapsible) -->
-    <details class="mb-6 bg-white rounded-lg shadow p-4">
-        <summary class="cursor-pointer text-lg font-semibold text-gray-700">Add New User</summary>
+    <details class="mb-6 bg-gray-900 border border-gray-800 rounded-lg shadow p-4">
+        <summary class="cursor-pointer text-lg font-semibold text-gray-300">Add New User</summary>
         <form hx-post="/users" hx-target="#users-table-body" hx-swap="innerHTML"
-              hx-on::after-request="if(event.detail.successful) { this.reset(); document.getElementById('users-message').innerHTML = '<p class=\'text-green-600 text-sm\'>User added.</p>'; } else { document.getElementById('users-message').innerHTML = event.detail.xhr.responseText; }"
+              hx-on::after-request="if(event.detail.successful) { this.reset(); document.getElementById('users-message').innerHTML = '<p class=\'text-green-400 text-sm\'>User added.</p>'; } else { document.getElementById('users-message').innerHTML = event.detail.xhr.responseText; }"
               class="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
-                <label for="new-username" class="block text-sm font-medium text-gray-700 mb-1">Username</label>
+                <label for="new-username" class="block text-sm font-medium text-gray-300 mb-1">Username</label>
                 <input type="text" id="new-username" name="username" required
-                       class="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                       class="w-full bg-gray-800 border border-gray-600 text-gray-100 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
                        placeholder="Username" autocomplete="off">
             </div>
             <div>
-                <label for="new-email" class="block text-sm font-medium text-gray-700 mb-1">Email</label>
+                <label for="new-email" class="block text-sm font-medium text-gray-300 mb-1">Email</label>
                 <input type="email" id="new-email" name="email"
-                       class="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                       class="w-full bg-gray-800 border border-gray-600 text-gray-100 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
                        placeholder="Optional">
             </div>
             <div>
-                <label for="new-password" class="block text-sm font-medium text-gray-700 mb-1">Password</label>
+                <label for="new-password" class="block text-sm font-medium text-gray-300 mb-1">Password</label>
                 <input type="password" id="new-password" name="password" required minlength="8"
-                       class="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                       class="w-full bg-gray-800 border border-gray-600 text-gray-100 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
                        placeholder="Min 8 characters" autocomplete="new-password">
             </div>
             <div class="flex items-end">
@@ -105,29 +105,29 @@
     </details>
 
     <!-- Users table -->
-    <div class="bg-white rounded-lg shadow overflow-x-auto">
+    <div class="bg-gray-900 border border-gray-800 rounded-lg shadow overflow-x-auto">
         <table class="w-full">
-            <thead class="bg-gray-50 border-b border-gray-200">
+            <thead class="bg-gray-800 border-b border-gray-700">
                 <tr>
-                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Username</th>
-                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Email</th>
-                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Created</th>
-                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
+                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase">Username</th>
+                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase">Email</th>
+                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase">Created</th>
+                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase">Actions</th>
                 </tr>
             </thead>
             <tbody id="users-table-body">
                 {% for user in users %}
-                <tr class="border-b border-gray-200 hover:bg-gray-50" id="user-row-{{ user.id }}">
-                    <td class="px-4 py-3 text-sm">{{ user.username }}</td>
-                    <td class="px-4 py-3 text-sm text-gray-500">{{ user.email or "—" }}</td>
-                    <td class="px-4 py-3 text-sm text-gray-500">{{ user.created_at.strftime("%Y-%m-%d") }}</td>
+                <tr class="border-b border-gray-700 hover:bg-gray-800" id="user-row-{{ user.id }}">
+                    <td class="px-4 py-3 text-sm text-gray-100">{{ user.username }}</td>
+                    <td class="px-4 py-3 text-sm text-gray-400">{{ user.email or "—" }}</td>
+                    <td class="px-4 py-3 text-sm text-gray-400">{{ user.created_at.strftime("%Y-%m-%d") }}</td>
                     <td class="px-4 py-3 text-sm space-x-2">
                         <button hx-get="/users/{{ user.id }}/edit" hx-target="#user-row-{{ user.id }}" hx-swap="outerHTML"
-                                class="text-blue-600 hover:text-blue-800 text-sm font-medium">Edit</button>
+                                class="text-blue-400 hover:text-blue-300 text-sm font-medium">Edit</button>
                         {% if user.id != current_user_id %}
                         <button hx-delete="/users/{{ user.id }}" hx-target="#user-row-{{ user.id }}" hx-swap="delete"
                                 hx-confirm="Delete this user?"
-                                class="text-red-600 hover:text-red-800 text-sm font-medium">Delete</button>
+                                class="text-red-400 hover:text-red-300 text-sm font-medium">Delete</button>
                         {% endif %}
                     </td>
                 </tr>

@@ -1,90 +1,90 @@
 {% if fragment == "table_body" %}
 {# --- Partial: full table body rows --- #}
 {% for txn in transactions %}
-<tr class="border-b border-gray-200 hover:bg-gray-50" id="txn-row-{{ txn.id }}">
-    <td class="px-4 py-3 text-sm">{{ txn.date }}</td>
-    <td class="px-4 py-3 text-sm">{{ txn.description or "" }}</td>
-    <td class="px-4 py-3 text-sm text-right {% if txn.type == 'income' %}text-green-600{% else %}text-red-600{% endif %}">
+<tr class="border-b border-gray-700 hover:bg-gray-800" id="txn-row-{{ txn.id }}">
+    <td class="px-4 py-3 text-sm text-gray-300">{{ txn.date }}</td>
+    <td class="px-4 py-3 text-sm text-gray-300">{{ txn.description or "" }}</td>
+    <td class="px-4 py-3 text-sm text-right {% if txn.type == 'income' %}text-green-400{% else %}text-red-400{% endif %}">
         {% if txn.type == 'income' %}+{% else %}-{% endif %}${{ "%.2f"|format(txn.amount) }}
     </td>
-    <td class="px-4 py-3 text-sm">
+    <td class="px-4 py-3 text-sm text-gray-100">
         <span class="inline-block w-3 h-3 rounded-full mr-1" style="background-color: {{ txn.category.color }}"></span>{{ txn.category.name }}
     </td>
-    <td class="px-4 py-3 text-sm">{{ transaction_type_labels.get(txn.transaction_type, txn.transaction_type) }}</td>
-    <td class="px-4 py-3 text-sm">
+    <td class="px-4 py-3 text-sm text-gray-300">{{ transaction_type_labels.get(txn.transaction_type, txn.transaction_type) }}</td>
+    <td class="px-4 py-3 text-sm text-gray-300">
         {% if txn.sinking_fund %}{{ txn.sinking_fund.name }}{% endif %}
         {% if txn.recurring_bill %}{{ txn.recurring_bill.name }}{% endif %}
         {% if txn.budget and txn.budget.category %}{{ txn.budget.category.name }} Budget{% endif %}
     </td>
     <td class="px-4 py-3 text-sm">
         {% if txn.is_paid %}
-        <span class="text-green-600 font-medium">Paid</span>
+        <span class="text-green-400 font-medium">Paid</span>
         {% else %}
-        <span class="text-yellow-600 font-medium">Pending</span>
+        <span class="text-yellow-400 font-medium">Pending</span>
         {% endif %}
     </td>
     <td class="px-4 py-3 text-sm space-x-2">
         <button hx-get="/transactions/{{ txn.id }}/edit" hx-target="#txn-row-{{ txn.id }}" hx-swap="outerHTML"
-                class="text-blue-600 hover:text-blue-800 text-sm font-medium">Edit</button>
+                class="text-blue-400 hover:text-blue-300 text-sm font-medium">Edit</button>
         <button hx-delete="/transactions/{{ txn.id }}" hx-target="#txn-row-{{ txn.id }}" hx-swap="delete"
                 hx-confirm="Delete this transaction?"
-                class="text-red-600 hover:text-red-800 text-sm font-medium">Delete</button>
+                class="text-red-400 hover:text-red-300 text-sm font-medium">Delete</button>
     </td>
 </tr>
 {% endfor %}
 
 {% elif fragment == "transaction_row" %}
 {# --- Partial: single display row --- #}
-<tr class="border-b border-gray-200 hover:bg-gray-50" id="txn-row-{{ txn.id }}">
-    <td class="px-4 py-3 text-sm">{{ txn.date }}</td>
-    <td class="px-4 py-3 text-sm">{{ txn.description or "" }}</td>
-    <td class="px-4 py-3 text-sm text-right {% if txn.type == 'income' %}text-green-600{% else %}text-red-600{% endif %}">
+<tr class="border-b border-gray-700 hover:bg-gray-800" id="txn-row-{{ txn.id }}">
+    <td class="px-4 py-3 text-sm text-gray-300">{{ txn.date }}</td>
+    <td class="px-4 py-3 text-sm text-gray-300">{{ txn.description or "" }}</td>
+    <td class="px-4 py-3 text-sm text-right {% if txn.type == 'income' %}text-green-400{% else %}text-red-400{% endif %}">
         {% if txn.type == 'income' %}+{% else %}-{% endif %}${{ "%.2f"|format(txn.amount) }}
     </td>
-    <td class="px-4 py-3 text-sm">
+    <td class="px-4 py-3 text-sm text-gray-100">
         <span class="inline-block w-3 h-3 rounded-full mr-1" style="background-color: {{ txn.category.color }}"></span>{{ txn.category.name }}
     </td>
-    <td class="px-4 py-3 text-sm">{{ transaction_type_labels.get(txn.transaction_type, txn.transaction_type) }}</td>
-    <td class="px-4 py-3 text-sm">
+    <td class="px-4 py-3 text-sm text-gray-300">{{ transaction_type_labels.get(txn.transaction_type, txn.transaction_type) }}</td>
+    <td class="px-4 py-3 text-sm text-gray-300">
         {% if txn.sinking_fund %}{{ txn.sinking_fund.name }}{% endif %}
         {% if txn.recurring_bill %}{{ txn.recurring_bill.name }}{% endif %}
         {% if txn.budget and txn.budget.category %}{{ txn.budget.category.name }} Budget{% endif %}
     </td>
     <td class="px-4 py-3 text-sm">
         {% if txn.is_paid %}
-        <span class="text-green-600 font-medium">Paid</span>
+        <span class="text-green-400 font-medium">Paid</span>
         {% else %}
-        <span class="text-yellow-600 font-medium">Pending</span>
+        <span class="text-yellow-400 font-medium">Pending</span>
         {% endif %}
     </td>
     <td class="px-4 py-3 text-sm space-x-2">
         <button hx-get="/transactions/{{ txn.id }}/edit" hx-target="#txn-row-{{ txn.id }}" hx-swap="outerHTML"
-                class="text-blue-600 hover:text-blue-800 text-sm font-medium">Edit</button>
+                class="text-blue-400 hover:text-blue-300 text-sm font-medium">Edit</button>
         <button hx-delete="/transactions/{{ txn.id }}" hx-target="#txn-row-{{ txn.id }}" hx-swap="delete"
                 hx-confirm="Delete this transaction?"
-                class="text-red-600 hover:text-red-800 text-sm font-medium">Delete</button>
+                class="text-red-400 hover:text-red-300 text-sm font-medium">Delete</button>
     </td>
 </tr>
 
 {% elif fragment == "edit_row" %}
 {# --- Partial: inline edit row --- #}
-<tr class="border-b border-gray-200 bg-blue-50" id="txn-row-{{ txn.id }}">
+<tr class="border-b border-gray-700 bg-gray-800" id="txn-row-{{ txn.id }}">
     <td class="px-4 py-2">
         <input type="date" name="date" value="{{ txn.date }}" form="edit-form-{{ txn.id }}"
-               class="w-full border border-gray-300 rounded px-2 py-1 text-sm">
+               class="w-full bg-gray-700 border border-gray-600 text-gray-100 rounded px-2 py-1 text-sm">
     </td>
     <td class="px-4 py-2">
         <input type="text" name="description" value="{{ txn.description or '' }}" form="edit-form-{{ txn.id }}"
-               class="w-full border border-gray-300 rounded px-2 py-1 text-sm">
+               class="w-full bg-gray-700 border border-gray-600 text-gray-100 rounded px-2 py-1 text-sm">
     </td>
     <td class="px-4 py-2">
         <input type="number" name="amount" value="{{ "%.2f"|format(txn.amount) }}" step="0.01" min="0.01"
                form="edit-form-{{ txn.id }}"
-               class="w-full border border-gray-300 rounded px-2 py-1 text-sm text-right">
+               class="w-full bg-gray-700 border border-gray-600 text-gray-100 rounded px-2 py-1 text-sm text-right">
     </td>
     <td class="px-4 py-2">
         <select name="category_id" form="edit-form-{{ txn.id }}"
-                class="w-full border border-gray-300 rounded px-2 py-1 text-sm">
+                class="w-full bg-gray-700 border border-gray-600 text-gray-100 rounded px-2 py-1 text-sm">
             {% for cat in categories %}
             <option value="{{ cat.id }}" {{ 'selected' if txn.category_id == cat.id }}>{{ cat.name }}</option>
             {% endfor %}
@@ -92,7 +92,7 @@
     </td>
     <td class="px-4 py-2">
         <select name="transaction_type" form="edit-form-{{ txn.id }}"
-                class="w-full border border-gray-300 rounded px-2 py-1 text-sm">
+                class="w-full bg-gray-700 border border-gray-600 text-gray-100 rounded px-2 py-1 text-sm">
             {% for val, label in transaction_type_labels.items() %}
             <option value="{{ val }}" {{ 'selected' if txn.transaction_type == val }}>{{ label }}</option>
             {% endfor %}
@@ -100,14 +100,14 @@
     </td>
     <td class="px-4 py-2">
         <select name="sinking_fund_id" form="edit-form-{{ txn.id }}"
-                class="w-full border border-gray-300 rounded px-2 py-1 text-sm">
+                class="w-full bg-gray-700 border border-gray-600 text-gray-100 rounded px-2 py-1 text-sm">
             <option value="">None</option>
             {% for sf in sinking_funds %}
             <option value="{{ sf.id }}" {{ 'selected' if txn.sinking_fund_id == sf.id }}>{{ sf.name }}</option>
             {% endfor %}
         </select>
         <select name="recurring_bill_id" form="edit-form-{{ txn.id }}"
-                class="w-full border border-gray-300 rounded px-2 py-1 text-sm mt-1">
+                class="w-full bg-gray-700 border border-gray-600 text-gray-100 rounded px-2 py-1 text-sm mt-1">
             <option value="">No Bill</option>
             {% for rb in recurring_bills %}
             <option value="{{ rb.id }}" {{ 'selected' if txn.recurring_bill_id == rb.id }}>{{ rb.name }}</option>
@@ -116,7 +116,7 @@
     </td>
     <td class="px-4 py-2">
         <select name="type" form="edit-form-{{ txn.id }}"
-                class="w-full border border-gray-300 rounded px-2 py-1 text-sm">
+                class="w-full bg-gray-700 border border-gray-600 text-gray-100 rounded px-2 py-1 text-sm">
             <option value="income" {{ 'selected' if txn.type == 'income' }}>Income</option>
             <option value="expense" {{ 'selected' if txn.type == 'expense' }}>Expense</option>
         </select>
@@ -127,7 +127,7 @@
                     class="bg-green-600 text-white px-2 py-1 rounded text-xs hover:bg-green-700">Save</button>
         </form>
         <button onclick="event.preventDefault(); location.reload();"
-                class="bg-gray-400 text-white px-2 py-1 rounded text-xs hover:bg-gray-500">Cancel</button>
+                class="bg-gray-600 text-white px-2 py-1 rounded text-xs hover:bg-gray-500">Cancel</button>
     </td>
 </tr>
 
@@ -140,29 +140,29 @@
     <h2 class="text-2xl font-bold mb-6">Transactions</h2>
 
     <!-- Month navigation -->
-    <div class="flex items-center justify-between mb-6 bg-white rounded-lg shadow px-4 py-3">
+    <div class="flex items-center justify-between mb-6 bg-gray-900 border border-gray-800 rounded-lg shadow px-4 py-3">
         <a href="/transactions?month={{ prev_month }}&year={{ prev_year }}{% if type_filter %}&type_filter={{ type_filter }}{% endif %}{% if category_filter %}&category_id={{ category_filter }}{% endif %}"
-           class="text-blue-600 hover:text-blue-800 font-medium">&larr; Previous</a>
+           class="text-blue-400 hover:text-blue-300 font-medium">&larr; Previous</a>
         <span class="text-lg font-semibold">{{ month_name }} {{ year }}</span>
         <a href="/transactions?month={{ next_month }}&year={{ next_year }}{% if type_filter %}&type_filter={{ type_filter }}{% endif %}{% if category_filter %}&category_id={{ category_filter }}{% endif %}"
-           class="text-blue-600 hover:text-blue-800 font-medium">Next &rarr;</a>
+           class="text-blue-400 hover:text-blue-300 font-medium">Next &rarr;</a>
     </div>
 
     <!-- Filter bar -->
-    <form method="get" action="/transactions" class="mb-4 flex gap-4 items-end bg-white rounded-lg shadow px-4 py-3">
+    <form method="get" action="/transactions" class="mb-4 flex gap-4 items-end bg-gray-900 border border-gray-800 rounded-lg shadow px-4 py-3">
         <input type="hidden" name="month" value="{{ month }}">
         <input type="hidden" name="year" value="{{ year }}">
         <div>
-            <label class="block text-xs font-medium text-gray-500 mb-1">Type</label>
-            <select name="type_filter" class="border border-gray-300 rounded px-2 py-1 text-sm">
+            <label class="block text-xs font-medium text-gray-400 mb-1">Type</label>
+            <select name="type_filter" class="bg-gray-800 border border-gray-600 text-gray-100 rounded px-2 py-1 text-sm">
                 <option value="">All Types</option>
                 <option value="income" {{ 'selected' if type_filter == 'income' }}>Income</option>
                 <option value="expense" {{ 'selected' if type_filter == 'expense' }}>Expense</option>
             </select>
         </div>
         <div>
-            <label class="block text-xs font-medium text-gray-500 mb-1">Category</label>
-            <select name="category_id" class="border border-gray-300 rounded px-2 py-1 text-sm">
+            <label class="block text-xs font-medium text-gray-400 mb-1">Category</label>
+            <select name="category_id" class="bg-gray-800 border border-gray-600 text-gray-100 rounded px-2 py-1 text-sm">
                 <option value="">All Categories</option>
                 {% for cat in categories %}
                 <option value="{{ cat.id }}" {{ 'selected' if category_filter|string == cat.id|string }}>{{ cat.name }}</option>
@@ -170,40 +170,40 @@
             </select>
         </div>
         <button type="submit" class="bg-blue-600 text-white px-3 py-1 rounded text-sm hover:bg-blue-700">Filter</button>
-        <a href="/transactions?month={{ month }}&year={{ year }}" class="text-gray-500 hover:text-gray-700 text-sm">Clear</a>
+        <a href="/transactions?month={{ month }}&year={{ year }}" class="text-gray-400 hover:text-gray-300 text-sm">Clear</a>
     </form>
 
     <div id="transactions-message" class="mb-4"></div>
 
     <!-- Add Transaction (collapsible) -->
-    <details class="mb-6 bg-white rounded-lg shadow p-4">
-        <summary class="cursor-pointer text-lg font-semibold text-gray-700">Add Transaction</summary>
+    <details class="mb-6 bg-gray-900 border border-gray-800 rounded-lg shadow p-4">
+        <summary class="cursor-pointer text-lg font-semibold text-gray-300">Add Transaction</summary>
         <form hx-post="/transactions" hx-target="#transactions-table-body" hx-swap="innerHTML"
-              hx-on::after-request="if(event.detail.successful) { this.reset(); document.getElementById('transactions-message').innerHTML = '<p class=\'text-green-600 text-sm\'>Transaction added.</p>'; } else { document.getElementById('transactions-message').innerHTML = event.detail.xhr.responseText; }"
+              hx-on::after-request="if(event.detail.successful) { this.reset(); document.getElementById('transactions-message').innerHTML = '<p class=\'text-green-400 text-sm\'>Transaction added.</p>'; } else { document.getElementById('transactions-message').innerHTML = event.detail.xhr.responseText; }"
               class="mt-4 grid grid-cols-1 md:grid-cols-3 gap-4">
             <input type="hidden" name="month" value="{{ month }}">
             <input type="hidden" name="year" value="{{ year }}">
             <div>
-                <label class="block text-sm font-medium text-gray-700 mb-1">Date</label>
+                <label class="block text-sm font-medium text-gray-300 mb-1">Date</label>
                 <input type="date" name="date" required
-                       class="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                       class="w-full bg-gray-800 border border-gray-600 text-gray-100 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500">
             </div>
             <div>
-                <label class="block text-sm font-medium text-gray-700 mb-1">Description</label>
+                <label class="block text-sm font-medium text-gray-300 mb-1">Description</label>
                 <input type="text" name="description"
-                       class="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                       class="w-full bg-gray-800 border border-gray-600 text-gray-100 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
                        placeholder="Optional description">
             </div>
             <div>
-                <label class="block text-sm font-medium text-gray-700 mb-1">Amount</label>
+                <label class="block text-sm font-medium text-gray-300 mb-1">Amount</label>
                 <input type="number" name="amount" step="0.01" min="0.01" required
-                       class="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                       class="w-full bg-gray-800 border border-gray-600 text-gray-100 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
                        placeholder="0.00">
             </div>
             <div>
-                <label class="block text-sm font-medium text-gray-700 mb-1">Category</label>
+                <label class="block text-sm font-medium text-gray-300 mb-1">Category</label>
                 <select name="category_id" required
-                        class="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                        class="w-full bg-gray-800 border border-gray-600 text-gray-100 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500">
                     <option value="">Select category</option>
                     {% for cat in categories %}
                     <option value="{{ cat.id }}">{{ cat.name }}</option>
@@ -211,26 +211,26 @@
                 </select>
             </div>
             <div>
-                <label class="block text-sm font-medium text-gray-700 mb-1">Type</label>
+                <label class="block text-sm font-medium text-gray-300 mb-1">Type</label>
                 <select name="type" required
-                        class="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                        class="w-full bg-gray-800 border border-gray-600 text-gray-100 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500">
                     <option value="expense">Expense</option>
                     <option value="income">Income</option>
                 </select>
             </div>
             <div>
-                <label class="block text-sm font-medium text-gray-700 mb-1">Transaction Type</label>
+                <label class="block text-sm font-medium text-gray-300 mb-1">Transaction Type</label>
                 <select name="transaction_type"
-                        class="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                        class="w-full bg-gray-800 border border-gray-600 text-gray-100 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500">
                     {% for val, label in transaction_type_labels.items() %}
                     <option value="{{ val }}">{{ label }}</option>
                     {% endfor %}
                 </select>
             </div>
             <div>
-                <label class="block text-sm font-medium text-gray-700 mb-1">Sinking Fund</label>
+                <label class="block text-sm font-medium text-gray-300 mb-1">Sinking Fund</label>
                 <select name="sinking_fund_id"
-                        class="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                        class="w-full bg-gray-800 border border-gray-600 text-gray-100 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500">
                     <option value="">None</option>
                     {% for sf in sinking_funds %}
                     <option value="{{ sf.id }}">{{ sf.name }}</option>
@@ -238,9 +238,9 @@
                 </select>
             </div>
             <div>
-                <label class="block text-sm font-medium text-gray-700 mb-1">Recurring Bill</label>
+                <label class="block text-sm font-medium text-gray-300 mb-1">Recurring Bill</label>
                 <select name="recurring_bill_id"
-                        class="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                        class="w-full bg-gray-800 border border-gray-600 text-gray-100 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500">
                     <option value="">None</option>
                     {% for rb in recurring_bills %}
                     <option value="{{ rb.id }}">{{ rb.name }}</option>
@@ -248,9 +248,9 @@
                 </select>
             </div>
             <div>
-                <label class="block text-sm font-medium text-gray-700 mb-1">Budget</label>
+                <label class="block text-sm font-medium text-gray-300 mb-1">Budget</label>
                 <select name="budget_id"
-                        class="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                        class="w-full bg-gray-800 border border-gray-600 text-gray-100 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500">
                     <option value="">None</option>
                     {% for b in budgets %}
                     <option value="{{ b.id }}">{{ b.category.name }}</option>
@@ -260,8 +260,8 @@
             <div class="flex items-end">
                 <label class="flex items-center space-x-2">
                     <input type="checkbox" name="is_paid" checked
-                           class="rounded border-gray-300 text-blue-600 focus:ring-blue-500">
-                    <span class="text-sm font-medium text-gray-700">Paid</span>
+                           class="rounded border-gray-600 bg-gray-800 text-blue-500 focus:ring-blue-500">
+                    <span class="text-sm font-medium text-gray-300">Paid</span>
                 </label>
             </div>
             <div class="md:col-span-3">
@@ -274,66 +274,66 @@
     </details>
 
     <!-- Summary bar -->
-    <div class="mb-4 flex gap-6 bg-white rounded-lg shadow px-4 py-3">
+    <div class="mb-4 flex gap-6 bg-gray-900 border border-gray-800 rounded-lg shadow px-4 py-3">
         <div class="text-sm">
-            <span class="text-gray-500">Income:</span>
-            <span class="font-semibold text-green-600">${{ total_income }}</span>
+            <span class="text-gray-400">Income:</span>
+            <span class="font-semibold text-green-400">${{ total_income }}</span>
         </div>
         <div class="text-sm">
-            <span class="text-gray-500">Expenses:</span>
-            <span class="font-semibold text-red-600">${{ total_expenses }}</span>
+            <span class="text-gray-400">Expenses:</span>
+            <span class="font-semibold text-red-400">${{ total_expenses }}</span>
         </div>
         <div class="text-sm">
-            <span class="text-gray-500">Net:</span>
-            <span class="font-semibold {% if net < 0 %}text-red-600{% else %}text-green-600{% endif %}">${{ net }}</span>
+            <span class="text-gray-400">Net:</span>
+            <span class="font-semibold {% if net < 0 %}text-red-400{% else %}text-green-400{% endif %}">${{ net }}</span>
         </div>
     </div>
 
     <!-- Transactions table -->
-    <div class="bg-white rounded-lg shadow overflow-x-auto">
+    <div class="bg-gray-900 border border-gray-800 rounded-lg shadow overflow-x-auto">
         <table class="w-full">
-            <thead class="bg-gray-50 border-b border-gray-200">
+            <thead class="bg-gray-800 border-b border-gray-700">
                 <tr>
-                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Date</th>
-                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Description</th>
-                    <th class="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Amount</th>
-                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Category</th>
-                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Type</th>
-                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Linked</th>
-                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
-                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
+                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase">Date</th>
+                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase">Description</th>
+                    <th class="px-4 py-3 text-right text-xs font-medium text-gray-400 uppercase">Amount</th>
+                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase">Category</th>
+                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase">Type</th>
+                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase">Linked</th>
+                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase">Status</th>
+                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase">Actions</th>
                 </tr>
             </thead>
             <tbody id="transactions-table-body">
                 {% for txn in transactions %}
-                <tr class="border-b border-gray-200 hover:bg-gray-50" id="txn-row-{{ txn.id }}">
-                    <td class="px-4 py-3 text-sm">{{ txn.date }}</td>
-                    <td class="px-4 py-3 text-sm">{{ txn.description or "" }}</td>
-                    <td class="px-4 py-3 text-sm text-right {% if txn.type == 'income' %}text-green-600{% else %}text-red-600{% endif %}">
+                <tr class="border-b border-gray-700 hover:bg-gray-800" id="txn-row-{{ txn.id }}">
+                    <td class="px-4 py-3 text-sm text-gray-300">{{ txn.date }}</td>
+                    <td class="px-4 py-3 text-sm text-gray-300">{{ txn.description or "" }}</td>
+                    <td class="px-4 py-3 text-sm text-right {% if txn.type == 'income' %}text-green-400{% else %}text-red-400{% endif %}">
                         {% if txn.type == 'income' %}+{% else %}-{% endif %}${{ "%.2f"|format(txn.amount) }}
                     </td>
-                    <td class="px-4 py-3 text-sm">
+                    <td class="px-4 py-3 text-sm text-gray-100">
                         <span class="inline-block w-3 h-3 rounded-full mr-1" style="background-color: {{ txn.category.color }}"></span>{{ txn.category.name }}
                     </td>
-                    <td class="px-4 py-3 text-sm">{{ transaction_type_labels.get(txn.transaction_type, txn.transaction_type) }}</td>
-                    <td class="px-4 py-3 text-sm">
+                    <td class="px-4 py-3 text-sm text-gray-300">{{ transaction_type_labels.get(txn.transaction_type, txn.transaction_type) }}</td>
+                    <td class="px-4 py-3 text-sm text-gray-300">
                         {% if txn.sinking_fund %}{{ txn.sinking_fund.name }}{% endif %}
                         {% if txn.recurring_bill %}{{ txn.recurring_bill.name }}{% endif %}
                         {% if txn.budget and txn.budget.category %}{{ txn.budget.category.name }} Budget{% endif %}
                     </td>
                     <td class="px-4 py-3 text-sm">
                         {% if txn.is_paid %}
-                        <span class="text-green-600 font-medium">Paid</span>
+                        <span class="text-green-400 font-medium">Paid</span>
                         {% else %}
-                        <span class="text-yellow-600 font-medium">Pending</span>
+                        <span class="text-yellow-400 font-medium">Pending</span>
                         {% endif %}
                     </td>
                     <td class="px-4 py-3 text-sm space-x-2">
                         <button hx-get="/transactions/{{ txn.id }}/edit" hx-target="#txn-row-{{ txn.id }}" hx-swap="outerHTML"
-                                class="text-blue-600 hover:text-blue-800 text-sm font-medium">Edit</button>
+                                class="text-blue-400 hover:text-blue-300 text-sm font-medium">Edit</button>
                         <button hx-delete="/transactions/{{ txn.id }}" hx-target="#txn-row-{{ txn.id }}" hx-swap="delete"
                                 hx-confirm="Delete this transaction?"
-                                class="text-red-600 hover:text-red-800 text-sm font-medium">Delete</button>
+                                class="text-red-400 hover:text-red-300 text-sm font-medium">Delete</button>
                     </td>
                 </tr>
                 {% endfor %}

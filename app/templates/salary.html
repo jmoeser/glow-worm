@@ -9,7 +9,7 @@
     <!-- Sankey Diagram -->
     <div class="mb-8">
         <h3 class="text-lg font-semibold mb-3">Salary Breakdown</h3>
-        <div id="sankey-chart" class="bg-gray-50 rounded-md p-4 flex items-center justify-center">
+        <div id="sankey-chart" class="bg-gray-900 border border-gray-800 rounded-md p-4 flex items-center justify-center">
             <p class="text-sm text-gray-400">Enter a salary to see the breakdown</p>
         </div>
     </div>
@@ -19,78 +19,80 @@
 
                 <!-- Monthly Salary -->
                 <div>
-                    <label for="monthly_salary_amount" class="block text-sm font-medium text-gray-700 mb-1">Monthly Salary</label>
+                    <label for="monthly_salary_amount" class="block text-sm font-medium text-gray-300 mb-1">Monthly Salary</label>
                     <input type="number" id="monthly_salary_amount" name="monthly_salary_amount"
                            step="0.01" min="0"
                            value="{{ allocation.monthly_salary_amount if allocation else '' }}"
                            oninput="calculateRemainder()"
-                           class="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                           class="w-full bg-gray-800 border border-gray-600 text-gray-100 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
                            placeholder="0.00" required>
                 </div>
 
                 <!-- Monthly Budget Allocation -->
                 <div>
-                    <label for="monthly_budget_allocation" class="block text-sm font-medium text-gray-700 mb-1">Monthly Budget Allocation</label>
+                    <label for="monthly_budget_allocation" class="block text-sm font-medium text-gray-300 mb-1">Monthly Budget Allocation</label>
                     <input type="number" id="monthly_budget_allocation" name="monthly_budget_allocation"
                            step="0.01" min="0"
                            value="{{ allocation.monthly_budget_allocation if allocation else '' }}"
                            oninput="calculateRemainder()"
-                           class="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                           class="w-full bg-gray-800 border border-gray-600 text-gray-100 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
                            placeholder="0.00">
                 </div>
 
                 <!-- Bills Fund Allocation -->
-                <fieldset class="border border-gray-200 rounded-md p-4">
-                    <legend class="text-sm font-medium text-gray-700 px-1">Bills Fund Allocation</legend>
+                <fieldset class="border border-gray-700 rounded-md p-4">
+                    <legend class="text-sm font-medium text-gray-300 px-1">Bills Fund Allocation</legend>
                     <div class="space-y-3">
                         <label class="flex items-center space-x-2">
                             <input type="radio" name="bills_fund_allocation_type" value="recommended"
                                    {{ 'checked' if not allocation or allocation.bills_fund_allocation_type == 'recommended' }}
-                                   onchange="toggleFixedAmount()">
-                            <span class="text-sm text-gray-700">Recommended (auto-calculated)</span>
+                                   onchange="toggleFixedAmount()"
+                                   class="text-blue-500 focus:ring-blue-500">
+                            <span class="text-sm text-gray-300">Recommended (auto-calculated)</span>
                         </label>
                         <label class="flex items-center space-x-2">
                             <input type="radio" name="bills_fund_allocation_type" value="fixed"
                                    {{ 'checked' if allocation and allocation.bills_fund_allocation_type == 'fixed' }}
-                                   onchange="toggleFixedAmount()">
-                            <span class="text-sm text-gray-700">Fixed amount</span>
+                                   onchange="toggleFixedAmount()"
+                                   class="text-blue-500 focus:ring-blue-500">
+                            <span class="text-sm text-gray-300">Fixed amount</span>
                         </label>
                         <div id="fixed-amount-container"
                              class="{{ '' if allocation and allocation.bills_fund_allocation_type == 'fixed' else 'hidden' }}">
                             <input type="number" id="bills_fund_fixed_amount" name="bills_fund_fixed_amount"
                                    step="0.01" min="0"
                                    value="{{ allocation.bills_fund_fixed_amount if allocation and allocation.bills_fund_fixed_amount else '' }}"
-                                   class="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                   class="w-full bg-gray-800 border border-gray-600 text-gray-100 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
                                    placeholder="0.00">
                         </div>
                     </div>
                 </fieldset>
 
                 <!-- Sinking Fund Allocations -->
-                <fieldset class="border border-gray-200 rounded-md p-4">
-                    <legend class="text-sm font-medium text-gray-700 px-1">Sinking Fund Allocations</legend>
+                <fieldset class="border border-gray-700 rounded-md p-4">
+                    <legend class="text-sm font-medium text-gray-300 px-1">Sinking Fund Allocations</legend>
                     {% if sinking_funds %}
                     <div class="space-y-3">
                         {% for fund in sinking_funds %}
                         <div class="flex items-center space-x-3">
                             <span class="inline-block w-3 h-3 rounded-full" style="background-color: {{ fund.color }}"></span>
-                            <label for="fund_{{ fund.id }}" class="text-sm text-gray-700 w-32">{{ fund.name }}</label>
+                            <label for="fund_{{ fund.id }}" class="text-sm text-gray-300 w-32">{{ fund.name }}</label>
                             <input type="number" id="fund_{{ fund.id }}" name="fund_{{ fund.id }}"
                                    step="0.01" min="0"
                                    value="{{ fund_allocation_map.get(fund.id, '') }}"
                                    oninput="calculateRemainder()"
-                                   class="flex-1 border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                   class="flex-1 bg-gray-800 border border-gray-600 text-gray-100 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
                                    placeholder="0.00">
                         </div>
                         {% endfor %}
                     </div>
                     {% else %}
-                    <p class="text-sm text-gray-500">No active sinking funds.</p>
+                    <p class="text-sm text-gray-400">No active sinking funds.</p>
                     {% endif %}
                 </fieldset>
 
                 <!-- Remainder Display -->
-                <div id="remainder-display" class="text-lg font-semibold p-3 bg-gray-50 rounded-md">
+                <div id="remainder-display" class="text-lg font-semibold p-3 bg-gray-800 border border-gray-700 rounded-md">
                     Remainder: <span id="remainder-value">$0.00</span>
                 </div>
 
@@ -123,9 +125,9 @@ function calculateRemainder() {
 
     const container = document.getElementById('remainder-display');
     if (remainder >= 0) {
-        container.className = 'text-lg font-semibold p-3 bg-green-50 text-green-700 rounded-md';
+        container.className = 'text-lg font-semibold p-3 bg-green-900/30 text-green-400 border border-green-800 rounded-md';
     } else {
-        container.className = 'text-lg font-semibold p-3 bg-red-50 text-red-700 rounded-md';
+        container.className = 'text-lg font-semibold p-3 bg-red-900/30 text-red-400 border border-red-800 rounded-md';
     }
 
     renderSankey();
@@ -166,13 +168,13 @@ function renderSankey() {
     const remainder = salary - totalAllocated;
 
     // Build nodes: index 0 = Salary (source)
-    const nodes = [{ name: 'Salary', color: '#22C55E' }];
+    const nodes = [{ name: 'Salary', color: '#4ADE80' }];
     const links = [];
 
     if (budget > 0) {
         const idx = nodes.length;
-        nodes.push({ name: 'Monthly Budget', color: '#3B82F6' });
-        links.push({ source: 0, target: idx, value: budget, color: '#3B82F6' });
+        nodes.push({ name: 'Monthly Budget', color: '#60A5FA' });
+        links.push({ source: 0, target: idx, value: budget, color: '#60A5FA' });
     }
 
     fundAllocations.forEach(function(fund) {
@@ -183,14 +185,14 @@ function renderSankey() {
 
     if (remainder > 0) {
         const idx = nodes.length;
-        nodes.push({ name: 'Unallocated', color: '#9CA3AF' });
-        links.push({ source: 0, target: idx, value: remainder, color: '#9CA3AF' });
+        nodes.push({ name: 'Unallocated', color: '#6B7280' });
+        links.push({ source: 0, target: idx, value: remainder, color: '#6B7280' });
     }
 
     if (links.length === 0) {
         // Salary entered but nothing allocated, everything unallocated
-        nodes.push({ name: 'Unallocated', color: '#9CA3AF' });
-        links.push({ source: 0, target: 1, value: salary, color: '#9CA3AF' });
+        nodes.push({ name: 'Unallocated', color: '#6B7280' });
+        links.push({ source: 0, target: 1, value: salary, color: '#6B7280' });
     }
 
     // Dimensions
@@ -233,7 +235,7 @@ function renderSankey() {
         .attr('d', d3.sankeyLinkHorizontal())
         .attr('fill', 'none')
         .attr('stroke', function(d) { return d.color; })
-        .attr('stroke-opacity', 0.35)
+        .attr('stroke-opacity', 0.4)
         .attr('stroke-width', function(d) { return Math.max(1, d.width); });
 
     // Draw nodes
@@ -265,7 +267,7 @@ function renderSankey() {
         .attr('y', function(d) { return (d.y0 + d.y1) / 2; })
         .attr('dy', '0.35em')
         .attr('font-size', '12px')
-        .attr('fill', '#374151')
+        .attr('fill', '#D1D5DB')
         .text(function(d) {
             var val = d.sourceLinks.length > 0
                 ? d.sourceLinks.reduce(function(s, l) { return s + l.value; }, 0)
