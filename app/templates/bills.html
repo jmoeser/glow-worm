@@ -1,75 +1,72 @@
 {% if fragment == "table_body" %}
 {# --- Partial: full table body rows + summary --- #}
 {% for bill in bills %}
-<tr class="border-b border-gray-700 hover:bg-gray-800" id="bill-row-{{ bill.id }}">
-    <td class="px-4 py-3 text-sm text-gray-100">{{ bill.name }}</td>
-    <td class="px-4 py-3 text-sm text-gray-300">{{ bill.debtor_provider }}</td>
-    <td class="px-4 py-3 text-sm text-right text-gray-100">${{ "%.2f"|format(bill.amount) }}</td>
-    <td class="px-4 py-3 text-sm text-gray-300">{{ frequency_labels.get(bill.frequency, bill.frequency) }}</td>
-    <td class="px-4 py-3 text-sm text-gray-300">{{ bill.next_due_date }}</td>
-    <td class="px-4 py-3 text-sm space-x-2">
+<tr id="bill-row-{{ bill.id }}">
+    <td>{{ bill.name }}</td>
+    <td class="gw-text-muted">{{ bill.debtor_provider }}</td>
+    <td class="text-right">${{ "%.2f"|format(bill.amount) }}</td>
+    <td class="gw-text-muted">{{ frequency_labels.get(bill.frequency, bill.frequency) }}</td>
+    <td class="gw-text-muted">{{ bill.next_due_date }}</td>
+    <td>
         <button hx-get="/bills/{{ bill.id }}/edit" hx-target="#bill-row-{{ bill.id }}" hx-swap="outerHTML"
-                class="text-blue-400 hover:text-blue-300 text-sm font-medium">Edit</button>
+                class="gw-action-edit">Edit</button>
         <button hx-delete="/bills/{{ bill.id }}" hx-target="#bill-row-{{ bill.id }}" hx-swap="delete"
                 hx-confirm="Deactivate this bill?"
-                class="text-red-400 hover:text-red-300 text-sm font-medium">Delete</button>
+                class="gw-action-delete">Delete</button>
     </td>
 </tr>
 {% endfor %}
 
 {% elif fragment == "bill_row" %}
 {# --- Partial: single display row --- #}
-<tr class="border-b border-gray-700 hover:bg-gray-800" id="bill-row-{{ bill.id }}">
-    <td class="px-4 py-3 text-sm text-gray-100">{{ bill.name }}</td>
-    <td class="px-4 py-3 text-sm text-gray-300">{{ bill.debtor_provider }}</td>
-    <td class="px-4 py-3 text-sm text-right text-gray-100">${{ "%.2f"|format(bill.amount) }}</td>
-    <td class="px-4 py-3 text-sm text-gray-300">{{ frequency_labels.get(bill.frequency, bill.frequency) }}</td>
-    <td class="px-4 py-3 text-sm text-gray-300">{{ bill.next_due_date }}</td>
-    <td class="px-4 py-3 text-sm space-x-2">
+<tr id="bill-row-{{ bill.id }}">
+    <td>{{ bill.name }}</td>
+    <td class="gw-text-muted">{{ bill.debtor_provider }}</td>
+    <td class="text-right">${{ "%.2f"|format(bill.amount) }}</td>
+    <td class="gw-text-muted">{{ frequency_labels.get(bill.frequency, bill.frequency) }}</td>
+    <td class="gw-text-muted">{{ bill.next_due_date }}</td>
+    <td>
         <button hx-get="/bills/{{ bill.id }}/edit" hx-target="#bill-row-{{ bill.id }}" hx-swap="outerHTML"
-                class="text-blue-400 hover:text-blue-300 text-sm font-medium">Edit</button>
+                class="gw-action-edit">Edit</button>
         <button hx-delete="/bills/{{ bill.id }}" hx-target="#bill-row-{{ bill.id }}" hx-swap="delete"
                 hx-confirm="Deactivate this bill?"
-                class="text-red-400 hover:text-red-300 text-sm font-medium">Delete</button>
+                class="gw-action-delete">Delete</button>
     </td>
 </tr>
 
 {% elif fragment == "edit_row" %}
 {# --- Partial: inline edit row --- #}
-<tr class="border-b border-gray-700 bg-gray-800" id="bill-row-{{ bill.id }}">
-    <td class="px-4 py-2">
+<tr class="gw-edit-row" id="bill-row-{{ bill.id }}">
+    <td>
         <input type="text" name="name" value="{{ bill.name }}" form="edit-form-{{ bill.id }}"
-               class="w-full bg-gray-700 border border-gray-600 text-gray-100 rounded px-2 py-1 text-sm">
+               class="gw-edit-input">
     </td>
-    <td class="px-4 py-2">
+    <td>
         <input type="text" name="debtor_provider" value="{{ bill.debtor_provider }}" form="edit-form-{{ bill.id }}"
-               class="w-full bg-gray-700 border border-gray-600 text-gray-100 rounded px-2 py-1 text-sm">
+               class="gw-edit-input">
     </td>
-    <td class="px-4 py-2">
+    <td>
         <input type="number" name="amount" value="{{ "%.2f"|format(bill.amount) }}" step="0.01" min="0.01"
                form="edit-form-{{ bill.id }}"
-               class="w-full bg-gray-700 border border-gray-600 text-gray-100 rounded px-2 py-1 text-sm text-right">
+               class="gw-edit-input" style="text-align: right;">
     </td>
-    <td class="px-4 py-2">
-        <select name="frequency" form="edit-form-{{ bill.id }}"
-                class="w-full bg-gray-700 border border-gray-600 text-gray-100 rounded px-2 py-1 text-sm">
+    <td>
+        <select name="frequency" form="edit-form-{{ bill.id }}" class="gw-edit-input">
             {% for val, label in frequency_labels.items() %}
             <option value="{{ val }}" {{ 'selected' if bill.frequency == val }}>{{ label }}</option>
             {% endfor %}
         </select>
     </td>
-    <td class="px-4 py-2">
+    <td>
         <input type="date" name="next_due_date" value="{{ bill.next_due_date }}" form="edit-form-{{ bill.id }}"
-               class="w-full bg-gray-700 border border-gray-600 text-gray-100 rounded px-2 py-1 text-sm">
+               class="gw-edit-input">
     </td>
-    <td class="px-4 py-2 space-x-1">
-        <form id="edit-form-{{ bill.id }}" hx-post="/bills/{{ bill.id }}" hx-target="#bill-row-{{ bill.id }}" hx-swap="outerHTML" class="inline">
-            <button type="submit"
-                    class="bg-green-600 text-white px-2 py-1 rounded text-xs hover:bg-green-700">Save</button>
+    <td>
+        <form id="edit-form-{{ bill.id }}" hx-post="/bills/{{ bill.id }}" hx-target="#bill-row-{{ bill.id }}" hx-swap="outerHTML" style="display: inline;">
+            <button type="submit" class="gw-btn gw-btn-success gw-btn-sm">Save</button>
         </form>
-        <button hx-get="/bills/{{ bill.id }}/cancel" hx-target="#bill-row-{{ bill.id }}" hx-swap="outerHTML"
-                class="bg-gray-600 text-white px-2 py-1 rounded text-xs hover:bg-gray-500"
-                onclick="event.preventDefault(); htmx.ajax('GET', '/bills', {target: document.body, swap: 'innerHTML'}).then(function(){}); location.reload();">Cancel</button>
+        <button class="gw-btn gw-btn-ghost gw-btn-sm"
+                onclick="event.preventDefault(); location.reload();">Cancel</button>
     </td>
 </tr>
 
@@ -78,39 +75,35 @@
 {% extends "base.html" %}
 {% block title %}Recurring Bills — Glow Worm{% endblock %}
 {% block content %}
-<div class="max-w-5xl">
-    <h2 class="text-2xl font-bold mb-6">Recurring Bills</h2>
+<div style="max-width: 1100px;">
+    <h2 class="gw-page-header">Recurring Bills</h2>
 
-    <div id="bills-message" class="mb-4"></div>
+    <div id="bills-message" style="margin-bottom: 16px;"></div>
 
     <!-- Add New Bill (collapsible) -->
-    <details class="mb-6 bg-gray-900 border border-gray-800 rounded-lg shadow p-4">
-        <summary class="cursor-pointer text-lg font-semibold text-gray-300">Add New Bill</summary>
+    <details class="gw-details gw-section">
+        <summary>Add New Bill</summary>
         <form hx-post="/bills" hx-target="#bills-table-body" hx-swap="innerHTML"
-              hx-on::after-request="if(event.detail.successful) { this.reset(); document.getElementById('bills-message').innerHTML = '<p class=\'text-green-400 text-sm\'>Bill added.</p>'; } else { document.getElementById('bills-message').innerHTML = event.detail.xhr.responseText; }"
-              class="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+              hx-on::after-request="if(event.detail.successful) { this.reset(); document.getElementById('bills-message').innerHTML = '<p class=\'gw-msg-success\'>Bill added.</p>'; } else { document.getElementById('bills-message').innerHTML = event.detail.xhr.responseText; }"
+              class="gw-grid-2" style="margin-top: 16px;">
             <div>
-                <label for="bill-name" class="block text-sm font-medium text-gray-300 mb-1">Name</label>
+                <label for="bill-name" class="gw-label">Name</label>
                 <input type="text" id="bill-name" name="name" required
-                       class="w-full bg-gray-800 border border-gray-600 text-gray-100 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                       placeholder="e.g. Rent">
+                       class="gw-input" placeholder="e.g. Rent">
             </div>
             <div>
-                <label for="bill-provider" class="block text-sm font-medium text-gray-300 mb-1">Provider</label>
+                <label for="bill-provider" class="gw-label">Provider</label>
                 <input type="text" id="bill-provider" name="debtor_provider" required
-                       class="w-full bg-gray-800 border border-gray-600 text-gray-100 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                       placeholder="e.g. Landlord">
+                       class="gw-input" placeholder="e.g. Landlord">
             </div>
             <div>
-                <label for="bill-amount" class="block text-sm font-medium text-gray-300 mb-1">Amount</label>
+                <label for="bill-amount" class="gw-label">Amount</label>
                 <input type="number" id="bill-amount" name="amount" step="0.01" min="0.01" required
-                       class="w-full bg-gray-800 border border-gray-600 text-gray-100 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                       placeholder="0.00">
+                       class="gw-input" placeholder="0.00">
             </div>
             <div>
-                <label for="bill-frequency" class="block text-sm font-medium text-gray-300 mb-1">Frequency</label>
-                <select id="bill-frequency" name="frequency" required
-                        class="w-full bg-gray-800 border border-gray-600 text-gray-100 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                <label for="bill-frequency" class="gw-label">Frequency</label>
+                <select id="bill-frequency" name="frequency" required class="gw-select">
                     <option value="monthly">Monthly</option>
                     <option value="quarterly">Quarterly</option>
                     <option value="yearly">Yearly</option>
@@ -118,9 +111,8 @@
                 </select>
             </div>
             <div>
-                <label for="bill-category" class="block text-sm font-medium text-gray-300 mb-1">Category</label>
-                <select id="bill-category" name="category_id" required
-                        class="w-full bg-gray-800 border border-gray-600 text-gray-100 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                <label for="bill-category" class="gw-label">Category</label>
+                <select id="bill-category" name="category_id" required class="gw-select">
                     <option value="">Select category...</option>
                     {% for cat in categories %}
                     <option value="{{ cat.id }}">{{ cat.name }}</option>
@@ -128,68 +120,65 @@
                 </select>
             </div>
             <div>
-                <label for="bill-start-date" class="block text-sm font-medium text-gray-300 mb-1">Start Date</label>
-                <input type="date" id="bill-start-date" name="start_date" required
-                       class="w-full bg-gray-800 border border-gray-600 text-gray-100 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                <label for="bill-start-date" class="gw-label">Start Date</label>
+                <input type="date" id="bill-start-date" name="start_date" required class="gw-input">
             </div>
             <div>
-                <label for="bill-next-due" class="block text-sm font-medium text-gray-300 mb-1">Next Due Date</label>
-                <input type="date" id="bill-next-due" name="next_due_date" required
-                       class="w-full bg-gray-800 border border-gray-600 text-gray-100 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                <label for="bill-next-due" class="gw-label">Next Due Date</label>
+                <input type="date" id="bill-next-due" name="next_due_date" required class="gw-input">
             </div>
-            <div class="md:col-span-2">
-                <button type="submit"
-                        class="bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500">
-                    Add Bill
-                </button>
+            <div style="grid-column: 1 / -1;">
+                <button type="submit" class="gw-btn gw-btn-primary">Add Bill</button>
             </div>
         </form>
     </details>
 
     <!-- Summary bar -->
-    <div class="mb-4 flex gap-6 bg-gray-900 border border-gray-800 rounded-lg shadow px-4 py-3">
-        <div class="text-sm">
-            <span class="text-gray-400">Monthly cost:</span>
-            <span class="font-semibold text-gray-100">${{ total_monthly }}</span>
+    <div class="gw-summary-bar gw-section">
+        <div class="gw-summary-item">
+            <span class="gw-summary-label">Monthly cost:</span>
+            <span class="gw-summary-value">${{ total_monthly }}</span>
         </div>
-        <div class="text-sm">
-            <span class="text-gray-400">Annual cost:</span>
-            <span class="font-semibold text-gray-100">${{ total_annual }}</span>
+        <div class="gw-summary-item">
+            <span class="gw-summary-label">Annual cost:</span>
+            <span class="gw-summary-value">${{ total_annual }}</span>
         </div>
     </div>
 
     <!-- Bills table -->
-    <div class="bg-gray-900 border border-gray-800 rounded-lg shadow overflow-x-auto">
-        <table class="w-full">
-            <thead class="bg-gray-800 border-b border-gray-700">
-                <tr>
-                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase">Name</th>
-                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase">Provider</th>
-                    <th class="px-4 py-3 text-right text-xs font-medium text-gray-400 uppercase">Amount</th>
-                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase">Frequency</th>
-                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase">Next Due</th>
-                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase">Actions</th>
-                </tr>
-            </thead>
-            <tbody id="bills-table-body">
-                {% for bill in bills %}
-                <tr class="border-b border-gray-700 hover:bg-gray-800" id="bill-row-{{ bill.id }}">
-                    <td class="px-4 py-3 text-sm text-gray-100">{{ bill.name }}</td>
-                    <td class="px-4 py-3 text-sm text-gray-300">{{ bill.debtor_provider }}</td>
-                    <td class="px-4 py-3 text-sm text-right text-gray-100">${{ "%.2f"|format(bill.amount) }}</td>
-                    <td class="px-4 py-3 text-sm text-gray-300">{{ frequency_labels.get(bill.frequency, bill.frequency) }}</td>
-                    <td class="px-4 py-3 text-sm text-gray-300">{{ bill.next_due_date }}</td>
-                    <td class="px-4 py-3 text-sm space-x-2">
-                        <button hx-get="/bills/{{ bill.id }}/edit" hx-target="#bill-row-{{ bill.id }}" hx-swap="outerHTML"
-                                class="text-blue-400 hover:text-blue-300 text-sm font-medium">Edit</button>
-                        <button hx-delete="/bills/{{ bill.id }}" hx-target="#bill-row-{{ bill.id }}" hx-swap="delete"
-                                hx-confirm="Deactivate this bill?"
-                                class="text-red-400 hover:text-red-300 text-sm font-medium">Delete</button>
-                    </td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
+    <div class="gw-table-wrap">
+        <div class="gw-overflow-x">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Name</th>
+                        <th>Provider</th>
+                        <th class="text-right">Amount</th>
+                        <th>Frequency</th>
+                        <th>Next Due</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="bills-table-body">
+                    {% for bill in bills %}
+                    <tr id="bill-row-{{ bill.id }}">
+                        <td>{{ bill.name }}</td>
+                        <td class="gw-text-muted">{{ bill.debtor_provider }}</td>
+                        <td class="text-right">${{ "%.2f"|format(bill.amount) }}</td>
+                        <td class="gw-text-muted">{{ frequency_labels.get(bill.frequency, bill.frequency) }}</td>
+                        <td class="gw-text-muted">{{ bill.next_due_date }}</td>
+                        <td>
+                            <button hx-get="/bills/{{ bill.id }}/edit" hx-target="#bill-row-{{ bill.id }}" hx-swap="outerHTML"
+                                    class="gw-action-edit">Edit</button>
+                            <button hx-delete="/bills/{{ bill.id }}" hx-target="#bill-row-{{ bill.id }}" hx-swap="delete"
+                                    hx-confirm="Deactivate this bill?"
+                                    class="gw-action-delete">Delete</button>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
     </div>
 </div>
 {% endblock %}

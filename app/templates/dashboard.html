@@ -1,93 +1,79 @@
 {% extends "base.html" %} {% block title %}Dashboard - Glow Worm{% endblock %}
 {% block content %}
-<div class="mb-6">
-    <h2 class="text-2xl font-bold text-gray-100">
-        {{ month_name }} {{ year }}
-    </h2>
-</div>
+<h2 class="gw-page-header">{{ month_name }} {{ year }}</h2>
 
 <!-- Summary Cards -->
-<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-    <div class="bg-gray-900 rounded-lg shadow border border-gray-800 p-5">
-        <p class="text-sm text-gray-400">Total Income</p>
-        <p class="text-2xl font-bold text-green-400">${{ total_income }}</p>
+<div class="gw-grid-4 gw-section">
+    <div class="gw-stat gw-stat--green gw-animate-in">
+        <p class="gw-stat-label">Total Income</p>
+        <p class="gw-stat-value gw-text-positive">${{ total_income }}</p>
     </div>
-    <div class="bg-gray-900 rounded-lg shadow border border-gray-800 p-5">
-        <p class="text-sm text-gray-400">Total Expenses</p>
-        <p class="text-2xl font-bold text-red-400">${{ total_expenses }}</p>
+    <div class="gw-stat gw-stat--red gw-animate-in">
+        <p class="gw-stat-label">Total Expenses</p>
+        <p class="gw-stat-value gw-text-negative">${{ total_expenses }}</p>
     </div>
-    <div class="bg-gray-900 rounded-lg shadow border border-gray-800 p-5">
-        <p class="text-sm text-gray-400">Net</p>
-        <p
-            class="text-2xl font-bold {% if net >= 0 %}text-green-400{% else %}text-red-400{% endif %}"
-        >
+    <div class="gw-stat {% if net >= 0 %}gw-stat--green{% else %}gw-stat--red{% endif %} gw-animate-in">
+        <p class="gw-stat-label">Net</p>
+        <p class="gw-stat-value {% if net >= 0 %}gw-text-positive{% else %}gw-text-negative{% endif %}">
             ${{ net }}
         </p>
     </div>
-    <div class="bg-gray-900 rounded-lg shadow border border-gray-800 p-5">
-        <p class="text-sm text-gray-400">Unallocated Income</p>
-        <p class="text-2xl font-bold text-gray-100">
-            ${{ unallocated_income }}
-        </p>
+    <div class="gw-stat gw-stat--neutral gw-animate-in">
+        <p class="gw-stat-label">Unallocated Income</p>
+        <p class="gw-stat-value">${{ unallocated_income }}</p>
     </div>
 </div>
 
 <!-- Budget Overview -->
-<div class="bg-gray-900 rounded-lg shadow border border-gray-800 p-5 mb-8">
-    <h3 class="text-lg font-semibold text-gray-100 mb-3">Budget Overview</h3>
-    <div class="grid grid-cols-3 gap-4 text-center">
+<div class="gw-card gw-section gw-animate-in">
+    <h3 style="font-family: var(--font-display); font-size: 1.1rem; font-weight: 600; margin-bottom: 16px;">Budget Overview</h3>
+    <div class="gw-grid-3" style="text-align: center;">
         <div>
-            <p class="text-sm text-gray-400">Allocated</p>
-            <p class="text-xl font-bold text-gray-100">
+            <p class="gw-stat-label">Allocated</p>
+            <p style="font-family: var(--font-display); font-size: 1.3rem; font-weight: 700;">
                 ${{ budget_total_allocated }}
             </p>
         </div>
         <div>
-            <p class="text-sm text-gray-400">Spent</p>
-            <p class="text-xl font-bold text-red-400">
+            <p class="gw-stat-label">Spent</p>
+            <p style="font-family: var(--font-display); font-size: 1.3rem; font-weight: 700;" class="gw-text-negative">
                 ${{ budget_total_spent }}
             </p>
         </div>
         <div>
-            <p class="text-sm text-gray-400">Remaining</p>
-            <p
-                class="text-xl font-bold {% if budget_total_remaining >= 0 %}text-green-400{% else %}text-red-400{% endif %}"
-            >
+            <p class="gw-stat-label">Remaining</p>
+            <p style="font-family: var(--font-display); font-size: 1.3rem; font-weight: 700;"
+               class="{% if budget_total_remaining >= 0 %}gw-text-positive{% else %}gw-text-negative{% endif %}">
                 ${{ budget_total_remaining }}
             </p>
         </div>
     </div>
     {% if budget_total_allocated > 0 %}
-    <div class="mt-4 w-full bg-gray-700 rounded-full h-3">
-        {% set pct = ((budget_total_spent / budget_total_allocated) * 100) |
-        round(0) | int %} {% if pct > 100 %}{% set pct = 100 %}{% endif %}
-        <div
-            class="{% if pct > 90 %}bg-red-500{% elif pct > 70 %}bg-yellow-500{% else %}bg-green-500{% endif %} h-3 rounded-full"
-            style="width: {{ pct }}%"
-        ></div>
+    {% set pct = ((budget_total_spent / budget_total_allocated) * 100) | round(0) | int %}
+    {% if pct > 100 %}{% set pct = 100 %}{% endif %}
+    <div class="gw-progress" style="margin-top: 16px;">
+        <div class="gw-progress-bar {% if pct > 90 %}gw-progress-bar--red{% elif pct > 70 %}gw-progress-bar--yellow{% else %}gw-progress-bar--green{% endif %}"
+             style="width: {{ pct }}%"></div>
     </div>
     {% endif %}
 </div>
 
 <!-- Quick Expense -->
 {% if budgets %}
-<div class="bg-gray-900 rounded-lg shadow border border-gray-800 p-5 mb-8">
-    <h3 class="text-lg font-semibold text-gray-100 mb-3">Quick Expense</h3>
+<div class="gw-card gw-section gw-animate-in">
+    <h3 style="font-family: var(--font-display); font-size: 1.1rem; font-weight: 600; margin-bottom: 16px;">Quick Expense</h3>
     <form
         hx-post="/dashboard/quick-expense"
         hx-target="#quick-expense-msg"
         hx-swap="innerHTML"
-        class="grid grid-cols-1 sm:grid-cols-4 gap-4 items-end"
+        class="gw-grid-4"
+        style="align-items: end;"
     >
         <input type="hidden" name="month" value="{{ month }}" />
         <input type="hidden" name="year" value="{{ year }}" />
         <div>
-            <label for="qe-budget" class="block text-sm text-gray-400 mb-1">Budget</label>
-            <select
-                id="qe-budget"
-                name="budget_id"
-                class="w-full rounded-md bg-gray-800 border border-gray-700 text-gray-100 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-            >
+            <label for="qe-budget" class="gw-label">Budget</label>
+            <select id="qe-budget" name="budget_id" class="gw-select">
                 <option value="">Select budget</option>
                 {% for b in budgets %}
                 <option value="{{ b.id }}">
@@ -97,109 +83,92 @@
             </select>
         </div>
         <div>
-            <label for="qe-amount" class="block text-sm text-gray-400 mb-1">Amount</label>
-            <input
-                id="qe-amount"
-                type="number"
-                name="amount"
-                step="0.01"
-                min="0.01"
-                placeholder="0.00"
-                class="w-full rounded-md bg-gray-800 border border-gray-700 text-gray-100 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
+            <label for="qe-amount" class="gw-label">Amount</label>
+            <input id="qe-amount" type="number" name="amount" step="0.01" min="0.01"
+                   placeholder="0.00" class="gw-input" />
         </div>
         <div>
-            <label for="qe-date" class="block text-sm text-gray-400 mb-1">Date</label>
-            <input
-                id="qe-date"
-                type="date"
-                name="date"
-                value="{{ now_date }}"
-                class="w-full rounded-md bg-gray-800 border border-gray-700 text-gray-100 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
+            <label for="qe-date" class="gw-label">Date</label>
+            <input id="qe-date" type="date" name="date" value="{{ now_date }}" class="gw-input" />
         </div>
         <div>
-            <button
-                type="submit"
-                class="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-md px-4 py-2 text-sm transition-colors"
-            >
+            <button type="submit" class="gw-btn gw-btn-primary" style="width: 100%;">
                 Add Expense
             </button>
         </div>
     </form>
-    <div id="quick-expense-msg" class="mt-2"></div>
+    <div id="quick-expense-msg" style="margin-top: 8px;"></div>
 </div>
 {% endif %}
 
 <!-- Sinking Funds -->
-<div class="bg-gray-900 rounded-lg shadow border border-gray-800 p-5 mb-8">
-    <h3 class="text-lg font-semibold text-gray-100 mb-3">Sinking Funds</h3>
+<div class="gw-card gw-section gw-animate-in">
+    <h3 style="font-family: var(--font-display); font-size: 1.1rem; font-weight: 600; margin-bottom: 12px;">Sinking Funds</h3>
     {% if sinking_funds %}
-    <ul class="divide-y divide-gray-700">
+    <ul class="gw-list-divider">
         {% for fund in sinking_funds %}
-        <li class="py-3 flex items-center justify-between">
-            <div class="flex items-center gap-2">
-                <span
-                    class="inline-block w-3 h-3 rounded-full"
-                    style="background-color: {{ fund.color }}"
-                ></span>
-                <span class="text-gray-100">{{ fund.name }}</span>
+        <li>
+            <div style="display: flex; align-items: center; gap: 10px;">
+                <span class="gw-dot" style="background-color: {{ fund.color }}"></span>
+                <span>{{ fund.name }}</span>
             </div>
-            <span class="font-semibold text-gray-100"
-                >${{ "%.2f"|format(fund.current_balance) }}</span
-            >
+            <span style="font-family: var(--font-display); font-weight: 600;">
+                ${{ "%.2f"|format(fund.current_balance) }}
+            </span>
         </li>
         {% endfor %}
     </ul>
     {% else %}
-    <p class="text-gray-400">No sinking funds configured.</p>
+    <p class="gw-text-dim" style="font-size: 0.875rem;">No sinking funds configured.</p>
     {% endif %}
 </div>
 
 <!-- Recent Transactions -->
-<div class="bg-gray-900 rounded-lg shadow border border-gray-800 p-5">
-    <h3 class="text-lg font-semibold text-gray-100 mb-3">
-        Recent Transactions
-    </h3>
-    {% if recent_transactions %}
-    <div class="overflow-x-auto">
-        <table class="w-full text-sm text-left">
-            <thead class="text-gray-400 border-b border-gray-700">
-                <tr>
-                    <th class="py-2 pr-4">Date</th>
-                    <th class="py-2 pr-4">Description</th>
-                    <th class="py-2 pr-4">Amount</th>
-                    <th class="py-2 pr-4">Category</th>
-                    <th class="py-2">Status</th>
-                </tr>
-            </thead>
-            <tbody class="divide-y divide-gray-800">
-                {% for txn in recent_transactions %}
-                <tr>
-                    <td class="py-2 pr-4 whitespace-nowrap text-gray-300">{{ txn.date }}</td>
-                    <td class="py-2 pr-4 text-gray-300">{{ txn.description or "—" }}</td>
-                    <td
-                        class="py-2 pr-4 font-medium {% if txn.type == 'income' %}text-green-400{% else %}text-red-400{% endif %}"
-                    >
-                        ${{ "%.2f"|format(txn.amount) }}
-                    </td>
-                    <td class="py-2 pr-4 text-gray-300">
-                        {{ txn.category.name if txn.category else "—" }}
-                    </td>
-                    <td class="py-2">
-                        {% if txn.is_paid %}
-                        <span class="text-green-400">Paid</span>
-                        {% else %}
-                        <span class="text-yellow-400">Pending</span>
-                        {% endif %}
-                    </td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
+<div class="gw-animate-in">
+    <div class="gw-table-wrap">
+        <div style="padding: 16px 16px 0;">
+            <h3 style="font-family: var(--font-display); font-size: 1.1rem; font-weight: 600; margin-bottom: 12px;">
+                Recent Transactions
+            </h3>
+        </div>
+        {% if recent_transactions %}
+        <div class="gw-overflow-x">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Date</th>
+                        <th>Description</th>
+                        <th class="text-right">Amount</th>
+                        <th>Category</th>
+                        <th>Status</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for txn in recent_transactions %}
+                    <tr>
+                        <td style="white-space: nowrap;">{{ txn.date }}</td>
+                        <td>{{ txn.description or "\u2014" }}</td>
+                        <td class="text-right" style="font-weight: 600; color: {% if txn.type == 'income' %}var(--positive){% else %}var(--negative){% endif %};">
+                            ${{ "%.2f"|format(txn.amount) }}
+                        </td>
+                        <td>
+                            {{ txn.category.name if txn.category else "\u2014" }}
+                        </td>
+                        <td>
+                            {% if txn.is_paid %}
+                            <span class="gw-badge gw-badge--paid">Paid</span>
+                            {% else %}
+                            <span class="gw-badge gw-badge--pending">Pending</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <p class="gw-text-dim" style="padding: 0 16px 16px; font-size: 0.875rem;">No transactions this month.</p>
+        {% endif %}
     </div>
-    {% else %}
-    <p class="text-gray-400">No transactions this month.</p>
-    {% endif %}
 </div>
 {% endblock %}

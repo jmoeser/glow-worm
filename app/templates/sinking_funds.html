@@ -1,81 +1,79 @@
 {% if fragment == "table_body" %}
 {# --- Partial: full table body rows --- #}
 {% for fund in funds %}
-<tr class="border-b border-gray-700 hover:bg-gray-800" id="fund-row-{{ fund.id }}">
-    <td class="px-4 py-3 text-sm text-gray-100">
-        <span class="inline-block w-3 h-3 rounded-full mr-2" style="background-color: {{ fund.color }}"></span>{{ fund.name }}
+<tr id="fund-row-{{ fund.id }}">
+    <td>
+        <span class="gw-dot" style="background-color: {{ fund.color }}"></span>{{ fund.name }}
     </td>
-    <td class="px-4 py-3 text-sm text-gray-400">{{ fund.description or "" }}</td>
-    <td class="px-4 py-3 text-sm text-right text-gray-100">
+    <td class="gw-text-muted">{{ fund.description or "" }}</td>
+    <td class="text-right">
         ${{ "%.2f"|format(fund.monthly_allocation) }}
         {% if fund.name == "Bills" and bills_recommended %}
-        <span class="text-xs text-gray-500 ml-1">Rec: ${{ bills_recommended }}</span>
+        <span class="gw-text-dim" style="font-size: 0.75rem; margin-left: 4px;">Rec: ${{ bills_recommended }}</span>
         {% endif %}
     </td>
-    <td class="px-4 py-3 text-sm text-right text-gray-100">${{ "%.2f"|format(fund.current_balance) }}</td>
-    <td class="px-4 py-3 text-sm space-x-2">
+    <td class="text-right">${{ "%.2f"|format(fund.current_balance) }}</td>
+    <td>
         <button hx-get="/sinking-funds/{{ fund.id }}/edit" hx-target="#fund-row-{{ fund.id }}" hx-swap="outerHTML"
-                class="text-blue-400 hover:text-blue-300 text-sm font-medium">Edit</button>
+                class="gw-action-edit">Edit</button>
         <button hx-delete="/sinking-funds/{{ fund.id }}" hx-target="#fund-row-{{ fund.id }}" hx-swap="delete"
                 hx-confirm="Delete this sinking fund?"
-                class="text-red-400 hover:text-red-300 text-sm font-medium">Delete</button>
+                class="gw-action-delete">Delete</button>
     </td>
 </tr>
 {% endfor %}
 
 {% elif fragment == "fund_row" %}
 {# --- Partial: single display row --- #}
-<tr class="border-b border-gray-700 hover:bg-gray-800" id="fund-row-{{ fund.id }}">
-    <td class="px-4 py-3 text-sm text-gray-100">
-        <span class="inline-block w-3 h-3 rounded-full mr-2" style="background-color: {{ fund.color }}"></span>{{ fund.name }}
+<tr id="fund-row-{{ fund.id }}">
+    <td>
+        <span class="gw-dot" style="background-color: {{ fund.color }}"></span>{{ fund.name }}
     </td>
-    <td class="px-4 py-3 text-sm text-gray-400">{{ fund.description or "" }}</td>
-    <td class="px-4 py-3 text-sm text-right text-gray-100">
+    <td class="gw-text-muted">{{ fund.description or "" }}</td>
+    <td class="text-right">
         ${{ "%.2f"|format(fund.monthly_allocation) }}
         {% if fund.name == "Bills" and bills_recommended %}
-        <span class="text-xs text-gray-500 ml-1">Rec: ${{ bills_recommended }}</span>
+        <span class="gw-text-dim" style="font-size: 0.75rem; margin-left: 4px;">Rec: ${{ bills_recommended }}</span>
         {% endif %}
     </td>
-    <td class="px-4 py-3 text-sm text-right text-gray-100">${{ "%.2f"|format(fund.current_balance) }}</td>
-    <td class="px-4 py-3 text-sm space-x-2">
+    <td class="text-right">${{ "%.2f"|format(fund.current_balance) }}</td>
+    <td>
         <button hx-get="/sinking-funds/{{ fund.id }}/edit" hx-target="#fund-row-{{ fund.id }}" hx-swap="outerHTML"
-                class="text-blue-400 hover:text-blue-300 text-sm font-medium">Edit</button>
+                class="gw-action-edit">Edit</button>
         <button hx-delete="/sinking-funds/{{ fund.id }}" hx-target="#fund-row-{{ fund.id }}" hx-swap="delete"
                 hx-confirm="Delete this sinking fund?"
-                class="text-red-400 hover:text-red-300 text-sm font-medium">Delete</button>
+                class="gw-action-delete">Delete</button>
     </td>
 </tr>
 
 {% elif fragment == "edit_row" %}
 {# --- Partial: inline edit row --- #}
-<tr class="border-b border-gray-700 bg-gray-800" id="fund-row-{{ fund.id }}">
-    <td class="px-4 py-2">
-        <div class="flex items-center gap-2">
+<tr class="gw-edit-row" id="fund-row-{{ fund.id }}">
+    <td>
+        <div style="display: flex; align-items: center; gap: 8px;">
             <input type="color" name="color" value="{{ fund.color }}" form="edit-form-{{ fund.id }}"
-                   class="w-6 h-6 border-0 p-0 cursor-pointer">
+                   style="width: 24px; height: 24px;">
             <input type="text" name="name" value="{{ fund.name }}" form="edit-form-{{ fund.id }}"
-                   class="w-full bg-gray-700 border border-gray-600 text-gray-100 rounded px-2 py-1 text-sm">
+                   class="gw-edit-input">
         </div>
     </td>
-    <td class="px-4 py-2">
+    <td>
         <input type="text" name="description" value="{{ fund.description or '' }}" form="edit-form-{{ fund.id }}"
-               class="w-full bg-gray-700 border border-gray-600 text-gray-100 rounded px-2 py-1 text-sm">
+               class="gw-edit-input">
     </td>
-    <td class="px-4 py-2">
+    <td>
         <input type="number" name="monthly_allocation" value="{{ "%.2f"|format(fund.monthly_allocation) }}" step="0.01" min="0"
                form="edit-form-{{ fund.id }}"
-               class="w-full bg-gray-700 border border-gray-600 text-gray-100 rounded px-2 py-1 text-sm text-right">
+               class="gw-edit-input" style="text-align: right;">
     </td>
-    <td class="px-4 py-2 text-sm text-right text-gray-400">
+    <td class="text-right gw-text-dim">
         ${{ "%.2f"|format(fund.current_balance) }}
     </td>
-    <td class="px-4 py-2 space-x-1">
-        <form id="edit-form-{{ fund.id }}" hx-post="/sinking-funds/{{ fund.id }}" hx-target="#fund-row-{{ fund.id }}" hx-swap="outerHTML" class="inline">
-            <button type="submit"
-                    class="bg-green-600 text-white px-2 py-1 rounded text-xs hover:bg-green-700">Save</button>
+    <td>
+        <form id="edit-form-{{ fund.id }}" hx-post="/sinking-funds/{{ fund.id }}" hx-target="#fund-row-{{ fund.id }}" hx-swap="outerHTML" style="display: inline;">
+            <button type="submit" class="gw-btn gw-btn-success gw-btn-sm">Save</button>
         </form>
-        <button hx-get="/sinking-funds" hx-target="body" hx-swap="innerHTML"
-                class="bg-gray-600 text-white px-2 py-1 rounded text-xs hover:bg-gray-500"
+        <button class="gw-btn gw-btn-ghost gw-btn-sm"
                 onclick="event.preventDefault(); location.reload();">Cancel</button>
     </td>
 </tr>
@@ -85,110 +83,105 @@
 {% extends "base.html" %}
 {% block title %}Sinking Funds — Glow Worm{% endblock %}
 {% block content %}
-<div class="max-w-5xl">
-    <h2 class="text-2xl font-bold mb-6">Sinking Funds</h2>
+<div style="max-width: 1100px;">
+    <h2 class="gw-page-header">Sinking Funds</h2>
 
-    <div id="funds-message" class="mb-4"></div>
+    <div id="funds-message" style="margin-bottom: 16px;"></div>
 
     {% if buffer_warning %}
-    <div class="mb-4 bg-yellow-900/30 border border-yellow-700 rounded-lg px-4 py-3 text-sm text-yellow-300">
+    <div class="gw-warning-banner gw-section">
         <strong>Buffer Warning:</strong> Your Bills fund balance is less than the ${{ bills_due_30 }} in bills due within the next 30 days.
     </div>
     {% endif %}
 
     <!-- Add New Fund (collapsible) -->
-    <details class="mb-6 bg-gray-900 border border-gray-800 rounded-lg shadow p-4">
-        <summary class="cursor-pointer text-lg font-semibold text-gray-300">Add New Fund</summary>
+    <details class="gw-details gw-section">
+        <summary>Add New Fund</summary>
         <form hx-post="/sinking-funds" hx-target="#funds-table-body" hx-swap="innerHTML"
-              hx-on::after-request="if(event.detail.successful) { this.reset(); document.getElementById('funds-message').innerHTML = '<p class=\'text-green-400 text-sm\'>Fund added.</p>'; } else { document.getElementById('funds-message').innerHTML = event.detail.xhr.responseText; }"
-              class="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+              hx-on::after-request="if(event.detail.successful) { this.reset(); document.getElementById('funds-message').innerHTML = '<p class=\'gw-msg-success\'>Fund added.</p>'; } else { document.getElementById('funds-message').innerHTML = event.detail.xhr.responseText; }"
+              class="gw-grid-2" style="margin-top: 16px;">
             <div>
-                <label for="fund-name" class="block text-sm font-medium text-gray-300 mb-1">Name</label>
+                <label for="fund-name" class="gw-label">Name</label>
                 <input type="text" id="fund-name" name="name" required
-                       class="w-full bg-gray-800 border border-gray-600 text-gray-100 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                       placeholder="e.g. Emergency Fund">
+                       class="gw-input" placeholder="e.g. Emergency Fund">
             </div>
             <div>
-                <label for="fund-description" class="block text-sm font-medium text-gray-300 mb-1">Description</label>
+                <label for="fund-description" class="gw-label">Description</label>
                 <input type="text" id="fund-description" name="description"
-                       class="w-full bg-gray-800 border border-gray-600 text-gray-100 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                       placeholder="Optional description">
+                       class="gw-input" placeholder="Optional description">
             </div>
             <div>
-                <label for="fund-allocation" class="block text-sm font-medium text-gray-300 mb-1">Monthly Allocation</label>
+                <label for="fund-allocation" class="gw-label">Monthly Allocation</label>
                 <input type="number" id="fund-allocation" name="monthly_allocation" step="0.01" min="0" required
-                       class="w-full bg-gray-800 border border-gray-600 text-gray-100 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                       placeholder="0.00">
+                       class="gw-input" placeholder="0.00">
             </div>
             <div>
-                <label for="fund-balance" class="block text-sm font-medium text-gray-300 mb-1">Initial Balance</label>
+                <label for="fund-balance" class="gw-label">Initial Balance</label>
                 <input type="number" id="fund-balance" name="current_balance" step="0.01" value="0"
-                       class="w-full bg-gray-800 border border-gray-600 text-gray-100 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                       placeholder="0.00">
+                       class="gw-input" placeholder="0.00">
             </div>
             <div>
-                <label for="fund-color" class="block text-sm font-medium text-gray-300 mb-1">Color</label>
+                <label for="fund-color" class="gw-label">Color</label>
                 <input type="color" id="fund-color" name="color" value="#3B82F6" required
-                       class="w-16 h-10 border border-gray-600 rounded-md p-1 cursor-pointer">
+                       style="width: 60px; height: 38px;">
             </div>
-            <div class="md:col-span-2">
-                <button type="submit"
-                        class="bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500">
-                    Add Fund
-                </button>
+            <div style="grid-column: 1 / -1;">
+                <button type="submit" class="gw-btn gw-btn-primary">Add Fund</button>
             </div>
         </form>
     </details>
 
     <!-- Summary bar -->
-    <div class="mb-4 flex gap-6 bg-gray-900 border border-gray-800 rounded-lg shadow px-4 py-3">
-        <div class="text-sm">
-            <span class="text-gray-400">Total monthly allocation:</span>
-            <span class="font-semibold text-gray-100">${{ total_monthly_allocation }}</span>
+    <div class="gw-summary-bar gw-section">
+        <div class="gw-summary-item">
+            <span class="gw-summary-label">Total monthly allocation:</span>
+            <span class="gw-summary-value">${{ total_monthly_allocation }}</span>
         </div>
-        <div class="text-sm">
-            <span class="text-gray-400">Total balance:</span>
-            <span class="font-semibold text-gray-100">${{ total_balance }}</span>
+        <div class="gw-summary-item">
+            <span class="gw-summary-label">Total balance:</span>
+            <span class="gw-summary-value">${{ total_balance }}</span>
         </div>
     </div>
 
     <!-- Funds table -->
-    <div class="bg-gray-900 border border-gray-800 rounded-lg shadow overflow-x-auto">
-        <table class="w-full">
-            <thead class="bg-gray-800 border-b border-gray-700">
-                <tr>
-                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase">Name</th>
-                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase">Description</th>
-                    <th class="px-4 py-3 text-right text-xs font-medium text-gray-400 uppercase">Monthly Allocation</th>
-                    <th class="px-4 py-3 text-right text-xs font-medium text-gray-400 uppercase">Balance</th>
-                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase">Actions</th>
-                </tr>
-            </thead>
-            <tbody id="funds-table-body">
-                {% for fund in funds %}
-                <tr class="border-b border-gray-700 hover:bg-gray-800" id="fund-row-{{ fund.id }}">
-                    <td class="px-4 py-3 text-sm text-gray-100">
-                        <span class="inline-block w-3 h-3 rounded-full mr-2" style="background-color: {{ fund.color }}"></span>{{ fund.name }}
-                    </td>
-                    <td class="px-4 py-3 text-sm text-gray-400">{{ fund.description or "" }}</td>
-                    <td class="px-4 py-3 text-sm text-right text-gray-100">
-                        ${{ "%.2f"|format(fund.monthly_allocation) }}
-                        {% if fund.name == "Bills" and bills_recommended %}
-                        <span class="text-xs text-gray-500 ml-1">Rec: ${{ bills_recommended }}</span>
-                        {% endif %}
-                    </td>
-                    <td class="px-4 py-3 text-sm text-right text-gray-100">${{ "%.2f"|format(fund.current_balance) }}</td>
-                    <td class="px-4 py-3 text-sm space-x-2">
-                        <button hx-get="/sinking-funds/{{ fund.id }}/edit" hx-target="#fund-row-{{ fund.id }}" hx-swap="outerHTML"
-                                class="text-blue-400 hover:text-blue-300 text-sm font-medium">Edit</button>
-                        <button hx-delete="/sinking-funds/{{ fund.id }}" hx-target="#fund-row-{{ fund.id }}" hx-swap="delete"
-                                hx-confirm="Delete this sinking fund?"
-                                class="text-red-400 hover:text-red-300 text-sm font-medium">Delete</button>
-                    </td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
+    <div class="gw-table-wrap">
+        <div class="gw-overflow-x">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Name</th>
+                        <th>Description</th>
+                        <th class="text-right">Monthly Allocation</th>
+                        <th class="text-right">Balance</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="funds-table-body">
+                    {% for fund in funds %}
+                    <tr id="fund-row-{{ fund.id }}">
+                        <td>
+                            <span class="gw-dot" style="background-color: {{ fund.color }}"></span>{{ fund.name }}
+                        </td>
+                        <td class="gw-text-muted">{{ fund.description or "" }}</td>
+                        <td class="text-right">
+                            ${{ "%.2f"|format(fund.monthly_allocation) }}
+                            {% if fund.name == "Bills" and bills_recommended %}
+                            <span class="gw-text-dim" style="font-size: 0.75rem; margin-left: 4px;">Rec: ${{ bills_recommended }}</span>
+                            {% endif %}
+                        </td>
+                        <td class="text-right">${{ "%.2f"|format(fund.current_balance) }}</td>
+                        <td>
+                            <button hx-get="/sinking-funds/{{ fund.id }}/edit" hx-target="#fund-row-{{ fund.id }}" hx-swap="outerHTML"
+                                    class="gw-action-edit">Edit</button>
+                            <button hx-delete="/sinking-funds/{{ fund.id }}" hx-target="#fund-row-{{ fund.id }}" hx-swap="delete"
+                                    hx-confirm="Delete this sinking fund?"
+                                    class="gw-action-delete">Delete</button>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
     </div>
 </div>
 {% endblock %}

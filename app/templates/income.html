@@ -1,104 +1,101 @@
 {% extends "base.html" %}
 {% block title %}Income Allocation — Glow Worm{% endblock %}
 {% block content %}
-<div class="max-w-5xl">
-    <h2 class="text-2xl font-bold mb-6">Income Allocation Settings</h2>
+<div style="max-width: 1100px;">
+    <h2 class="gw-page-header">Income Allocation Settings</h2>
 
-    <div id="income-message" class="mb-4"></div>
+    <div id="income-message" style="margin-bottom: 16px;"></div>
 
     <!-- Sankey Diagram -->
-    <div class="mb-8">
-        <h3 class="text-lg font-semibold mb-3">Income Breakdown</h3>
-        <div id="sankey-chart" class="bg-gray-900 border border-gray-800 rounded-md p-4 flex items-center justify-center">
-            <p class="text-sm text-gray-400">Enter an income to see the breakdown</p>
+    <div class="gw-section">
+        <h3 style="font-family: var(--font-display); font-size: 1.1rem; font-weight: 600; margin-bottom: 12px;">Income Breakdown</h3>
+        <div id="sankey-chart" class="gw-sankey-wrap">
+            <p class="gw-text-dim" style="font-size: 0.875rem;">Enter an income to see the breakdown</p>
         </div>
     </div>
 
-    <div class="max-w-md">
-        <form hx-post="/income" hx-target="#income-message" hx-swap="innerHTML" class="space-y-6">
+    <div style="max-width: 460px;">
+        <form hx-post="/income" hx-target="#income-message" hx-swap="innerHTML" style="display: flex; flex-direction: column; gap: 20px;">
 
                 <!-- Monthly Income -->
                 <div>
-                    <label for="monthly_income_amount" class="block text-sm font-medium text-gray-300 mb-1">Monthly Income</label>
+                    <label for="monthly_income_amount" class="gw-label">Monthly Income</label>
                     <input type="number" id="monthly_income_amount" name="monthly_income_amount"
                            step="0.01" min="0"
                            value="{{ allocation.monthly_income_amount if allocation else '' }}"
                            oninput="calculateRemainder()"
-                           class="w-full bg-gray-800 border border-gray-600 text-gray-100 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                           class="gw-input"
                            placeholder="0.00" required>
                 </div>
 
                 <!-- Monthly Budget Allocation -->
                 <div>
-                    <label for="monthly_budget_allocation" class="block text-sm font-medium text-gray-300 mb-1">Monthly Budget Allocation</label>
+                    <label for="monthly_budget_allocation" class="gw-label">Monthly Budget Allocation</label>
                     <input type="number" id="monthly_budget_allocation" name="monthly_budget_allocation"
                            step="0.01" min="0"
                            value="{{ allocation.monthly_budget_allocation if allocation else '' }}"
                            oninput="calculateRemainder()"
-                           class="w-full bg-gray-800 border border-gray-600 text-gray-100 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                           class="gw-input"
                            placeholder="0.00">
                 </div>
 
                 <!-- Bills Fund Allocation -->
-                <fieldset class="border border-gray-700 rounded-md p-4">
-                    <legend class="text-sm font-medium text-gray-300 px-1">Bills Fund Allocation</legend>
-                    <div class="space-y-3">
-                        <label class="flex items-center space-x-2">
+                <fieldset class="gw-fieldset">
+                    <legend>Bills Fund Allocation</legend>
+                    <div style="display: flex; flex-direction: column; gap: 12px;">
+                        <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
                             <input type="radio" name="bills_fund_allocation_type" value="recommended"
                                    {{ 'checked' if not allocation or allocation.bills_fund_allocation_type == 'recommended' }}
-                                   onchange="toggleFixedAmount()"
-                                   class="text-blue-500 focus:ring-blue-500">
-                            <span class="text-sm text-gray-300">Recommended (auto-calculated)</span>
+                                   onchange="toggleFixedAmount()">
+                            <span style="font-size: 0.875rem; color: var(--text-secondary);">Recommended (auto-calculated)</span>
                         </label>
-                        <label class="flex items-center space-x-2">
+                        <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
                             <input type="radio" name="bills_fund_allocation_type" value="fixed"
                                    {{ 'checked' if allocation and allocation.bills_fund_allocation_type == 'fixed' }}
-                                   onchange="toggleFixedAmount()"
-                                   class="text-blue-500 focus:ring-blue-500">
-                            <span class="text-sm text-gray-300">Fixed amount</span>
+                                   onchange="toggleFixedAmount()">
+                            <span style="font-size: 0.875rem; color: var(--text-secondary);">Fixed amount</span>
                         </label>
                         <div id="fixed-amount-container"
                              class="{{ '' if allocation and allocation.bills_fund_allocation_type == 'fixed' else 'hidden' }}">
                             <input type="number" id="bills_fund_fixed_amount" name="bills_fund_fixed_amount"
                                    step="0.01" min="0"
                                    value="{{ allocation.bills_fund_fixed_amount if allocation and allocation.bills_fund_fixed_amount else '' }}"
-                                   class="w-full bg-gray-800 border border-gray-600 text-gray-100 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                   class="gw-input"
                                    placeholder="0.00">
                         </div>
                     </div>
                 </fieldset>
 
                 <!-- Sinking Fund Allocations -->
-                <fieldset class="border border-gray-700 rounded-md p-4">
-                    <legend class="text-sm font-medium text-gray-300 px-1">Sinking Fund Allocations</legend>
+                <fieldset class="gw-fieldset">
+                    <legend>Sinking Fund Allocations</legend>
                     {% if sinking_funds %}
-                    <div class="space-y-3">
+                    <div style="display: flex; flex-direction: column; gap: 12px;">
                         {% for fund in sinking_funds %}
-                        <div class="flex items-center space-x-3">
-                            <span class="inline-block w-3 h-3 rounded-full" style="background-color: {{ fund.color }}"></span>
-                            <label for="fund_{{ fund.id }}" class="text-sm text-gray-300 w-32">{{ fund.name }}</label>
+                        <div style="display: flex; align-items: center; gap: 12px;">
+                            <span class="gw-dot" style="background-color: {{ fund.color }}"></span>
+                            <label for="fund_{{ fund.id }}" style="font-size: 0.875rem; color: var(--text-secondary); width: 120px;">{{ fund.name }}</label>
                             <input type="number" id="fund_{{ fund.id }}" name="fund_{{ fund.id }}"
                                    step="0.01" min="0"
                                    value="{{ fund_allocation_map.get(fund.id, '') }}"
                                    oninput="calculateRemainder()"
-                                   class="flex-1 bg-gray-800 border border-gray-600 text-gray-100 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                   class="gw-input" style="flex: 1;"
                                    placeholder="0.00">
                         </div>
                         {% endfor %}
                     </div>
                     {% else %}
-                    <p class="text-sm text-gray-400">No active sinking funds.</p>
+                    <p class="gw-text-dim" style="font-size: 0.875rem;">No active sinking funds.</p>
                     {% endif %}
                 </fieldset>
 
                 <!-- Remainder Display -->
-                <div id="remainder-display" class="text-lg font-semibold p-3 bg-gray-800 border border-gray-700 rounded-md">
+                <div id="remainder-display" class="gw-remainder gw-remainder--neutral">
                     Remainder: <span id="remainder-value">$0.00</span>
                 </div>
 
                 <!-- Save Button -->
-                <button type="submit"
-                        class="w-full bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                <button type="submit" class="gw-btn gw-btn-primary" style="width: 100%;">
                     Save Allocation
                 </button>
             </form>
@@ -125,9 +122,9 @@ function calculateRemainder() {
 
     const container = document.getElementById('remainder-display');
     if (remainder >= 0) {
-        container.className = 'text-lg font-semibold p-3 bg-green-900/30 text-green-400 border border-green-800 rounded-md';
+        container.className = 'gw-remainder gw-remainder--positive';
     } else {
-        container.className = 'text-lg font-semibold p-3 bg-red-900/30 text-red-400 border border-red-800 rounded-md';
+        container.className = 'gw-remainder gw-remainder--negative';
     }
 
     renderSankey();
@@ -148,7 +145,7 @@ function renderSankey() {
     const income = parseFloat(document.getElementById('monthly_income_amount').value) || 0;
 
     if (income <= 0) {
-        container.innerHTML = '<p class="text-sm text-gray-400">Enter an income to see the breakdown</p>';
+        container.innerHTML = '<p class="gw-text-dim" style="font-size: 0.875rem;">Enter an income to see the breakdown</p>';
         return;
     }
 
@@ -168,7 +165,7 @@ function renderSankey() {
     const remainder = income - totalAllocated;
 
     // Build nodes: index 0 = Income (source)
-    const nodes = [{ name: 'Income', color: '#4ADE80' }];
+    const nodes = [{ name: 'Income', color: '#34d399' }];
     const links = [];
 
     if (budget > 0) {
@@ -185,14 +182,13 @@ function renderSankey() {
 
     if (remainder > 0) {
         const idx = nodes.length;
-        nodes.push({ name: 'Unallocated', color: '#6B7280' });
-        links.push({ source: 0, target: idx, value: remainder, color: '#6B7280' });
+        nodes.push({ name: 'Unallocated', color: '#5f6775' });
+        links.push({ source: 0, target: idx, value: remainder, color: '#5f6775' });
     }
 
     if (links.length === 0) {
-        // Income entered but nothing allocated, everything unallocated
-        nodes.push({ name: 'Unallocated', color: '#6B7280' });
-        links.push({ source: 0, target: 1, value: income, color: '#6B7280' });
+        nodes.push({ name: 'Unallocated', color: '#5f6775' });
+        links.push({ source: 0, target: 1, value: income, color: '#5f6775' });
     }
 
     // Dimensions
@@ -267,7 +263,8 @@ function renderSankey() {
         .attr('y', function(d) { return (d.y0 + d.y1) / 2; })
         .attr('dy', '0.35em')
         .attr('font-size', '12px')
-        .attr('fill', '#D1D5DB')
+        .attr('font-family', 'DM Sans, system-ui, sans-serif')
+        .attr('fill', '#9aa0ab')
         .text(function(d) {
             var val = d.sourceLinks.length > 0
                 ? d.sourceLinks.reduce(function(s, l) { return s + l.value; }, 0)

@@ -24,74 +24,77 @@
                         }
                     },
                 );
+
+                // Set active nav link
+                const path = window.location.pathname;
+                document.querySelectorAll('.gw-nav a').forEach(function(link) {
+                    const href = link.getAttribute('href');
+                    if (href === '/' && path === '/') {
+                        link.classList.add('active');
+                    } else if (href !== '/' && path.startsWith(href)) {
+                        link.classList.add('active');
+                    }
+                });
             });
         </script>
     </head>
-    <body class="bg-gray-950 text-gray-100 min-h-screen flex">
-        <nav
-            class="fixed top-0 left-0 h-full w-56 bg-gray-900 text-white flex flex-col border-r border-gray-800"
-        >
-            <div class="p-4 border-b border-gray-800">
-                <h1 class="text-xl font-bold">Glow Worm</h1>
+    <body>
+        <nav class="gw-sidebar">
+            <div class="gw-logo">
+                <div class="gw-logo-text">
+                    <span class="gw-logo-dot"></span>
+                    Glow Worm
+                </div>
             </div>
-            <ul class="flex-1 py-4 space-y-1">
+            <ul class="gw-nav">
                 <li>
-                    <a
-                        href="/"
-                        class="block px-4 py-2 hover:bg-gray-800 rounded-md mx-2"
-                        >Dashboard</a
-                    >
+                    <a href="/">
+                        <svg class="gw-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+                        Dashboard
+                    </a>
                 </li>
                 <li>
-                    <a
-                        href="/income"
-                        class="block px-4 py-2 hover:bg-gray-800 rounded-md mx-2"
-                        >Income</a
-                    >
+                    <a href="/income">
+                        <svg class="gw-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+                        Income
+                    </a>
                 </li>
                 <li>
-                    <a
-                        href="/budgets"
-                        class="block px-4 py-2 hover:bg-gray-800 rounded-md mx-2"
-                        >Budgets</a
-                    >
+                    <a href="/budgets">
+                        <svg class="gw-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12V7H5a2 2 0 0 1 0-4h14v4"/><path d="M3 5v14a2 2 0 0 0 2 2h16v-5"/><path d="M18 12a2 2 0 0 0 0 4h4v-4Z"/></svg>
+                        Budgets
+                    </a>
                 </li>
                 <li>
-                    <a
-                        href="/transactions"
-                        class="block px-4 py-2 hover:bg-gray-800 rounded-md mx-2"
-                        >Transactions</a
-                    >
+                    <a href="/transactions">
+                        <svg class="gw-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3v18"/><path d="m12 18 5 3 5-3"/><path d="M7 21V3"/><path d="m12 6-5-3-5 3"/></svg>
+                        Transactions
+                    </a>
                 </li>
                 <li>
-                    <a
-                        href="/sinking-funds"
-                        class="block px-4 py-2 hover:bg-gray-800 rounded-md mx-2"
-                        >Sinking Funds</a
-                    >
+                    <a href="/sinking-funds">
+                        <svg class="gw-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 5c-1.5 0-2.8 1.4-3 2-3.5-1.5-11-.3-11 5 0 1.8 0 3 2 4.5V20h4v-2h3v2h4v-4c1-.5 1.7-1 2-2h2v-4h-2c0-1-.5-1.5-1-2"/><path d="M2 9v1c0 1.1.9 2 2 2h1"/><circle cx="16" cy="11" r="1"/></svg>
+                        Sinking Funds
+                    </a>
                 </li>
                 <li>
-                    <a
-                        href="/bills"
-                        class="block px-4 py-2 hover:bg-gray-800 rounded-md mx-2"
-                        >Bills</a
-                    >
+                    <a href="/bills">
+                        <svg class="gw-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 2v20l2-1 2 1 2-1 2 1 2-1 2 1 2-1 2 1V2l-2 1-2-1-2 1-2-1-2 1-2-1-2 1Z"/><path d="M8 7h8"/><path d="M8 11h8"/><path d="M8 15h5"/></svg>
+                        Bills
+                    </a>
                 </li>
                 <li>
-                    <a
-                        href="/users"
-                        class="block px-4 py-2 hover:bg-gray-800 rounded-md mx-2"
-                        >Users</a
-                    >
+                    <a href="/users">
+                        <svg class="gw-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="5"/><path d="M20 21a8 8 0 0 0-16 0"/></svg>
+                        Users
+                    </a>
                 </li>
             </ul>
-            <div class="p-4 border-t border-gray-800">
-                <p class="text-sm text-gray-400 mb-2">{{ username }}</p>
-                <a href="/logout" class="text-sm text-gray-400 hover:text-white"
-                    >Logout</a
-                >
+            <div class="gw-sidebar-footer">
+                <p class="gw-username">{{ username }}</p>
+                <a href="/logout">Sign out</a>
             </div>
         </nav>
-        <main class="ml-56 flex-1 p-8">{% block content %}{% endblock %}</main>
+        <main class="gw-main">{% block content %}{% endblock %}</main>
     </body>
 </html>
