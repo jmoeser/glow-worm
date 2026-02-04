@@ -159,18 +159,17 @@ h1, h2, h3, h4 {
     gap: 10px;
 }
 
-.gw-logo-dot {
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-    background: var(--glow-400);
-    box-shadow: 0 0 8px rgba(250, 204, 21, 0.6), 0 0 20px rgba(250, 204, 21, 0.2);
+.gw-logo-icon {
+    width: 32px;
+    height: 32px;
+    flex-shrink: 0;
+    filter: drop-shadow(0 0 6px rgba(250, 204, 21, 0.5));
     animation: pulse-glow 3s ease-in-out infinite;
 }
 
 @keyframes pulse-glow {
-    0%, 100% { box-shadow: 0 0 8px rgba(250, 204, 21, 0.6), 0 0 20px rgba(250, 204, 21, 0.2); }
-    50% { box-shadow: 0 0 12px rgba(250, 204, 21, 0.8), 0 0 30px rgba(250, 204, 21, 0.3); }
+    0%, 100% { filter: drop-shadow(0 0 6px rgba(250, 204, 21, 0.5)); }
+    50% { filter: drop-shadow(0 0 10px rgba(250, 204, 21, 0.7)) drop-shadow(0 0 20px rgba(250, 204, 21, 0.2)); }
 }
 
 .gw-nav {
