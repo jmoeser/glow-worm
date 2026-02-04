@@ -1,9 +1,10 @@
 import calendar
+import re
 from datetime import datetime
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 
 import pytz
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session, joinedload
@@ -59,6 +60,7 @@ def _dashboard_data(db: Session, month: int, year: int) -> dict:
     # Budget totals for the month
     budgets = (
         db.query(Budget)
+        .options(joinedload(Budget.category))
         .filter(Budget.month == month, Budget.year == year)
         .all()
     )
@@ -103,6 +105,7 @@ def _dashboard_data(db: Session, month: int, year: int) -> dict:
         "budget_total_allocated": budget_total_allocated,
         "budget_total_spent": budget_total_spent,
         "budget_total_remaining": budget_total_remaining,
+        "budgets": budgets,
         "sinking_funds": sinking_funds,
         "recent_transactions": recent_transactions,
         "month": month,
@@ -127,11 +130,94 @@ async def dashboard_page(
     if month is None or year is None:
         month, year = _current_month_year()
     data = _dashboard_data(db, month, year)
+    now_date = datetime.now(BRISBANE).strftime("%Y-%m-%d")
     return templates.TemplateResponse(
         request,
         "dashboard.html",
-        {"username": user.username, **data},
+        {"username": user.username, "now_date": now_date, **data},
     )
+
+
+# ---------------------------------------------------------------------------
+# Quick expense
+# ---------------------------------------------------------------------------
+
+_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+
+
+@router.post("/dashboard/quick-expense", response_class=HTMLResponse)
+async def quick_expense(
+    request: Request,
+    budget_id: str = Form(""),
+    amount: str = Form(""),
+    date: str = Form(""),
+    month: str = Form(""),
+    year: str = Form(""),
+    db: Session = Depends(get_db),
+):
+    get_current_user(request)
+
+    def _error(msg: str) -> HTMLResponse:
+        return HTMLResponse(
+            f'<p class="text-red-400 text-sm">{msg}</p>'
+        )
+
+    # Validate budget_id
+    if not budget_id:
+        return _error("Budget is required.")
+    try:
+        budget_id_int = int(budget_id)
+    except ValueError:
+        return _error("Invalid budget.")
+
+    # Validate amount
+    if not amount:
+        return _error("Amount is required.")
+    try:
+        amt = Decimal(amount)
+    except InvalidOperation:
+        return _error("Invalid amount.")
+    if amt <= 0:
+        return _error("Amount must be greater than zero.")
+
+    # Validate date
+    if not date or not _DATE_RE.match(date):
+        return _error("A valid date (YYYY-MM-DD) is required.")
+
+    # Look up budget
+    budget = (
+        db.query(Budget)
+        .options(joinedload(Budget.category))
+        .filter(Budget.id == budget_id_int)
+        .first()
+    )
+    if not budget:
+        return _error("Budget not found.")
+
+    # Create expense transaction
+    txn = Transaction(
+        date=date,
+        description=f"Quick expense – {budget.category.name}",
+        amount=float(amt),
+        category_id=budget.category_id,
+        type="expense",
+        transaction_type="budget_expense",
+        budget_id=budget.id,
+    )
+    db.add(txn)
+
+    # Increment spent_amount
+    budget.spent_amount = float(
+        (Decimal(str(budget.spent_amount)) + amt).quantize(Decimal("0.01"))
+    )
+    db.commit()
+
+    # Redirect back to dashboard for the same month/year
+    redirect_month = month or str(budget.month)
+    redirect_year = year or str(budget.year)
+    response = HTMLResponse("")
+    response.headers["HX-Redirect"] = f"/?month={redirect_month}&year={redirect_year}"
+    return response
 
 
 # ---------------------------------------------------------------------------

@@ -69,6 +69,68 @@
     {% endif %}
 </div>
 
+<!-- Quick Expense -->
+{% if budgets %}
+<div class="bg-gray-900 rounded-lg shadow border border-gray-800 p-5 mb-8">
+    <h3 class="text-lg font-semibold text-gray-100 mb-3">Quick Expense</h3>
+    <form
+        hx-post="/dashboard/quick-expense"
+        hx-target="#quick-expense-msg"
+        hx-swap="innerHTML"
+        class="grid grid-cols-1 sm:grid-cols-4 gap-4 items-end"
+    >
+        <input type="hidden" name="month" value="{{ month }}" />
+        <input type="hidden" name="year" value="{{ year }}" />
+        <div>
+            <label for="qe-budget" class="block text-sm text-gray-400 mb-1">Budget</label>
+            <select
+                id="qe-budget"
+                name="budget_id"
+                class="w-full rounded-md bg-gray-800 border border-gray-700 text-gray-100 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+                <option value="">Select budget</option>
+                {% for b in budgets %}
+                <option value="{{ b.id }}">
+                    {{ b.category.name }} (${{ "%.2f"|format(b.allocated_amount - b.spent_amount) }} left)
+                </option>
+                {% endfor %}
+            </select>
+        </div>
+        <div>
+            <label for="qe-amount" class="block text-sm text-gray-400 mb-1">Amount</label>
+            <input
+                id="qe-amount"
+                type="number"
+                name="amount"
+                step="0.01"
+                min="0.01"
+                placeholder="0.00"
+                class="w-full rounded-md bg-gray-800 border border-gray-700 text-gray-100 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+        </div>
+        <div>
+            <label for="qe-date" class="block text-sm text-gray-400 mb-1">Date</label>
+            <input
+                id="qe-date"
+                type="date"
+                name="date"
+                value="{{ now_date }}"
+                class="w-full rounded-md bg-gray-800 border border-gray-700 text-gray-100 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+        </div>
+        <div>
+            <button
+                type="submit"
+                class="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-md px-4 py-2 text-sm transition-colors"
+            >
+                Add Expense
+            </button>
+        </div>
+    </form>
+    <div id="quick-expense-msg" class="mt-2"></div>
+</div>
+{% endif %}
+
 <!-- Sinking Funds -->
 <div class="bg-gray-900 rounded-lg shadow border border-gray-800 p-5 mb-8">
     <h3 class="text-lg font-semibold text-gray-100 mb-3">Sinking Funds</h3>

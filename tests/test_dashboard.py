@@ -111,6 +111,139 @@ class TestDashboardPageGet:
         assert count == 10
 
 
+class TestQuickExpenseForm:
+    def test_form_renders_when_budgets_exist(self, authed_client, sample_budgets):
+        month, year = _current_month_year()
+        response = authed_client.get(f"/?month={month}&year={year}")
+        assert response.status_code == 200
+        assert "Quick Expense" in response.text
+        assert 'hx-post="/dashboard/quick-expense"' in response.text
+        assert "Groceries" in response.text
+        assert "Transport" in response.text
+
+    def test_form_hidden_when_no_budgets(self, authed_client):
+        response = authed_client.get("/?month=6&year=2030")
+        assert response.status_code == 200
+        assert 'hx-post="/dashboard/quick-expense"' not in response.text
+
+    def test_successful_submission(self, authed_client, db_session, sample_budgets):
+        budget = sample_budgets[0]  # Groceries, spent=150, allocated=600
+        month, year = _current_month_year()
+        response = authed_client.post(
+            "/dashboard/quick-expense",
+            data={
+                "budget_id": str(budget.id),
+                "amount": "42.50",
+                "date": f"{year}-{month:02d}-15",
+                "month": str(month),
+                "year": str(year),
+            },
+            headers={"x-csrftoken": authed_client.csrf_token},
+            follow_redirects=False,
+        )
+        assert response.status_code == 200
+        assert "HX-Redirect" in response.headers
+
+        # Verify transaction was created
+        txn = (
+            db_session.query(Transaction)
+            .filter(
+                Transaction.budget_id == budget.id,
+                Transaction.transaction_type == "budget_expense",
+            )
+            .first()
+        )
+        assert txn is not None
+        assert float(txn.amount) == 42.50
+        assert txn.type == "expense"
+        assert txn.category_id == budget.category_id
+
+        # Verify budget spent_amount was incremented
+        db_session.refresh(budget)
+        assert float(budget.spent_amount) == 192.50  # 150 + 42.50
+
+    def test_missing_budget_id(self, authed_client, sample_budgets):
+        month, year = _current_month_year()
+        response = authed_client.post(
+            "/dashboard/quick-expense",
+            data={
+                "budget_id": "",
+                "amount": "10.00",
+                "date": f"{year}-{month:02d}-15",
+            },
+            headers={"x-csrftoken": authed_client.csrf_token},
+        )
+        assert response.status_code == 200
+        assert "Budget is required" in response.text
+
+    def test_invalid_amount_zero(self, authed_client, sample_budgets):
+        month, year = _current_month_year()
+        response = authed_client.post(
+            "/dashboard/quick-expense",
+            data={
+                "budget_id": str(sample_budgets[0].id),
+                "amount": "0",
+                "date": f"{year}-{month:02d}-15",
+            },
+            headers={"x-csrftoken": authed_client.csrf_token},
+        )
+        assert response.status_code == 200
+        assert "greater than zero" in response.text
+
+    def test_invalid_amount_text(self, authed_client, sample_budgets):
+        month, year = _current_month_year()
+        response = authed_client.post(
+            "/dashboard/quick-expense",
+            data={
+                "budget_id": str(sample_budgets[0].id),
+                "amount": "abc",
+                "date": f"{year}-{month:02d}-15",
+            },
+            headers={"x-csrftoken": authed_client.csrf_token},
+        )
+        assert response.status_code == 200
+        assert "Invalid amount" in response.text
+
+    def test_missing_date(self, authed_client, sample_budgets):
+        response = authed_client.post(
+            "/dashboard/quick-expense",
+            data={
+                "budget_id": str(sample_budgets[0].id),
+                "amount": "10.00",
+                "date": "",
+            },
+            headers={"x-csrftoken": authed_client.csrf_token},
+        )
+        assert response.status_code == 200
+        assert "valid date" in response.text
+
+    def test_budget_not_found(self, authed_client):
+        response = authed_client.post(
+            "/dashboard/quick-expense",
+            data={
+                "budget_id": "99999",
+                "amount": "10.00",
+                "date": "2026-01-15",
+            },
+            headers={"x-csrftoken": authed_client.csrf_token},
+        )
+        assert response.status_code == 200
+        assert "Budget not found" in response.text
+
+    def test_unauthenticated_blocked(self, client):
+        response = client.post(
+            "/dashboard/quick-expense",
+            data={
+                "budget_id": "1",
+                "amount": "10.00",
+                "date": "2026-01-15",
+            },
+            follow_redirects=False,
+        )
+        # CSRF middleware rejects before auth can redirect
+        assert response.status_code in (303, 403)
+
+
 class TestApiDashboard:
     def test_json_structure(self, authed_client):
         response = authed_client.get("/api/dashboard")
