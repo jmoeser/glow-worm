@@ -15,7 +15,7 @@ class TestTransactionsPageGet:
         response = authed_client.get("/transactions?month=1&year=2026")
         assert response.status_code == 200
         assert "Groceries shopping" in response.text
-        assert "Monthly salary" in response.text
+        assert "Monthly income" in response.text
 
     def test_month_navigation_links(self, authed_client):
         response = authed_client.get("/transactions?month=6&year=2026")
@@ -36,7 +36,7 @@ class TestTransactionsPageGet:
     def test_type_filter(self, authed_client, sample_transactions):
         response = authed_client.get("/transactions?month=1&year=2026&type_filter=income")
         assert response.status_code == 200
-        assert "Monthly salary" in response.text
+        assert "Monthly income" in response.text
         assert "Groceries shopping" not in response.text
 
     def test_category_filter(self, authed_client, sample_transactions, sample_category):
@@ -45,7 +45,7 @@ class TestTransactionsPageGet:
         )
         assert response.status_code == 200
         assert "Groceries shopping" in response.text
-        assert "Monthly salary" not in response.text
+        assert "Monthly income" not in response.text
 
     def test_summary_totals(self, authed_client, sample_transactions):
         response = authed_client.get("/transactions?month=1&year=2026")

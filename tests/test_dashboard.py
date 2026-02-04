@@ -54,7 +54,7 @@ class TestDashboardPageGet:
         response = authed_client.get("/?month=1&year=2026")
         assert response.status_code == 200
         assert "Groceries shopping" in response.text
-        assert "Monthly salary" in response.text
+        assert "Monthly income" in response.text
 
     def test_empty_month_shows_zeros(self, authed_client):
         response = authed_client.get("/?month=6&year=2030")

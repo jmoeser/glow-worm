@@ -12,8 +12,8 @@ from app.models import (
     Category,
     MonthlyUnallocatedIncome,
     RecurringBill,
-    SalaryAllocation,
-    SalaryAllocationToSinkingFund,
+    IncomeAllocation,
+    IncomeAllocationToSinkingFund,
     SinkingFund,
     Transaction,
     User,
@@ -49,7 +49,7 @@ def seed_data() -> None:
         first_of_month = date(current_year, current_month, 1)
 
         # --- Categories ---
-        salary_cat = Category(
+        income_cat = Category(
             name="Salary", type=CategoryType.income.value, color="#22C55E",
             is_budget_category=False,
         )
@@ -83,7 +83,7 @@ def seed_data() -> None:
         )
 
         categories = [
-            salary_cat, groceries_cat, dining_cat, transport_cat,
+            income_cat, groceries_cat, dining_cat, transport_cat,
             entertainment_cat, health_cat, clothing_cat, household_cat,
         ]
         db.add_all(categories)
@@ -188,13 +188,13 @@ def seed_data() -> None:
         # Map categories to their budgets for transaction linking
         cat_to_budget = {b.category_id: b for b in budgets}
 
-        # --- Salary Allocation ---
-        salary_alloc = SalaryAllocation(
-            monthly_salary_amount=6500,
+        # --- Income Allocation ---
+        income_alloc = IncomeAllocation(
+            monthly_income_amount=6500,
             monthly_budget_allocation=1500,
             bills_fund_allocation_type=BillsAllocationMethod.recommended.value,
         )
-        db.add(salary_alloc)
+        db.add(income_alloc)
         db.flush()
 
         junction_data = [
@@ -204,8 +204,8 @@ def seed_data() -> None:
             (emergency_fund, 200),
         ]
         for fund, amount in junction_data:
-            db.add(SalaryAllocationToSinkingFund(
-                salary_allocation_id=salary_alloc.id,
+            db.add(IncomeAllocationToSinkingFund(
+                income_allocation_id=income_alloc.id,
                 sinking_fund_id=fund.id,
                 allocation_amount=amount,
             ))
@@ -213,28 +213,28 @@ def seed_data() -> None:
 
         # --- Transactions ---
 
-        # 1. Salary income on the 1st
+        # 1. Income on the 1st
         db.add(Transaction(
-            date=first_of_month.isoformat(), description="Monthly salary",
-            amount=6500, category_id=salary_cat.id,
+            date=first_of_month.isoformat(), description="Monthly income",
+            amount=6500, category_id=income_cat.id,
             type=CategoryType.income.value,
-            transaction_type=TransactionType.salary.value,
+            transaction_type=TransactionType.income.value,
         ))
 
-        # 2. Salary allocation transactions on the 1st
+        # 2. Income allocation transactions on the 1st
         db.add(Transaction(
             date=first_of_month.isoformat(), description="Budget allocation",
-            amount=1500, category_id=salary_cat.id,
+            amount=1500, category_id=income_cat.id,
             type=CategoryType.expense.value,
-            transaction_type=TransactionType.salary_allocation.value,
+            transaction_type=TransactionType.income_allocation.value,
         ))
         for fund, amount in junction_data:
             db.add(Transaction(
                 date=first_of_month.isoformat(),
-                description=f"Salary allocation to {fund.name}",
-                amount=amount, category_id=salary_cat.id,
+                description=f"Income allocation to {fund.name}",
+                amount=amount, category_id=income_cat.id,
                 type=CategoryType.expense.value,
-                transaction_type=TransactionType.salary_allocation.value,
+                transaction_type=TransactionType.income_allocation.value,
                 sinking_fund_id=fund.id,
             ))
 
@@ -269,7 +269,7 @@ def seed_data() -> None:
             db.add(Transaction(
                 date=contrib_date.isoformat(),
                 description="Extra savings contribution",
-                amount=100, category_id=salary_cat.id,
+                amount=100, category_id=income_cat.id,
                 type=CategoryType.expense.value,
                 transaction_type=TransactionType.contribution.value,
                 sinking_fund_id=short_term_fund.id,
@@ -289,7 +289,7 @@ def seed_data() -> None:
         print(f"  - 4 sinking funds")
         print(f"  - 5 recurring bills")
         print(f"  - 7 budgets ({current_month}/{current_year})")
-        print(f"  - 1 salary allocation with 4 fund links")
+        print(f"  - 1 income allocation with 4 fund links")
         print(f"  - Transactions for the current month")
         print(f"  - 1 monthly unallocated income record")
 

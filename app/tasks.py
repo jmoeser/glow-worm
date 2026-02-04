@@ -1,4 +1,4 @@
-"""Background tasks for automated salary allocation and bill processing."""
+"""Background tasks for automated income allocation and bill processing."""
 
 import calendar
 import logging
@@ -14,7 +14,7 @@ from app.models import (
     Category,
     MonthlyUnallocatedIncome,
     RecurringBill,
-    SalaryAllocation,
+    IncomeAllocation,
     SinkingFund,
     Transaction,
 )
@@ -85,8 +85,8 @@ def _compute_bills_recommended(db: Session) -> Decimal:
     return (total_annual / 12).quantize(Decimal("0.01"))
 
 
-def process_salary_allocation(db: Session | None = None) -> None:
-    """Monthly task (1st): distribute salary per SalaryAllocation config.
+def process_income_allocation(db: Session | None = None) -> None:
+    """Monthly task (1st): distribute income per IncomeAllocation config.
 
     Args:
         db: Optional database session for testing. If None, creates one
@@ -102,26 +102,26 @@ def process_salary_allocation(db: Session | None = None) -> None:
         month_start = f"{year}-{month:02d}-01"
         month_end = f"{year}-{month:02d}-{calendar.monthrange(year, month)[1]:02d}"
 
-        # Idempotency: skip if salary already processed this month
+        # Idempotency: skip if income already processed this month
         existing = (
             db.query(Transaction)
             .filter(
-                Transaction.transaction_type == "salary",
+                Transaction.transaction_type == "income",
                 Transaction.date >= month_start,
                 Transaction.date <= month_end,
             )
             .first()
         )
         if existing:
-            logger.info("Salary already processed for %s-%02d, skipping", year, month)
+            logger.info("Income already processed for %s-%02d, skipping", year, month)
             return
 
-        allocation = db.query(SalaryAllocation).first()
+        allocation = db.query(IncomeAllocation).first()
         if not allocation:
-            logger.warning("No salary allocation config found, skipping")
+            logger.warning("No income allocation config found, skipping")
             return
 
-        salary = Decimal(str(allocation.monthly_salary_amount))
+        income_amount = Decimal(str(allocation.monthly_income_amount))
         budget_amount = Decimal(str(allocation.monthly_budget_allocation))
 
         # Find required categories
@@ -131,7 +131,7 @@ def process_salary_allocation(db: Session | None = None) -> None:
             .first()
         )
         if not income_cat:
-            logger.warning("No income category found, skipping salary processing")
+            logger.warning("No income category found, skipping income processing")
             return
 
         expense_cat = (
@@ -140,18 +140,18 @@ def process_salary_allocation(db: Session | None = None) -> None:
             .first()
         )
         if not expense_cat:
-            logger.warning("No expense category found, skipping salary processing")
+            logger.warning("No expense category found, skipping income processing")
             return
 
-        # 1. Create salary income transaction
+        # 1. Create income transaction
         db.add(
             Transaction(
                 date=date_str,
-                description=f"Monthly salary \u2014 {today.strftime('%B %Y')}",
-                amount=salary,
+                description=f"Monthly income \u2014 {today.strftime('%B %Y')}",
+                amount=income_amount,
                 category_id=income_cat.id,
                 type="income",
-                transaction_type="salary",
+                transaction_type="income",
             )
         )
 
@@ -188,11 +188,11 @@ def process_salary_allocation(db: Session | None = None) -> None:
             db.add(
                 Transaction(
                     date=date_str,
-                    description=f"Salary allocation to {fund.name}",
+                    description=f"Income allocation to {fund.name}",
                     amount=amount,
                     category_id=expense_cat.id,
                     type="expense",
-                    transaction_type="salary_allocation",
+                    transaction_type="income_allocation",
                     sinking_fund_id=fund.id,
                 )
             )
@@ -210,11 +210,11 @@ def process_salary_allocation(db: Session | None = None) -> None:
                 db.add(
                     Transaction(
                         date=date_str,
-                        description="Salary allocation to Bills fund",
+                        description="Income allocation to Bills fund",
                         amount=bills_amount,
                         category_id=expense_cat.id,
                         type="expense",
-                        transaction_type="salary_allocation",
+                        transaction_type="income_allocation",
                         sinking_fund_id=bills_fund.id,
                     )
                 )
@@ -257,7 +257,7 @@ def process_salary_allocation(db: Session | None = None) -> None:
         total_allocated += budget_amount
 
         # 5. Record unallocated income
-        unallocated = salary - total_allocated
+        unallocated = income_amount - total_allocated
         existing_unalloc = (
             db.query(MonthlyUnallocatedIncome)
             .filter(
@@ -279,18 +279,18 @@ def process_salary_allocation(db: Session | None = None) -> None:
 
         db.commit()
         logger.info(
-            "Salary allocation completed for %s-%02d: "
-            "salary=%s, allocated=%s, unallocated=%s",
+            "Income allocation completed for %s-%02d: "
+            "income=%s, allocated=%s, unallocated=%s",
             year,
             month,
-            salary,
+            income_amount,
             total_allocated,
             unallocated,
         )
 
     except Exception:
         db.rollback()
-        logger.exception("Error processing salary allocation")
+        logger.exception("Error processing income allocation")
         raise
     finally:
         if _managed:

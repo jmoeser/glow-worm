@@ -1,4 +1,4 @@
-"""Tests for background tasks (salary allocation and bill processing)."""
+"""Tests for background tasks (income allocation and bill processing)."""
 
 import os
 
@@ -15,12 +15,12 @@ from app.models import (
     Category,
     MonthlyUnallocatedIncome,
     RecurringBill,
-    SalaryAllocation,
-    SalaryAllocationToSinkingFund,
+    IncomeAllocation,
+    IncomeAllocationToSinkingFund,
     SinkingFund,
     Transaction,
 )
-from app.tasks import advance_due_date, process_due_bills, process_salary_allocation
+from app.tasks import advance_due_date, process_due_bills, process_income_allocation
 
 
 # ---------------------------------------------------------------------------
@@ -73,8 +73,8 @@ class TestAdvanceDueDate:
 
 
 @pytest.fixture
-def salary_setup(db_session):
-    """Set up a complete salary allocation scenario."""
+def income_setup(db_session):
+    """Set up a complete income allocation scenario."""
     income_cat = Category(name="Salary", type="income", color="#00FF00")
     expense_cat = Category(name="Bills", type="expense", color="#FF0000")
     budget_cat = Category(
@@ -105,8 +105,8 @@ def salary_setup(db_session):
     db_session.add(bill)
     db_session.flush()
 
-    allocation = SalaryAllocation(
-        monthly_salary_amount=5000,
+    allocation = IncomeAllocation(
+        monthly_income_amount=5000,
         monthly_budget_allocation=800,
         bills_fund_allocation_type="recommended",
     )
@@ -114,8 +114,8 @@ def salary_setup(db_session):
     db_session.flush()
 
     # Junction: allocate $500 to Savings fund
-    junction = SalaryAllocationToSinkingFund(
-        salary_allocation_id=allocation.id,
+    junction = IncomeAllocationToSinkingFund(
+        income_allocation_id=allocation.id,
         sinking_fund_id=savings_fund.id,
         allocation_amount=500,
     )
@@ -176,33 +176,33 @@ def bills_setup(db_session):
 
 
 # ---------------------------------------------------------------------------
-# process_salary_allocation
+# process_income_allocation
 # ---------------------------------------------------------------------------
 
 
-class TestProcessSalaryAllocation:
+class TestProcessIncomeAllocation:
     @patch("app.tasks._today")
-    def test_happy_path(self, mock_today, db_session, salary_setup):
+    def test_happy_path(self, mock_today, db_session, income_setup):
         mock_today.return_value = date(2026, 2, 1)
 
-        process_salary_allocation(db=db_session)
+        process_income_allocation(db=db_session)
 
-        # Salary income transaction created
-        salary_txn = (
+        # Income transaction created
+        income_txn = (
             db_session.query(Transaction)
-            .filter(Transaction.transaction_type == "salary")
+            .filter(Transaction.transaction_type == "income")
             .first()
         )
-        assert salary_txn is not None
-        assert Decimal(str(salary_txn.amount)) == Decimal("5000")
-        assert salary_txn.type == "income"
+        assert income_txn is not None
+        assert Decimal(str(income_txn.amount)) == Decimal("5000")
+        assert income_txn.type == "income"
 
         # Savings fund allocation transaction
         savings_txns = (
             db_session.query(Transaction)
             .filter(
-                Transaction.transaction_type == "salary_allocation",
-                Transaction.sinking_fund_id == salary_setup["savings_fund"].id,
+                Transaction.transaction_type == "income_allocation",
+                Transaction.sinking_fund_id == income_setup["savings_fund"].id,
             )
             .all()
         )
@@ -210,8 +210,8 @@ class TestProcessSalaryAllocation:
         assert Decimal(str(savings_txns[0].amount)) == Decimal("500")
 
         # Savings fund balance increased: 1000 + 500 = 1500
-        db_session.refresh(salary_setup["savings_fund"])
-        assert Decimal(str(salary_setup["savings_fund"].current_balance)) == Decimal(
+        db_session.refresh(income_setup["savings_fund"])
+        assert Decimal(str(income_setup["savings_fund"].current_balance)) == Decimal(
             "1500"
         )
 
@@ -219,8 +219,8 @@ class TestProcessSalaryAllocation:
         bills_txns = (
             db_session.query(Transaction)
             .filter(
-                Transaction.transaction_type == "salary_allocation",
-                Transaction.sinking_fund_id == salary_setup["bills_fund"].id,
+                Transaction.transaction_type == "income_allocation",
+                Transaction.sinking_fund_id == income_setup["bills_fund"].id,
             )
             .all()
         )
@@ -228,8 +228,8 @@ class TestProcessSalaryAllocation:
         assert Decimal(str(bills_txns[0].amount)) == Decimal("1200.00")
 
         # Bills fund balance increased: 500 + 1200 = 1700
-        db_session.refresh(salary_setup["bills_fund"])
-        assert Decimal(str(salary_setup["bills_fund"].current_balance)) == Decimal(
+        db_session.refresh(income_setup["bills_fund"])
+        assert Decimal(str(income_setup["bills_fund"].current_balance)) == Decimal(
             "1700"
         )
 
@@ -237,7 +237,7 @@ class TestProcessSalaryAllocation:
         budget = (
             db_session.query(Budget)
             .filter(
-                Budget.category_id == salary_setup["budget_cat"].id,
+                Budget.category_id == income_setup["budget_cat"].id,
                 Budget.month == 2,
                 Budget.year == 2026,
             )
@@ -258,45 +258,45 @@ class TestProcessSalaryAllocation:
         assert Decimal(str(unalloc.unallocated_amount)) == Decimal("2500")
 
     @patch("app.tasks._today")
-    def test_idempotent(self, mock_today, db_session, salary_setup):
+    def test_idempotent(self, mock_today, db_session, income_setup):
         mock_today.return_value = date(2026, 2, 1)
 
-        process_salary_allocation(db=db_session)
-        process_salary_allocation(db=db_session)
+        process_income_allocation(db=db_session)
+        process_income_allocation(db=db_session)
 
-        salary_txns = (
+        income_txns = (
             db_session.query(Transaction)
-            .filter(Transaction.transaction_type == "salary")
+            .filter(Transaction.transaction_type == "income")
             .all()
         )
-        assert len(salary_txns) == 1
+        assert len(income_txns) == 1
 
     @patch("app.tasks._today")
     def test_no_config(self, mock_today, db_session):
         mock_today.return_value = date(2026, 2, 1)
 
-        process_salary_allocation(db=db_session)
+        process_income_allocation(db=db_session)
 
         txns = db_session.query(Transaction).all()
         assert len(txns) == 0
 
     @patch("app.tasks._today")
-    def test_fixed_bills_allocation(self, mock_today, db_session, salary_setup):
+    def test_fixed_bills_allocation(self, mock_today, db_session, income_setup):
         mock_today.return_value = date(2026, 3, 1)
 
         # Switch to fixed allocation
-        alloc = db_session.query(SalaryAllocation).first()
+        alloc = db_session.query(IncomeAllocation).first()
         alloc.bills_fund_allocation_type = "fixed"
         alloc.bills_fund_fixed_amount = 900
         db_session.commit()
 
-        process_salary_allocation(db=db_session)
+        process_income_allocation(db=db_session)
 
         bills_txn = (
             db_session.query(Transaction)
             .filter(
-                Transaction.transaction_type == "salary_allocation",
-                Transaction.sinking_fund_id == salary_setup["bills_fund"].id,
+                Transaction.transaction_type == "income_allocation",
+                Transaction.sinking_fund_id == income_setup["bills_fund"].id,
             )
             .first()
         )

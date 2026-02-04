@@ -73,7 +73,7 @@ def authed_client(client, test_user):
     # Log in
     client.post("/login", data={"username": "alice", "password": "SecurePass123!"})
     # GET a page to receive the CSRF cookie
-    client.get("/salary")
+    client.get("/income")
     # Extract CSRF token from cookie
     csrf_token = None
     for cookie in client.cookies.jar:
@@ -175,11 +175,11 @@ def sample_transactions(db_session, sample_category, sample_income_category):
         ),
         Transaction(
             date="2026-01-01",
-            description="Monthly salary",
+            description="Monthly income",
             amount=5000.00,
             category_id=sample_income_category.id,
             type="income",
-            transaction_type="salary",
+            transaction_type="income",
         ),
     ]
     db_session.add_all(txns)

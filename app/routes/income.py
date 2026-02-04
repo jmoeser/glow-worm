@@ -9,8 +9,8 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.middleware import get_current_user
-from app.models import SalaryAllocation, SalaryAllocationToSinkingFund, SinkingFund
-from app.schemas import SalaryAllocationCreate, SalaryAllocationResponse
+from app.models import IncomeAllocation, IncomeAllocationToSinkingFund, SinkingFund
+from app.schemas import IncomeAllocationCreate, IncomeAllocationResponse
 
 router = APIRouter()
 templates = Jinja2Templates(directory="app/templates")
@@ -18,22 +18,22 @@ templates = Jinja2Templates(directory="app/templates")
 
 def _upsert_allocation(
     db: Session,
-    monthly_salary_amount: Decimal,
+    monthly_income_amount: Decimal,
     monthly_budget_allocation: Decimal,
     bills_fund_allocation_type: str,
     bills_fund_fixed_amount: Decimal | None,
     fund_allocations: list[dict],
-) -> tuple[SalaryAllocation, bool]:
-    """Create or update the single SalaryAllocation row.
+) -> tuple[IncomeAllocation, bool]:
+    """Create or update the single IncomeAllocation row.
 
     Returns (allocation, created) where created is True if a new row was inserted.
     """
-    allocation = db.query(SalaryAllocation).first()
+    allocation = db.query(IncomeAllocation).first()
     created = allocation is None
 
     if created:
-        allocation = SalaryAllocation(
-            monthly_salary_amount=monthly_salary_amount,
+        allocation = IncomeAllocation(
+            monthly_income_amount=monthly_income_amount,
             monthly_budget_allocation=monthly_budget_allocation,
             bills_fund_allocation_type=bills_fund_allocation_type,
             bills_fund_fixed_amount=bills_fund_fixed_amount,
@@ -41,19 +41,19 @@ def _upsert_allocation(
         db.add(allocation)
         db.flush()
     else:
-        allocation.monthly_salary_amount = monthly_salary_amount
+        allocation.monthly_income_amount = monthly_income_amount
         allocation.monthly_budget_allocation = monthly_budget_allocation
         allocation.bills_fund_allocation_type = bills_fund_allocation_type
         allocation.bills_fund_fixed_amount = bills_fund_fixed_amount
         # Delete existing junction rows
-        db.query(SalaryAllocationToSinkingFund).filter(
-            SalaryAllocationToSinkingFund.salary_allocation_id == allocation.id
+        db.query(IncomeAllocationToSinkingFund).filter(
+            IncomeAllocationToSinkingFund.income_allocation_id == allocation.id
         ).delete()
 
     # Insert new junction rows
     for fa in fund_allocations:
-        junction = SalaryAllocationToSinkingFund(
-            salary_allocation_id=allocation.id,
+        junction = IncomeAllocationToSinkingFund(
+            income_allocation_id=allocation.id,
             sinking_fund_id=fa["sinking_fund_id"],
             allocation_amount=fa["allocation_amount"],
         )
@@ -64,10 +64,10 @@ def _upsert_allocation(
     return allocation, created
 
 
-@router.get("/salary", response_class=HTMLResponse)
-async def salary_page(request: Request, db: Session = Depends(get_db)):
+@router.get("/income", response_class=HTMLResponse)
+async def income_page(request: Request, db: Session = Depends(get_db)):
     user = get_current_user(request)
-    allocation = db.query(SalaryAllocation).first()
+    allocation = db.query(IncomeAllocation).first()
     sinking_funds = (
         db.query(SinkingFund).filter(SinkingFund.is_deleted == False).all()  # noqa: E712
     )
@@ -84,7 +84,7 @@ async def salary_page(request: Request, db: Session = Depends(get_db)):
 
     return templates.TemplateResponse(
         request,
-        "salary.html",
+        "income.html",
         {
             "username": user.username,
             "allocation": allocation,
@@ -95,19 +95,19 @@ async def salary_page(request: Request, db: Session = Depends(get_db)):
     )
 
 
-@router.post("/salary", response_class=HTMLResponse)
-async def salary_save(request: Request, db: Session = Depends(get_db)):
+@router.post("/income", response_class=HTMLResponse)
+async def income_save(request: Request, db: Session = Depends(get_db)):
     form = await request.form()
 
-    # Parse salary amount
+    # Parse income amount
     try:
-        monthly_salary_amount = Decimal(form.get("monthly_salary_amount", "0"))
+        monthly_income_amount = Decimal(form.get("monthly_income_amount", "0"))
     except (InvalidOperation, TypeError):
-        monthly_salary_amount = Decimal("0")
+        monthly_income_amount = Decimal("0")
 
-    if monthly_salary_amount <= 0:
+    if monthly_income_amount <= 0:
         return HTMLResponse(
-            '<p class="text-red-600 text-sm">Salary must be greater than zero.</p>'
+            '<p class="text-red-600 text-sm">Income must be greater than zero.</p>'
         )
 
     # Parse budget allocation
@@ -149,7 +149,7 @@ async def salary_save(request: Request, db: Session = Depends(get_db)):
 
     _upsert_allocation(
         db,
-        monthly_salary_amount,
+        monthly_income_amount,
         monthly_budget_allocation,
         bills_fund_allocation_type,
         bills_fund_fixed_amount,
@@ -157,23 +157,23 @@ async def salary_save(request: Request, db: Session = Depends(get_db)):
     )
 
     return HTMLResponse(
-        '<p class="text-green-600 text-sm">Salary allocation saved successfully.</p>'
+        '<p class="text-green-600 text-sm">Income allocation saved successfully.</p>'
     )
 
 
-@router.get("/api/salary")
-async def api_get_salary(request: Request, db: Session = Depends(get_db)):
-    allocation = db.query(SalaryAllocation).first()
+@router.get("/api/income")
+async def api_get_income(request: Request, db: Session = Depends(get_db)):
+    allocation = db.query(IncomeAllocation).first()
     if not allocation:
-        return JSONResponse({"detail": "No salary allocation found"}, status_code=404)
-    return SalaryAllocationResponse.model_validate(allocation)
+        return JSONResponse({"detail": "No income allocation found"}, status_code=404)
+    return IncomeAllocationResponse.model_validate(allocation)
 
 
-@router.post("/api/salary")
-async def api_post_salary(request: Request, db: Session = Depends(get_db)):
+@router.post("/api/income")
+async def api_post_income(request: Request, db: Session = Depends(get_db)):
     try:
         body = await request.json()
-        data = SalaryAllocationCreate(**body)
+        data = IncomeAllocationCreate(**body)
     except (ValidationError, ValueError) as exc:
         if isinstance(exc, ValidationError):
             errors = [
@@ -194,13 +194,13 @@ async def api_post_salary(request: Request, db: Session = Depends(get_db)):
 
     allocation, created = _upsert_allocation(
         db,
-        data.monthly_salary_amount,
+        data.monthly_income_amount,
         data.monthly_budget_allocation,
         data.bills_fund_allocation_type.value,
         bills_fixed,
         fund_allocations,
     )
 
-    response = SalaryAllocationResponse.model_validate(allocation)
+    response = IncomeAllocationResponse.model_validate(allocation)
     status_code = 201 if created else 200
     return JSONResponse(response.model_dump(mode="json"), status_code=status_code)

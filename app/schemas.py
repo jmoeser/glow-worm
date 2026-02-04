@@ -14,8 +14,8 @@ class CategoryType(str, Enum):
 
 class TransactionType(str, Enum):
     regular = "regular"
-    salary = "salary"
-    salary_allocation = "salary_allocation"
+    income = "income"
+    income_allocation = "income_allocation"
     contribution = "contribution"
     withdrawal = "withdrawal"
     budget_expense = "budget_expense"
@@ -233,14 +233,14 @@ class RecurringBillResponse(BaseModel):
     updated_at: datetime
 
 
-# --- Salary Allocation Schemas ---
+# --- Income Allocation Schemas ---
 
-class SalaryAllocationToSinkingFundCreate(BaseModel):
+class IncomeAllocationToSinkingFundCreate(BaseModel):
     sinking_fund_id: int
     allocation_amount: Decimal = Field(..., ge=0)
 
 
-class SalaryAllocationToSinkingFundResponse(BaseModel):
+class IncomeAllocationToSinkingFundResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
@@ -248,31 +248,31 @@ class SalaryAllocationToSinkingFundResponse(BaseModel):
     allocation_amount: Decimal
 
 
-class SalaryAllocationCreate(BaseModel):
-    monthly_salary_amount: Decimal = Field(..., gt=0)
+class IncomeAllocationCreate(BaseModel):
+    monthly_income_amount: Decimal = Field(..., gt=0)
     monthly_budget_allocation: Decimal = Field(..., ge=0)
     bills_fund_allocation_type: BillsAllocationMethod = BillsAllocationMethod.recommended
     bills_fund_fixed_amount: Decimal | None = Field(None, ge=0)
-    sinking_fund_allocations: list[SalaryAllocationToSinkingFundCreate] = []
+    sinking_fund_allocations: list[IncomeAllocationToSinkingFundCreate] = []
 
 
-class SalaryAllocationUpdate(BaseModel):
-    monthly_salary_amount: Decimal | None = Field(None, gt=0)
+class IncomeAllocationUpdate(BaseModel):
+    monthly_income_amount: Decimal | None = Field(None, gt=0)
     monthly_budget_allocation: Decimal | None = Field(None, ge=0)
     bills_fund_allocation_type: BillsAllocationMethod | None = None
     bills_fund_fixed_amount: Decimal | None = Field(None, ge=0)
-    sinking_fund_allocations: list[SalaryAllocationToSinkingFundCreate] | None = None
+    sinking_fund_allocations: list[IncomeAllocationToSinkingFundCreate] | None = None
 
 
-class SalaryAllocationResponse(BaseModel):
+class IncomeAllocationResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
-    monthly_salary_amount: Decimal
+    monthly_income_amount: Decimal
     monthly_budget_allocation: Decimal
     bills_fund_allocation_type: BillsAllocationMethod
     bills_fund_fixed_amount: Decimal | None = None
-    sinking_fund_allocations: list[SalaryAllocationToSinkingFundResponse] = []
+    sinking_fund_allocations: list[IncomeAllocationToSinkingFundResponse] = []
     created_at: datetime
     updated_at: datetime
 

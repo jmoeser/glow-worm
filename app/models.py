@@ -56,7 +56,7 @@ class SinkingFund(Base):
     updated_at: Mapped[datetime] = mapped_column(default=_utcnow, onupdate=_utcnow)
 
     transactions: Mapped[list["Transaction"]] = relationship(back_populates="sinking_fund")
-    salary_allocations: Mapped[list["SalaryAllocationToSinkingFund"]] = relationship(
+    income_allocations: Mapped[list["IncomeAllocationToSinkingFund"]] = relationship(
         back_populates="sinking_fund"
     )
 
@@ -121,11 +121,11 @@ class Transaction(Base):
     budget: Mapped["Budget | None"] = relationship(back_populates="transactions")
 
 
-class SalaryAllocation(Base):
-    __tablename__ = "salary_allocations"
+class IncomeAllocation(Base):
+    __tablename__ = "income_allocations"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    monthly_salary_amount: Mapped[float] = mapped_column(Numeric(12, 2), nullable=False)
+    monthly_income_amount: Mapped[float] = mapped_column(Numeric(12, 2), nullable=False)
     monthly_budget_allocation: Mapped[float] = mapped_column(Numeric(12, 2), nullable=False)
     bills_fund_allocation_type: Mapped[str] = mapped_column(
         String(20), nullable=False, default=BillsAllocationMethod.recommended.value
@@ -134,27 +134,27 @@ class SalaryAllocation(Base):
     created_at: Mapped[datetime] = mapped_column(default=_utcnow)
     updated_at: Mapped[datetime] = mapped_column(default=_utcnow, onupdate=_utcnow)
 
-    sinking_fund_allocations: Mapped[list["SalaryAllocationToSinkingFund"]] = relationship(
-        back_populates="salary_allocation", cascade="all, delete-orphan"
+    sinking_fund_allocations: Mapped[list["IncomeAllocationToSinkingFund"]] = relationship(
+        back_populates="income_allocation", cascade="all, delete-orphan"
     )
 
 
-class SalaryAllocationToSinkingFund(Base):
-    __tablename__ = "salary_allocation_to_sinking_funds"
+class IncomeAllocationToSinkingFund(Base):
+    __tablename__ = "income_allocation_to_sinking_funds"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    salary_allocation_id: Mapped[int] = mapped_column(
-        ForeignKey("salary_allocations.id"), nullable=False
+    income_allocation_id: Mapped[int] = mapped_column(
+        ForeignKey("income_allocations.id"), nullable=False
     )
     sinking_fund_id: Mapped[int] = mapped_column(
         ForeignKey("sinking_funds.id"), nullable=False
     )
     allocation_amount: Mapped[float] = mapped_column(Numeric(12, 2), nullable=False)
 
-    salary_allocation: Mapped["SalaryAllocation"] = relationship(
+    income_allocation: Mapped["IncomeAllocation"] = relationship(
         back_populates="sinking_fund_allocations"
     )
-    sinking_fund: Mapped["SinkingFund"] = relationship(back_populates="salary_allocations")
+    sinking_fund: Mapped["SinkingFund"] = relationship(back_populates="income_allocations")
 
 
 class MonthlyUnallocatedIncome(Base):

@@ -5,7 +5,7 @@ import logging
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 
-from app.tasks import process_due_bills, process_salary_allocation
+from app.tasks import process_due_bills, process_income_allocation
 
 logger = logging.getLogger(__name__)
 
@@ -14,11 +14,11 @@ scheduler = BackgroundScheduler()
 
 def start_scheduler() -> None:
     """Configure and start the background scheduler."""
-    # Salary allocation: 1st of each month at 00:05 AEST
+    # Income allocation: 1st of each month at 00:05 AEST
     scheduler.add_job(
-        process_salary_allocation,
+        process_income_allocation,
         CronTrigger(day=1, hour=0, minute=5, timezone="Australia/Brisbane"),
-        id="salary_allocation",
+        id="income_allocation",
         replace_existing=True,
     )
 
@@ -31,7 +31,7 @@ def start_scheduler() -> None:
     )
 
     scheduler.start()
-    logger.info("Background scheduler started with salary_allocation and bill_processing jobs")
+    logger.info("Background scheduler started with income_allocation and bill_processing jobs")
 
 
 def stop_scheduler() -> None:

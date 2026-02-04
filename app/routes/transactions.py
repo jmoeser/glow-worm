@@ -21,8 +21,8 @@ BRISBANE = pytz.timezone("Australia/Brisbane")
 
 TRANSACTION_TYPE_LABELS = {
     "regular": "Regular",
-    "salary": "Salary",
-    "salary_allocation": "Salary Allocation",
+    "income": "Income",
+    "income_allocation": "Income Allocation",
     "contribution": "Contribution",
     "withdrawal": "Withdrawal",
     "budget_expense": "Budget Expense",

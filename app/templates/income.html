@@ -1,28 +1,28 @@
 {% extends "base.html" %}
-{% block title %}Salary Allocation — Glow Worm{% endblock %}
+{% block title %}Income Allocation — Glow Worm{% endblock %}
 {% block content %}
 <div class="max-w-5xl">
-    <h2 class="text-2xl font-bold mb-6">Salary Allocation Settings</h2>
+    <h2 class="text-2xl font-bold mb-6">Income Allocation Settings</h2>
 
-    <div id="salary-message" class="mb-4"></div>
+    <div id="income-message" class="mb-4"></div>
 
     <!-- Sankey Diagram -->
     <div class="mb-8">
-        <h3 class="text-lg font-semibold mb-3">Salary Breakdown</h3>
+        <h3 class="text-lg font-semibold mb-3">Income Breakdown</h3>
         <div id="sankey-chart" class="bg-gray-900 border border-gray-800 rounded-md p-4 flex items-center justify-center">
-            <p class="text-sm text-gray-400">Enter a salary to see the breakdown</p>
+            <p class="text-sm text-gray-400">Enter an income to see the breakdown</p>
         </div>
     </div>
 
     <div class="max-w-md">
-        <form hx-post="/salary" hx-target="#salary-message" hx-swap="innerHTML" class="space-y-6">
+        <form hx-post="/income" hx-target="#income-message" hx-swap="innerHTML" class="space-y-6">
 
-                <!-- Monthly Salary -->
+                <!-- Monthly Income -->
                 <div>
-                    <label for="monthly_salary_amount" class="block text-sm font-medium text-gray-300 mb-1">Monthly Salary</label>
-                    <input type="number" id="monthly_salary_amount" name="monthly_salary_amount"
+                    <label for="monthly_income_amount" class="block text-sm font-medium text-gray-300 mb-1">Monthly Income</label>
+                    <input type="number" id="monthly_income_amount" name="monthly_income_amount"
                            step="0.01" min="0"
-                           value="{{ allocation.monthly_salary_amount if allocation else '' }}"
+                           value="{{ allocation.monthly_income_amount if allocation else '' }}"
                            oninput="calculateRemainder()"
                            class="w-full bg-gray-800 border border-gray-600 text-gray-100 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
                            placeholder="0.00" required>
@@ -111,7 +111,7 @@
 const FUND_META = {{ sinking_funds_json | safe }};
 
 function calculateRemainder() {
-    const salary = parseFloat(document.getElementById('monthly_salary_amount').value) || 0;
+    const income = parseFloat(document.getElementById('monthly_income_amount').value) || 0;
     const budget = parseFloat(document.getElementById('monthly_budget_allocation').value) || 0;
 
     let fundTotal = 0;
@@ -119,7 +119,7 @@ function calculateRemainder() {
         fundTotal += parseFloat(input.value) || 0;
     });
 
-    const remainder = salary - budget - fundTotal;
+    const remainder = income - budget - fundTotal;
     const el = document.getElementById('remainder-value');
     el.textContent = '$' + remainder.toFixed(2);
 
@@ -145,10 +145,10 @@ function toggleFixedAmount() {
 
 function renderSankey() {
     const container = document.getElementById('sankey-chart');
-    const salary = parseFloat(document.getElementById('monthly_salary_amount').value) || 0;
+    const income = parseFloat(document.getElementById('monthly_income_amount').value) || 0;
 
-    if (salary <= 0) {
-        container.innerHTML = '<p class="text-sm text-gray-400">Enter a salary to see the breakdown</p>';
+    if (income <= 0) {
+        container.innerHTML = '<p class="text-sm text-gray-400">Enter an income to see the breakdown</p>';
         return;
     }
 
@@ -165,10 +165,10 @@ function renderSankey() {
     });
 
     const totalAllocated = budget + fundAllocations.reduce(function(sum, f) { return sum + f.amount; }, 0);
-    const remainder = salary - totalAllocated;
+    const remainder = income - totalAllocated;
 
-    // Build nodes: index 0 = Salary (source)
-    const nodes = [{ name: 'Salary', color: '#4ADE80' }];
+    // Build nodes: index 0 = Income (source)
+    const nodes = [{ name: 'Income', color: '#4ADE80' }];
     const links = [];
 
     if (budget > 0) {
@@ -190,9 +190,9 @@ function renderSankey() {
     }
 
     if (links.length === 0) {
-        // Salary entered but nothing allocated, everything unallocated
+        // Income entered but nothing allocated, everything unallocated
         nodes.push({ name: 'Unallocated', color: '#6B7280' });
-        links.push({ source: 0, target: 1, value: salary, color: '#6B7280' });
+        links.push({ source: 0, target: 1, value: income, color: '#6B7280' });
     }
 
     // Dimensions
@@ -255,7 +255,7 @@ function renderSankey() {
         return '$' + amount.toLocaleString('en-AU', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     }
     function pct(amount) {
-        return (amount / salary * 100).toFixed(1) + '%';
+        return (amount / income * 100).toFixed(1) + '%';
     }
 
     // Node labels

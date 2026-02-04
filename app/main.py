@@ -14,7 +14,7 @@ from app.routes.auth import router as auth_router
 from app.routes.bills import router as bills_router
 from app.routes.budgets import router as budgets_router
 from app.routes.dashboard import router as dashboard_router
-from app.routes.salary import router as salary_router
+from app.routes.income import router as income_router
 from app.routes.sinking_funds import router as sinking_funds_router
 from app.routes.transactions import router as transactions_router
 from app.routes.users import router as users_router
@@ -69,7 +69,7 @@ app.include_router(auth_router)
 app.include_router(dashboard_router)
 app.include_router(bills_router)
 app.include_router(budgets_router)
-app.include_router(salary_router)
+app.include_router(income_router)
 app.include_router(sinking_funds_router)
 app.include_router(transactions_router)
 app.include_router(users_router)
