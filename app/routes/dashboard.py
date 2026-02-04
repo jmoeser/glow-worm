@@ -97,6 +97,28 @@ def _dashboard_data(db: Session, month: int, year: int) -> dict:
         else Decimal("0.00")
     )
 
+    # Total net worth: sinking fund balances + unallocated income + budget remaining
+    total_sinking_funds = sum(
+        (Decimal(str(sf.current_balance)) for sf in sinking_funds),
+        Decimal("0"),
+    ).quantize(Decimal("0.01"))
+    total_net_worth = (total_sinking_funds + unallocated_income + budget_total_remaining).quantize(Decimal("0.01"))
+
+    # Daily remaining: budget remaining / days left in month
+    now = datetime.now(BRISBANE)
+    if year == now.year and month == now.month:
+        days_remaining = last_day - now.day + 1  # including today
+    elif year < now.year or (year == now.year and month < now.month):
+        days_remaining = 0  # past month
+    else:
+        days_remaining = last_day  # future month
+
+    budget_daily_remaining = (
+        (budget_total_remaining / days_remaining).quantize(Decimal("0.01"))
+        if days_remaining > 0
+        else Decimal("0.00")
+    )
+
     return {
         "total_income": total_income,
         "total_expenses": total_expenses,
@@ -107,10 +129,14 @@ def _dashboard_data(db: Session, month: int, year: int) -> dict:
         "budget_total_remaining": budget_total_remaining,
         "budgets": budgets,
         "sinking_funds": sinking_funds,
+        "total_sinking_funds": total_sinking_funds,
+        "total_net_worth": total_net_worth,
         "recent_transactions": recent_transactions,
         "month": month,
         "year": year,
         "month_name": calendar.month_name[month],
+        "budget_daily_remaining": budget_daily_remaining,
+        "days_remaining": days_remaining,
     }
 
 
@@ -243,6 +269,8 @@ async def api_dashboard(
         budget_total_allocated=data["budget_total_allocated"],
         budget_total_spent=data["budget_total_spent"],
         budget_total_remaining=data["budget_total_remaining"],
+        total_sinking_funds=data["total_sinking_funds"],
+        total_net_worth=data["total_net_worth"],
         sinking_funds=[SinkingFundResponse.model_validate(sf) for sf in data["sinking_funds"]],
         recent_transactions=[TransactionResponse.model_validate(t) for t in data["recent_transactions"]],
     )

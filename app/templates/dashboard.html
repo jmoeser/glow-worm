@@ -2,6 +2,18 @@
 {% block content %}
 <h2 class="gw-page-header">{{ month_name }} {{ year }}</h2>
 
+<!-- Total Net Worth -->
+<div class="gw-card gw-section gw-animate-in" style="text-align: center; padding: 24px;">
+    <p class="gw-stat-label">Total Net Worth</p>
+    <p style="font-family: var(--font-display); font-size: 2rem; font-weight: 700;"
+       class="{% if total_net_worth >= 0 %}gw-text-positive{% else %}gw-text-negative{% endif %}">
+        ${{ total_net_worth }}
+    </p>
+    <p class="gw-text-dim" style="font-size: 0.75rem; margin-top: 8px;">
+        Sinking Funds: ${{ total_sinking_funds }} + Budget Remaining: ${{ budget_total_remaining }} + Unallocated: ${{ unallocated_income }}
+    </p>
+</div>
+
 <!-- Summary Cards -->
 <div class="gw-grid-4 gw-section">
     <div class="gw-stat gw-stat--green gw-animate-in">
@@ -27,7 +39,7 @@
 <!-- Budget Overview -->
 <div class="gw-card gw-section gw-animate-in">
     <h3 style="font-family: var(--font-display); font-size: 1.1rem; font-weight: 600; margin-bottom: 16px;">Budget Overview</h3>
-    <div class="gw-grid-3" style="text-align: center;">
+    <div class="gw-grid-4" style="text-align: center;">
         <div>
             <p class="gw-stat-label">Allocated</p>
             <p style="font-family: var(--font-display); font-size: 1.3rem; font-weight: 700;">
@@ -46,6 +58,16 @@
                class="{% if budget_total_remaining >= 0 %}gw-text-positive{% else %}gw-text-negative{% endif %}">
                 ${{ budget_total_remaining }}
             </p>
+        </div>
+        <div>
+            <p class="gw-stat-label">Daily Remaining</p>
+            <p style="font-family: var(--font-display); font-size: 1.3rem; font-weight: 700;"
+               class="{% if budget_daily_remaining >= 0 %}gw-text-positive{% else %}gw-text-negative{% endif %}">
+                ${{ budget_daily_remaining }}
+            </p>
+            {% if days_remaining > 0 %}
+            <p class="gw-text-dim" style="font-size: 0.7rem; margin-top: 4px;">{{ days_remaining }} day{{ 's' if days_remaining != 1 }} left</p>
+            {% endif %}
         </div>
     </div>
     {% if budget_total_allocated > 0 %}

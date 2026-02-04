@@ -324,5 +324,7 @@ class DashboardSummary(BaseModel):
     budget_total_allocated: Decimal
     budget_total_spent: Decimal
     budget_total_remaining: Decimal
+    total_sinking_funds: Decimal
+    total_net_worth: Decimal
     sinking_funds: list[SinkingFundResponse]
     recent_transactions: list[TransactionResponse]
