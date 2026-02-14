@@ -1,4 +1,4 @@
-# Glow-worm
+# Glow Worm
 
 An opinionated, single-tenant household budgeting app built with Python and FastAPI. Designed for one household to manage income allocation, monthly budgets, sinking funds, and recurring bills -- all from a lightweight, self-hosted web UI.
 
@@ -37,7 +37,7 @@ An opinionated, single-tenant household budgeting app built with Python and Fast
 1. **Clone the repository:**
 
    ```bash
-   git clone https://github.com/your-username/glow-worm.git
+   git clone https://github.com/jmoeser/glow-worm.git
    cd glow-worm
    ```
 
