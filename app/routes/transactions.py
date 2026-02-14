@@ -5,7 +5,6 @@ from decimal import Decimal, InvalidOperation
 import pytz
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import HTMLResponse, JSONResponse
-from fastapi.templating import Jinja2Templates
 from pydantic import ValidationError
 from sqlalchemy.orm import Session, joinedload
 
@@ -13,9 +12,9 @@ from app.database import get_db
 from app.middleware import get_current_user
 from app.models import Budget, Category, RecurringBill, SinkingFund, Transaction
 from app.schemas import TransactionCreate, TransactionResponse, TransactionUpdate
+from app.templating import templates
 
 router = APIRouter()
-templates = Jinja2Templates(directory="app/templates")
 
 BRISBANE = pytz.timezone("Australia/Brisbane")
 

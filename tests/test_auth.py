@@ -71,8 +71,8 @@ class TestLogout:
             "/login",
             data={"username": "alice", "password": "SecurePass123!"},
         )
-        # Logout
-        response = client.get("/logout", follow_redirects=False)
+        # Logout via POST (non-HTMX)
+        response = client.post("/logout", follow_redirects=False)
         assert response.status_code == 303
         assert response.headers["location"] == "/login"
 
@@ -82,8 +82,8 @@ class TestLogout:
             "/login",
             data={"username": "alice", "password": "SecurePass123!"},
         )
-        # Logout
-        client.get("/logout", follow_redirects=False)
+        # Logout via POST
+        client.post("/logout", follow_redirects=False)
         # Try to access protected route
         response = client.get("/", follow_redirects=False)
         assert response.status_code == 303

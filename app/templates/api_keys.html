@@ -1,0 +1,149 @@
+{% if fragment == "table_body" %}
+{# --- Partial: full table body rows --- #}
+{% for key in keys %}
+<tr id="key-row-{{ key.id }}">
+    <td>{{ key.name }}</td>
+    <td class="gw-text-muted">{{ key.created_at.strftime("%Y-%m-%d") }}</td>
+    <td class="gw-text-muted">{{ key.last_used_at.strftime("%Y-%m-%d %H:%M") if key.last_used_at else "Never" }}</td>
+    <td>
+        {% if key.revoked_at %}
+        <span class="gw-badge gw-badge-danger">Revoked</span>
+        {% else %}
+        <span class="gw-badge gw-badge-success">Active</span>
+        {% endif %}
+    </td>
+    <td>
+        {% if not key.revoked_at %}
+        <button hx-delete="/api-keys/{{ key.id }}" hx-target="#key-row-{{ key.id }}" hx-swap="delete"
+                hx-confirm="Revoke this API key? This cannot be undone."
+                class="gw-action-delete">Revoke</button>
+        {% endif %}
+    </td>
+</tr>
+{% endfor %}
+
+{% elif fragment == "key_row" %}
+{# --- Partial: single key row --- #}
+<tr id="key-row-{{ key.id }}">
+    <td>{{ key.name }}</td>
+    <td class="gw-text-muted">{{ key.created_at.strftime("%Y-%m-%d") }}</td>
+    <td class="gw-text-muted">{{ key.last_used_at.strftime("%Y-%m-%d %H:%M") if key.last_used_at else "Never" }}</td>
+    <td>
+        {% if key.revoked_at %}
+        <span class="gw-badge gw-badge-danger">Revoked</span>
+        {% else %}
+        <span class="gw-badge gw-badge-success">Active</span>
+        {% endif %}
+    </td>
+    <td>
+        {% if not key.revoked_at %}
+        <button hx-delete="/api-keys/{{ key.id }}" hx-target="#key-row-{{ key.id }}" hx-swap="delete"
+                hx-confirm="Revoke this API key? This cannot be undone."
+                class="gw-action-delete">Revoke</button>
+        {% endif %}
+    </td>
+</tr>
+
+{% elif fragment == "key_created" %}
+{# --- Partial: new key created notice + updated table body --- #}
+<div id="api-keys-message">
+    <div class="gw-msg-success" style="margin-bottom: 16px;">
+        <p style="margin: 0 0 8px;"><strong>API key created!</strong> Copy it now — it won't be shown again.</p>
+        <div style="display: flex; align-items: center; gap: 8px;">
+            <code id="new-key-value" style="background: var(--gw-bg-secondary, #1e293b); padding: 8px 12px; border-radius: 6px; font-size: 0.85rem; word-break: break-all; flex: 1;">{{ plain_key }}</code>
+            <button type="button" class="gw-btn gw-btn-ghost gw-btn-sm"
+                    onclick="navigator.clipboard.writeText(document.getElementById('new-key-value').textContent).then(function() { this.textContent = 'Copied!'; setTimeout(function() { this.textContent = 'Copy'; }.bind(this), 2000); }.bind(this))">Copy</button>
+        </div>
+    </div>
+</div>
+{% for key in keys %}
+<tr id="key-row-{{ key.id }}">
+    <td>{{ key.name }}</td>
+    <td class="gw-text-muted">{{ key.created_at.strftime("%Y-%m-%d") }}</td>
+    <td class="gw-text-muted">{{ key.last_used_at.strftime("%Y-%m-%d %H:%M") if key.last_used_at else "Never" }}</td>
+    <td>
+        {% if key.revoked_at %}
+        <span class="gw-badge gw-badge-danger">Revoked</span>
+        {% else %}
+        <span class="gw-badge gw-badge-success">Active</span>
+        {% endif %}
+    </td>
+    <td>
+        {% if not key.revoked_at %}
+        <button hx-delete="/api-keys/{{ key.id }}" hx-target="#key-row-{{ key.id }}" hx-swap="delete"
+                hx-confirm="Revoke this API key? This cannot be undone."
+                class="gw-action-delete">Revoke</button>
+        {% endif %}
+    </td>
+</tr>
+{% endfor %}
+
+{% else %}
+{# --- Full page --- #}
+{% extends "base.html" %}
+{% block title %}API Keys — Glow Worm{% endblock %}
+{% block content %}
+<div style="max-width: 900px;">
+    <h2 class="gw-page-header">API Keys</h2>
+
+    <div id="api-keys-message" style="margin-bottom: 16px;"></div>
+
+    <!-- Create New Key (collapsible) -->
+    <details class="gw-details gw-section">
+        <summary>Create New Key</summary>
+        <form hx-post="/api-keys" hx-target="#api-keys-table-body" hx-swap="innerHTML"
+              hx-on::after-request="if(event.detail.successful) { this.reset(); var msg = document.querySelector('#api-keys-table-body #api-keys-message'); if(msg) { document.getElementById('api-keys-message').replaceWith(msg); } } else { document.getElementById('api-keys-message').innerHTML = event.detail.xhr.responseText; }"
+              class="gw-grid-2" style="margin-top: 16px;">
+            <div>
+                <label for="new-key-name" class="gw-label">Name</label>
+                <input type="text" id="new-key-name" name="name"
+                       class="gw-input" placeholder="e.g. My Integration" autocomplete="off">
+            </div>
+            <div style="display: flex; align-items: flex-end;">
+                <button type="submit" class="gw-btn gw-btn-primary">Create Key</button>
+            </div>
+        </form>
+    </details>
+
+    <!-- Keys table -->
+    <div class="gw-table-wrap">
+        <div class="gw-overflow-x">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Name</th>
+                        <th>Created</th>
+                        <th>Last Used</th>
+                        <th>Status</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="api-keys-table-body">
+                    {% for key in keys %}
+                    <tr id="key-row-{{ key.id }}">
+                        <td>{{ key.name }}</td>
+                        <td class="gw-text-muted">{{ key.created_at.strftime("%Y-%m-%d") }}</td>
+                        <td class="gw-text-muted">{{ key.last_used_at.strftime("%Y-%m-%d %H:%M") if key.last_used_at else "Never" }}</td>
+                        <td>
+                            {% if key.revoked_at %}
+                            <span class="gw-badge gw-badge-danger">Revoked</span>
+                            {% else %}
+                            <span class="gw-badge gw-badge-success">Active</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if not key.revoked_at %}
+                            <button hx-delete="/api-keys/{{ key.id }}" hx-target="#key-row-{{ key.id }}" hx-swap="delete"
+                                    hx-confirm="Revoke this API key? This cannot be undone."
+                                    class="gw-action-delete">Revoke</button>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}
+{% endif %}

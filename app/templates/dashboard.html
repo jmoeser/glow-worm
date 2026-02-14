@@ -7,10 +7,10 @@
     <p class="gw-stat-label">Total Net Worth</p>
     <p style="font-family: var(--font-display); font-size: 2rem; font-weight: 700;"
        class="{% if total_net_worth >= 0 %}gw-text-positive{% else %}gw-text-negative{% endif %}">
-        ${{ total_net_worth }}
+        ${{ total_net_worth|money }}
     </p>
     <p class="gw-text-dim" style="font-size: 0.75rem; margin-top: 8px;">
-        Sinking Funds: ${{ total_sinking_funds }} + Budget Remaining: ${{ budget_total_remaining }} + Unallocated: ${{ unallocated_income }}
+        Sinking Funds: ${{ total_sinking_funds|money }} + Budget Remaining: ${{ budget_total_remaining|money }} + Unallocated: ${{ unallocated_income|money }}
     </p>
 </div>
 
@@ -18,21 +18,21 @@
 <div class="gw-grid-4 gw-section">
     <div class="gw-stat gw-stat--green gw-animate-in">
         <p class="gw-stat-label">Total Income</p>
-        <p class="gw-stat-value gw-text-positive">${{ total_income }}</p>
+        <p class="gw-stat-value gw-text-positive">${{ total_income|money }}</p>
     </div>
     <div class="gw-stat gw-stat--red gw-animate-in">
         <p class="gw-stat-label">Total Expenses</p>
-        <p class="gw-stat-value gw-text-negative">${{ total_expenses }}</p>
+        <p class="gw-stat-value gw-text-negative">${{ total_expenses|money }}</p>
     </div>
     <div class="gw-stat {% if net >= 0 %}gw-stat--green{% else %}gw-stat--red{% endif %} gw-animate-in">
         <p class="gw-stat-label">Net</p>
         <p class="gw-stat-value {% if net >= 0 %}gw-text-positive{% else %}gw-text-negative{% endif %}">
-            ${{ net }}
+            ${{ net|money }}
         </p>
     </div>
     <div class="gw-stat gw-stat--neutral gw-animate-in">
         <p class="gw-stat-label">Unallocated Income</p>
-        <p class="gw-stat-value">${{ unallocated_income }}</p>
+        <p class="gw-stat-value">${{ unallocated_income|money }}</p>
     </div>
 </div>
 
@@ -43,27 +43,27 @@
         <div>
             <p class="gw-stat-label">Allocated</p>
             <p style="font-family: var(--font-display); font-size: 1.3rem; font-weight: 700;">
-                ${{ budget_total_allocated }}
+                ${{ budget_total_allocated|money }}
             </p>
         </div>
         <div>
             <p class="gw-stat-label">Spent</p>
             <p style="font-family: var(--font-display); font-size: 1.3rem; font-weight: 700;" class="gw-text-negative">
-                ${{ budget_total_spent }}
+                ${{ budget_total_spent|money }}
             </p>
         </div>
         <div>
             <p class="gw-stat-label">Remaining</p>
             <p style="font-family: var(--font-display); font-size: 1.3rem; font-weight: 700;"
                class="{% if budget_total_remaining >= 0 %}gw-text-positive{% else %}gw-text-negative{% endif %}">
-                ${{ budget_total_remaining }}
+                ${{ budget_total_remaining|money }}
             </p>
         </div>
         <div>
             <p class="gw-stat-label">Daily Remaining</p>
             <p style="font-family: var(--font-display); font-size: 1.3rem; font-weight: 700;"
                class="{% if budget_daily_remaining >= 0 %}gw-text-positive{% else %}gw-text-negative{% endif %}">
-                ${{ budget_daily_remaining }}
+                ${{ budget_daily_remaining|money }}
             </p>
             {% if days_remaining > 0 %}
             <p class="gw-text-dim" style="font-size: 0.7rem; margin-top: 4px;">{{ days_remaining }} day{{ 's' if days_remaining != 1 }} left</p>
@@ -99,7 +99,7 @@
                 <option value="">Select budget</option>
                 {% for b in budgets %}
                 <option value="{{ b.id }}">
-                    {{ b.category.name }} (${{ "%.2f"|format(b.allocated_amount - b.spent_amount) }} left)
+                    {{ b.category.name }} (${{ (b.allocated_amount - b.spent_amount)|money }} left)
                 </option>
                 {% endfor %}
             </select>
@@ -135,7 +135,7 @@
                 <span>{{ fund.name }}</span>
             </div>
             <span style="font-family: var(--font-display); font-weight: 600;">
-                ${{ "%.2f"|format(fund.current_balance) }}
+                ${{ fund.current_balance|money }}
             </span>
         </li>
         {% endfor %}
@@ -171,7 +171,7 @@
                         <td style="white-space: nowrap;">{{ txn.date }}</td>
                         <td>{{ txn.description or "\u2014" }}</td>
                         <td class="text-right" style="font-weight: 600; color: {% if txn.type == 'income' %}var(--positive){% else %}var(--negative){% endif %};">
-                            ${{ "%.2f"|format(txn.amount) }}
+                            ${{ txn.amount|money }}
                         </td>
                         <td>
                             {{ txn.category.name if txn.category else "\u2014" }}

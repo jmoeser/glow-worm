@@ -14,7 +14,7 @@
         </div>
     </div>
 
-    <div style="max-width: 460px;">
+    <div style="max-width: 460px; margin: 0 auto;">
         <form hx-post="/income" hx-target="#income-message" hx-swap="innerHTML" style="display: flex; flex-direction: column; gap: 20px;">
 
                 <!-- Monthly Income -->
@@ -105,7 +105,7 @@
 <script src="https://d3js.org/d3.v7.min.js"></script>
 <script src="https://unpkg.com/d3-sankey@0.12.3/dist/d3-sankey.min.js"></script>
 <script>
-const FUND_META = {{ sinking_funds_json | safe }};
+const FUND_META = {{ sinking_funds_data | tojson }};
 
 function calculateRemainder() {
     const income = parseFloat(document.getElementById('monthly_income_amount').value) || 0;
@@ -118,7 +118,7 @@ function calculateRemainder() {
 
     const remainder = income - budget - fundTotal;
     const el = document.getElementById('remainder-value');
-    el.textContent = '$' + remainder.toFixed(2);
+    el.textContent = '$' + remainder.toLocaleString('en-AU', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
     const container = document.getElementById('remainder-display');
     if (remainder >= 0) {

@@ -4,15 +4,17 @@ import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-# Override DATABASE_URL before any app imports
+# Override environment before any app imports
 os.environ["DATABASE_URL"] = "sqlite:///./test-glow-worm.db"
+os.environ["SECRET_KEY"] = "test-secret-key-do-not-use-in-production-1234567890"
+os.environ["SECURE_COOKIES"] = "false"
 
 from httpx import ASGITransport, AsyncClient  # noqa: E402
 
 from app.auth import hash_password  # noqa: E402
 from app.database import Base, get_db  # noqa: E402
 from app.main import app  # noqa: E402
-from app.models import Budget, Category, RecurringBill, SinkingFund, Transaction, User  # noqa: E402
+from app.models import ApiKey, Budget, Category, RecurringBill, SinkingFund, Transaction, User  # noqa: E402
 
 TEST_DATABASE_URL = "sqlite:///./test-glow-worm.db"
 

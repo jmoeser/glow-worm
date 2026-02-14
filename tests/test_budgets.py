@@ -308,7 +308,8 @@ class TestApiBudgetsCreate:
         )
         assert response.status_code == 409
 
-    def test_403_without_csrf(self, authed_client, sample_budget_categories):
+    def test_api_csrf_exempt(self, authed_client, sample_budget_categories):
+        """API routes are CSRF-exempt (they use Bearer token auth instead)."""
         month, year = _current_month_year()
         response = authed_client.post(
             "/api/budgets",
@@ -319,7 +320,7 @@ class TestApiBudgetsCreate:
                 "allocated_amount": "100.00",
             },
         )
-        assert response.status_code == 403
+        assert response.status_code == 201
 
 
 class TestApiBudgetsGet:

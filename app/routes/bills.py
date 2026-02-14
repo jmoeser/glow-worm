@@ -2,7 +2,6 @@ from decimal import Decimal, InvalidOperation
 
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import HTMLResponse, JSONResponse
-from fastapi.templating import Jinja2Templates
 from pydantic import ValidationError
 from sqlalchemy.orm import Session
 
@@ -10,9 +9,9 @@ from app.database import get_db
 from app.middleware import get_current_user
 from app.models import Category, RecurringBill
 from app.schemas import RecurringBillCreate, RecurringBillResponse, RecurringBillUpdate
+from app.templating import templates
 
 router = APIRouter()
-templates = Jinja2Templates(directory="app/templates")
 
 FREQUENCY_LABELS = {
     "monthly": "Monthly",
@@ -119,7 +118,6 @@ async def bills_create(request: Request, db: Session = Depends(get_db)):
     name = (form.get("name") or "").strip()
     provider = (form.get("debtor_provider") or "").strip()
     frequency = form.get("frequency", "")
-    category_id_raw = form.get("category_id", "")
     start_date = (form.get("start_date") or "").strip()
     next_due_date = (form.get("next_due_date") or "").strip()
 
@@ -140,17 +138,16 @@ async def bills_create(request: Request, db: Session = Depends(get_db)):
             '<p class="text-red-600 text-sm">Amount must be greater than zero.</p>'
         )
 
-    if not category_id_raw:
+    bills_category = (
+        db.query(Category)
+        .filter(Category.name == "Bills", Category.type == "expense", Category.is_deleted == False)  # noqa: E712
+        .first()
+    )
+    if not bills_category:
         return HTMLResponse(
-            '<p class="text-red-600 text-sm">Category is required.</p>'
+            '<p class="text-red-600 text-sm">Bills category not found. Please create it first.</p>'
         )
-
-    try:
-        category_id = int(category_id_raw)
-    except (ValueError, TypeError):
-        return HTMLResponse(
-            '<p class="text-red-600 text-sm">Invalid category.</p>'
-        )
+    category_id = bills_category.id
 
     if not start_date or not next_due_date:
         return HTMLResponse(

@@ -1,6 +1,5 @@
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import HTMLResponse, JSONResponse
-from fastapi.templating import Jinja2Templates
 from pydantic import ValidationError
 from sqlalchemy.orm import Session
 
@@ -9,9 +8,9 @@ from app.database import get_db
 from app.middleware import get_current_user
 from app.models import User
 from app.schemas import UserCreate, UserResponse, UserUpdate
+from app.templating import templates
 
 router = APIRouter()
-templates = Jinja2Templates(directory="app/templates")
 
 
 def _all_users(db: Session) -> list[User]:
@@ -132,6 +131,7 @@ async def users_update(request: Request, user_id: int, db: Session = Depends(get
                 '<p class="text-red-600 text-sm">Password must be at least 8 characters.</p>'
             )
         user.password_hash = hash_password(password)
+        user.session_version += 1
 
     db.commit()
     db.refresh(user)
@@ -246,6 +246,7 @@ async def api_update_user(request: Request, user_id: int, db: Session = Depends(
 
     if "password" in updates and updates["password"] is not None:
         user.password_hash = hash_password(updates["password"])
+        user.session_version += 1
 
     db.commit()
     db.refresh(user)

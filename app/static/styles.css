@@ -233,25 +233,70 @@ h1, h2, h3, h4 {
 }
 
 .gw-sidebar-footer {
-    padding: 16px 20px;
+    padding: 12px 10px;
     border-top: 1px solid var(--border-dim);
 }
 
+.gw-user-profile {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 6px 8px;
+    border-radius: var(--radius-md);
+    transition: background 0.15s;
+}
+
+.gw-user-avatar {
+    width: 30px;
+    height: 30px;
+    border-radius: 8px;
+    background: var(--accent-dim);
+    border: 1px solid var(--border-glow);
+    color: var(--text-glow);
+    font-family: var(--font-display);
+    font-size: 0.8rem;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.gw-user-info {
+    flex: 1;
+    min-width: 0;
+}
+
 .gw-sidebar-footer .gw-username {
-    font-size: 0.8rem;
-    color: var(--text-tertiary);
-    margin-bottom: 4px;
+    font-size: 0.82rem;
+    font-weight: 500;
+    color: var(--text-secondary);
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
-.gw-sidebar-footer a {
-    font-size: 0.8rem;
+.gw-signout-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 30px;
+    height: 30px;
+    border-radius: var(--radius-sm);
+    background: none;
+    border: 1px solid transparent;
     color: var(--text-tertiary);
-    text-decoration: none;
-    transition: color 0.15s;
+    cursor: pointer;
+    transition: all 0.15s;
+    flex-shrink: 0;
+    padding: 0;
 }
 
-.gw-sidebar-footer a:hover {
-    color: var(--text-primary);
+.gw-signout-btn:hover {
+    background: var(--negative-dim);
+    border-color: rgba(248, 113, 113, 0.2);
+    color: var(--negative);
 }
 
 /* --- Main Content --- */
@@ -357,6 +402,20 @@ h1, h2, h3, h4 {
 
 .gw-table-wrap thead th.text-right {
     text-align: right;
+}
+
+.gw-table-wrap thead th.gw-sortable {
+    cursor: pointer;
+    user-select: none;
+}
+
+.gw-table-wrap thead th.gw-sortable:hover {
+    color: var(--text-secondary);
+}
+
+.gw-sort-indicator {
+    font-size: 0.65rem;
+    color: var(--text-glow);
 }
 
 .gw-table-wrap tbody tr {

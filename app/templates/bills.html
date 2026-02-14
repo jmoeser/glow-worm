@@ -4,9 +4,9 @@
 <tr id="bill-row-{{ bill.id }}">
     <td>{{ bill.name }}</td>
     <td class="gw-text-muted">{{ bill.debtor_provider }}</td>
-    <td class="text-right">${{ "%.2f"|format(bill.amount) }}</td>
+    <td class="text-right" data-sort-value="{{ bill.amount }}">${{ bill.amount|money }}</td>
     <td class="gw-text-muted">{{ frequency_labels.get(bill.frequency, bill.frequency) }}</td>
-    <td class="gw-text-muted">{{ bill.next_due_date }}</td>
+    <td class="gw-text-muted" data-sort-value="{{ bill.next_due_date }}">{{ bill.next_due_date }}</td>
     <td>
         <button hx-get="/bills/{{ bill.id }}/edit" hx-target="#bill-row-{{ bill.id }}" hx-swap="outerHTML"
                 class="gw-action-edit">Edit</button>
@@ -22,9 +22,9 @@
 <tr id="bill-row-{{ bill.id }}">
     <td>{{ bill.name }}</td>
     <td class="gw-text-muted">{{ bill.debtor_provider }}</td>
-    <td class="text-right">${{ "%.2f"|format(bill.amount) }}</td>
+    <td class="text-right" data-sort-value="{{ bill.amount }}">${{ bill.amount|money }}</td>
     <td class="gw-text-muted">{{ frequency_labels.get(bill.frequency, bill.frequency) }}</td>
-    <td class="gw-text-muted">{{ bill.next_due_date }}</td>
+    <td class="gw-text-muted" data-sort-value="{{ bill.next_due_date }}">{{ bill.next_due_date }}</td>
     <td>
         <button hx-get="/bills/{{ bill.id }}/edit" hx-target="#bill-row-{{ bill.id }}" hx-swap="outerHTML"
                 class="gw-action-edit">Edit</button>
@@ -111,15 +111,6 @@
                 </select>
             </div>
             <div>
-                <label for="bill-category" class="gw-label">Category</label>
-                <select id="bill-category" name="category_id" required class="gw-select">
-                    <option value="">Select category...</option>
-                    {% for cat in categories %}
-                    <option value="{{ cat.id }}">{{ cat.name }}</option>
-                    {% endfor %}
-                </select>
-            </div>
-            <div>
                 <label for="bill-start-date" class="gw-label">Start Date</label>
                 <input type="date" id="bill-start-date" name="start_date" required class="gw-input">
             </div>
@@ -137,11 +128,11 @@
     <div class="gw-summary-bar gw-section">
         <div class="gw-summary-item">
             <span class="gw-summary-label">Monthly cost:</span>
-            <span class="gw-summary-value">${{ total_monthly }}</span>
+            <span class="gw-summary-value">${{ total_monthly|money }}</span>
         </div>
         <div class="gw-summary-item">
             <span class="gw-summary-label">Annual cost:</span>
-            <span class="gw-summary-value">${{ total_annual }}</span>
+            <span class="gw-summary-value">${{ total_annual|money }}</span>
         </div>
     </div>
 
@@ -153,9 +144,9 @@
                     <tr>
                         <th>Name</th>
                         <th>Provider</th>
-                        <th class="text-right">Amount</th>
+                        <th class="text-right gw-sortable" onclick="sortBills('amount')">Amount <span class="gw-sort-indicator" id="sort-indicator-amount"></span></th>
                         <th>Frequency</th>
-                        <th>Next Due</th>
+                        <th class="gw-sortable" onclick="sortBills('next_due_date')">Next Due <span class="gw-sort-indicator" id="sort-indicator-next_due_date"></span></th>
                         <th>Actions</th>
                     </tr>
                 </thead>
@@ -164,9 +155,9 @@
                     <tr id="bill-row-{{ bill.id }}">
                         <td>{{ bill.name }}</td>
                         <td class="gw-text-muted">{{ bill.debtor_provider }}</td>
-                        <td class="text-right">${{ "%.2f"|format(bill.amount) }}</td>
+                        <td class="text-right" data-sort-value="{{ bill.amount }}">${{ bill.amount|money }}</td>
                         <td class="gw-text-muted">{{ frequency_labels.get(bill.frequency, bill.frequency) }}</td>
-                        <td class="gw-text-muted">{{ bill.next_due_date }}</td>
+                        <td class="gw-text-muted" data-sort-value="{{ bill.next_due_date }}">{{ bill.next_due_date }}</td>
                         <td>
                             <button hx-get="/bills/{{ bill.id }}/edit" hx-target="#bill-row-{{ bill.id }}" hx-swap="outerHTML"
                                     class="gw-action-edit">Edit</button>
@@ -181,5 +172,44 @@
         </div>
     </div>
 </div>
+<script>
+(function() {
+    var currentSort = { key: null, dir: 'asc' };
+
+    window.sortBills = function(key) {
+        var tbody = document.getElementById('bills-table-body');
+        var rows = Array.from(tbody.querySelectorAll('tr[id^="bill-row-"]'));
+
+        if (currentSort.key === key) {
+            currentSort.dir = currentSort.dir === 'asc' ? 'desc' : 'asc';
+        } else {
+            currentSort.key = key;
+            currentSort.dir = 'asc';
+        }
+
+        var colIndex = key === 'amount' ? 2 : 4;
+
+        rows.sort(function(a, b) {
+            var aVal = a.children[colIndex].getAttribute('data-sort-value');
+            var bVal = b.children[colIndex].getAttribute('data-sort-value');
+            var cmp;
+            if (key === 'amount') {
+                cmp = parseFloat(aVal) - parseFloat(bVal);
+            } else {
+                cmp = aVal.localeCompare(bVal);
+            }
+            return currentSort.dir === 'asc' ? cmp : -cmp;
+        });
+
+        rows.forEach(function(row) { tbody.appendChild(row); });
+
+        document.querySelectorAll('.gw-sort-indicator').forEach(function(el) { el.textContent = ''; });
+        var indicator = document.getElementById('sort-indicator-' + key);
+        if (indicator) {
+            indicator.textContent = currentSort.dir === 'asc' ? ' \u25B2' : ' \u25BC';
+        }
+    };
+})();
+</script>
 {% endblock %}
 {% endif %}

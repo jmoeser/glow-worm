@@ -1,9 +1,11 @@
+import re
 from datetime import date, timedelta
 from decimal import Decimal, InvalidOperation
 
+_COLOR_RE = re.compile(r"^#[0-9a-fA-F]{6}$")
+
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import HTMLResponse, JSONResponse
-from fastapi.templating import Jinja2Templates
 from pydantic import ValidationError
 from sqlalchemy.orm import Session
 
@@ -11,9 +13,9 @@ from app.database import get_db
 from app.middleware import get_current_user
 from app.models import RecurringBill, SinkingFund
 from app.schemas import SinkingFundCreate, SinkingFundResponse, SinkingFundUpdate
+from app.templating import templates
 
 router = APIRouter()
-templates = Jinja2Templates(directory="app/templates")
 
 FREQUENCY_ANNUAL_MULTIPLIER = {
     "monthly": 12,
@@ -146,9 +148,9 @@ async def sinking_funds_create(request: Request, db: Session = Depends(get_db)):
             '<p class="text-red-600 text-sm">Name is required.</p>'
         )
 
-    if not color:
+    if not color or not _COLOR_RE.match(color):
         return HTMLResponse(
-            '<p class="text-red-600 text-sm">Color is required.</p>'
+            '<p class="text-red-600 text-sm">A valid hex color (#RRGGBB) is required.</p>'
         )
 
     try:
@@ -207,7 +209,7 @@ async def sinking_funds_update(request: Request, fund_id: int, db: Session = Dep
         fund.name = name
     if description is not None:
         fund.description = description or None
-    if color:
+    if color and _COLOR_RE.match(color):
         fund.color = color
 
     raw_allocation = form.get("monthly_allocation")

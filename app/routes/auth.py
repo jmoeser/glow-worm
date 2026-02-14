@@ -1,14 +1,13 @@
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
-from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 
 from app.auth import verify_password
 from app.database import get_db
 from app.models import User
+from app.templating import templates
 
 router = APIRouter()
-templates = Jinja2Templates(directory="app/templates")
 
 
 @router.get("/login", response_class=HTMLResponse)
@@ -36,13 +35,19 @@ async def login(request: Request, db: Session = Depends(get_db)):
             '<p class="text-red-600 text-sm mb-4">Invalid credentials.</p>'
         )
 
+    request.session.clear()
     request.session["user_id"] = user.id
+    request.session["session_version"] = user.session_version
     response = HTMLResponse("")
     response.headers["HX-Redirect"] = "/"
     return response
 
 
-@router.get("/logout")
+@router.post("/logout")
 async def logout(request: Request):
     request.session.clear()
+    if request.headers.get("hx-request"):
+        response = HTMLResponse("")
+        response.headers["HX-Redirect"] = "/login"
+        return response
     return RedirectResponse(url="/login", status_code=303)

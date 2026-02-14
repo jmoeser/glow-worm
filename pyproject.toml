@@ -3,13 +3,12 @@ name = "glow-worm"
 version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
-requires-python = ">=3.12"
+requires-python = ">=3.14"
 dependencies = [
     "pydantic>=2.0",
     "sqlalchemy>=2.0",
     "python-dotenv>=1.0",
-    "passlib[bcrypt]>=1.7",
-    "bcrypt>=4.0,<5.0",
+    "bcrypt>=4.0",
     "alembic>=1.13",
     "fastapi>=0.115",
     "uvicorn[standard]>=0.32",
@@ -19,6 +18,7 @@ dependencies = [
     "itsdangerous>=2.1",
     "pytz>=2025.2",
     "apscheduler>=3.10,<4.0",
+    "fastmcp>=2.0,<3",
 ]
 
 [project.optional-dependencies]

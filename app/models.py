@@ -23,8 +23,11 @@ class User(Base):
     username: Mapped[str] = mapped_column(String(150), unique=True, nullable=False)
     password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
     email: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    session_version: Mapped[int] = mapped_column(default=0)
     created_at: Mapped[datetime] = mapped_column(default=_utcnow)
     updated_at: Mapped[datetime] = mapped_column(default=_utcnow, onupdate=_utcnow)
+
+    api_keys: Mapped[list["ApiKey"]] = relationship(back_populates="user")
 
 
 class Category(Base):
@@ -155,6 +158,20 @@ class IncomeAllocationToSinkingFund(Base):
         back_populates="sinking_fund_allocations"
     )
     sinking_fund: Mapped["SinkingFund"] = relationship(back_populates="income_allocations")
+
+
+class ApiKey(Base):
+    __tablename__ = "api_keys"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
+    key_hash: Mapped[str] = mapped_column(String(255), nullable=False)
+    name: Mapped[str] = mapped_column(String(100), nullable=False, default="default")
+    created_at: Mapped[datetime] = mapped_column(default=_utcnow)
+    last_used_at: Mapped[datetime | None] = mapped_column(nullable=True)
+    revoked_at: Mapped[datetime | None] = mapped_column(nullable=True)
+
+    user: Mapped["User"] = relationship(back_populates="api_keys")
 
 
 class MonthlyUnallocatedIncome(Base):

@@ -355,7 +355,8 @@ class TestApiFundsCreate:
         )
         assert response.status_code == 422
 
-    def test_403_without_csrf(self, authed_client):
+    def test_api_csrf_exempt(self, authed_client):
+        """API routes are CSRF-exempt (they use Bearer token auth instead)."""
         response = authed_client.post(
             "/api/sinking-funds",
             json={
@@ -364,7 +365,7 @@ class TestApiFundsCreate:
                 "color": "#FF0000",
             },
         )
-        assert response.status_code == 403
+        assert response.status_code == 201
 
 
 class TestApiFundsGet:
@@ -445,7 +446,7 @@ class TestBillsRecommendedAllocation:
         # sample_bills: Rent $2400/monthly + Internet $89/monthly
         # Both monthly => annual = (2400+89)*12 = 29868, recommended = 29868/12 = 2489.00
         response = authed_client.get("/sinking-funds")
-        assert "2489.00" in response.text
+        assert "2,489.00" in response.text
 
 
 class TestBufferWarning:

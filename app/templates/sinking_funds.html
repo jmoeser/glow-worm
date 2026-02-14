@@ -7,12 +7,12 @@
     </td>
     <td class="gw-text-muted">{{ fund.description or "" }}</td>
     <td class="text-right">
-        ${{ "%.2f"|format(fund.monthly_allocation) }}
+        ${{ fund.monthly_allocation|money }}
         {% if fund.name == "Bills" and bills_recommended %}
-        <span class="gw-text-dim" style="font-size: 0.75rem; margin-left: 4px;">Rec: ${{ bills_recommended }}</span>
+        <span class="gw-text-dim" style="font-size: 0.75rem; margin-left: 4px;">Rec: ${{ bills_recommended|money }}</span>
         {% endif %}
     </td>
-    <td class="text-right">${{ "%.2f"|format(fund.current_balance) }}</td>
+    <td class="text-right">${{ fund.current_balance|money }}</td>
     <td>
         <button hx-get="/sinking-funds/{{ fund.id }}/edit" hx-target="#fund-row-{{ fund.id }}" hx-swap="outerHTML"
                 class="gw-action-edit">Edit</button>
@@ -31,12 +31,12 @@
     </td>
     <td class="gw-text-muted">{{ fund.description or "" }}</td>
     <td class="text-right">
-        ${{ "%.2f"|format(fund.monthly_allocation) }}
+        ${{ fund.monthly_allocation|money }}
         {% if fund.name == "Bills" and bills_recommended %}
-        <span class="gw-text-dim" style="font-size: 0.75rem; margin-left: 4px;">Rec: ${{ bills_recommended }}</span>
+        <span class="gw-text-dim" style="font-size: 0.75rem; margin-left: 4px;">Rec: ${{ bills_recommended|money }}</span>
         {% endif %}
     </td>
-    <td class="text-right">${{ "%.2f"|format(fund.current_balance) }}</td>
+    <td class="text-right">${{ fund.current_balance|money }}</td>
     <td>
         <button hx-get="/sinking-funds/{{ fund.id }}/edit" hx-target="#fund-row-{{ fund.id }}" hx-swap="outerHTML"
                 class="gw-action-edit">Edit</button>
@@ -67,7 +67,7 @@
                class="gw-edit-input" style="text-align: right;">
     </td>
     <td class="text-right gw-text-dim">
-        ${{ "%.2f"|format(fund.current_balance) }}
+        ${{ fund.current_balance|money }}
     </td>
     <td>
         <form id="edit-form-{{ fund.id }}" hx-post="/sinking-funds/{{ fund.id }}" hx-target="#fund-row-{{ fund.id }}" hx-swap="outerHTML" style="display: inline;">
@@ -90,7 +90,7 @@
 
     {% if buffer_warning %}
     <div class="gw-warning-banner gw-section">
-        <strong>Buffer Warning:</strong> Your Bills fund balance is less than the ${{ bills_due_30 }} in bills due within the next 30 days.
+        <strong>Buffer Warning:</strong> Your Bills fund balance is less than the ${{ bills_due_30|money }} in bills due within the next 30 days.
     </div>
     {% endif %}
 
@@ -135,11 +135,11 @@
     <div class="gw-summary-bar gw-section">
         <div class="gw-summary-item">
             <span class="gw-summary-label">Total monthly allocation:</span>
-            <span class="gw-summary-value">${{ total_monthly_allocation }}</span>
+            <span class="gw-summary-value">${{ total_monthly_allocation|money }}</span>
         </div>
         <div class="gw-summary-item">
             <span class="gw-summary-label">Total balance:</span>
-            <span class="gw-summary-value">${{ total_balance }}</span>
+            <span class="gw-summary-value">${{ total_balance|money }}</span>
         </div>
     </div>
 
@@ -164,12 +164,12 @@
                         </td>
                         <td class="gw-text-muted">{{ fund.description or "" }}</td>
                         <td class="text-right">
-                            ${{ "%.2f"|format(fund.monthly_allocation) }}
+                            ${{ fund.monthly_allocation|money }}
                             {% if fund.name == "Bills" and bills_recommended %}
-                            <span class="gw-text-dim" style="font-size: 0.75rem; margin-left: 4px;">Rec: ${{ bills_recommended }}</span>
+                            <span class="gw-text-dim" style="font-size: 0.75rem; margin-left: 4px;">Rec: ${{ bills_recommended|money }}</span>
                             {% endif %}
                         </td>
-                        <td class="text-right">${{ "%.2f"|format(fund.current_balance) }}</td>
+                        <td class="text-right">${{ fund.current_balance|money }}</td>
                         <td>
                             <button hx-get="/sinking-funds/{{ fund.id }}/edit" hx-target="#fund-row-{{ fund.id }}" hx-swap="outerHTML"
                                     class="gw-action-edit">Edit</button>

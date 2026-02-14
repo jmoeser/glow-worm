@@ -34,11 +34,6 @@ class TestBillsPageGet:
         assert 'name="name"' in response.text
         assert 'name="amount"' in response.text
 
-    def test_shows_category_dropdown(self, authed_client, sample_category):
-        response = authed_client.get("/bills")
-        assert sample_category.name in response.text
-        assert f'value="{sample_category.id}"' in response.text
-
     def test_unauthenticated_redirects_to_login(self, client):
         response = client.get("/bills", follow_redirects=False)
         assert response.status_code == 303
@@ -54,7 +49,6 @@ class TestBillsPagePost:
                 "debtor_provider": "Energy Co",
                 "amount": "150.00",
                 "frequency": "monthly",
-                "category_id": str(sample_category.id),
                 "start_date": "2026-01-01",
                 "next_due_date": "2026-02-01",
             },
@@ -64,6 +58,7 @@ class TestBillsPagePost:
         bill = db_session.query(RecurringBill).filter(RecurringBill.name == "Power").first()
         assert bill is not None
         assert float(bill.amount) == 150.0
+        assert bill.category_id == sample_category.id
 
     def test_returns_updated_table_body(self, authed_client, sample_category, sample_bills):
         response = authed_client.post(
@@ -73,7 +68,6 @@ class TestBillsPagePost:
                 "debtor_provider": "Water Co",
                 "amount": "60.00",
                 "frequency": "quarterly",
-                "category_id": str(sample_category.id),
                 "start_date": "2026-01-01",
                 "next_due_date": "2026-04-01",
             },
@@ -101,7 +95,6 @@ class TestBillsPagePost:
                 "debtor_provider": "Someone",
                 "amount": "abc",
                 "frequency": "monthly",
-                "category_id": str(sample_category.id),
                 "start_date": "2026-01-01",
                 "next_due_date": "2026-02-01",
             },
@@ -118,7 +111,6 @@ class TestBillsPagePost:
                 "debtor_provider": "Someone",
                 "amount": "100",
                 "frequency": "monthly",
-                "category_id": str(sample_category.id),
                 "start_date": "2026-01-01",
                 "next_due_date": "2026-02-01",
             },
@@ -271,7 +263,8 @@ class TestApiBillsCreate:
         )
         assert response.status_code == 422
 
-    def test_403_without_csrf(self, authed_client, sample_category):
+    def test_api_csrf_exempt(self, authed_client, sample_category):
+        """API routes are CSRF-exempt (they use Bearer token auth instead)."""
         response = authed_client.post(
             "/api/bills",
             json={
@@ -284,7 +277,7 @@ class TestApiBillsCreate:
                 "next_due_date": "2026-02-01",
             },
         )
-        assert response.status_code == 403
+        assert response.status_code == 201
 
 
 class TestApiBillsGet:

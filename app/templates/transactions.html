@@ -5,7 +5,7 @@
     <td class="gw-text-muted" style="white-space: nowrap;">{{ txn.date }}</td>
     <td class="gw-text-muted">{{ txn.description or "" }}</td>
     <td class="text-right" style="font-weight: 600; color: {% if txn.type == 'income' %}var(--positive){% else %}var(--negative){% endif %};">
-        {% if txn.type == 'income' %}+{% else %}-{% endif %}${{ "%.2f"|format(txn.amount) }}
+        {% if txn.type == 'income' %}+{% else %}-{% endif %}${{ txn.amount|money }}
     </td>
     <td>
         <span class="gw-dot" style="background-color: {{ txn.category.color }}"></span>{{ txn.category.name }}
@@ -39,7 +39,7 @@
     <td class="gw-text-muted" style="white-space: nowrap;">{{ txn.date }}</td>
     <td class="gw-text-muted">{{ txn.description or "" }}</td>
     <td class="text-right" style="font-weight: 600; color: {% if txn.type == 'income' %}var(--positive){% else %}var(--negative){% endif %};">
-        {% if txn.type == 'income' %}+{% else %}-{% endif %}${{ "%.2f"|format(txn.amount) }}
+        {% if txn.type == 'income' %}+{% else %}-{% endif %}${{ txn.amount|money }}
     </td>
     <td>
         <span class="gw-dot" style="background-color: {{ txn.category.color }}"></span>{{ txn.category.name }}
@@ -254,15 +254,15 @@
     <div class="gw-summary-bar gw-section">
         <div class="gw-summary-item">
             <span class="gw-summary-label">Income:</span>
-            <span class="gw-summary-value gw-text-positive">${{ total_income }}</span>
+            <span class="gw-summary-value gw-text-positive">${{ total_income|money }}</span>
         </div>
         <div class="gw-summary-item">
             <span class="gw-summary-label">Expenses:</span>
-            <span class="gw-summary-value gw-text-negative">${{ total_expenses }}</span>
+            <span class="gw-summary-value gw-text-negative">${{ total_expenses|money }}</span>
         </div>
         <div class="gw-summary-item">
             <span class="gw-summary-label">Net:</span>
-            <span class="gw-summary-value" style="color: {% if net < 0 %}var(--negative){% else %}var(--positive){% endif %};">${{ net }}</span>
+            <span class="gw-summary-value" style="color: {% if net < 0 %}var(--negative){% else %}var(--positive){% endif %};">${{ net|money }}</span>
         </div>
     </div>
 
@@ -288,7 +288,7 @@
                         <td class="gw-text-muted" style="white-space: nowrap;">{{ txn.date }}</td>
                         <td class="gw-text-muted">{{ txn.description or "" }}</td>
                         <td class="text-right" style="font-weight: 600; color: {% if txn.type == 'income' %}var(--positive){% else %}var(--negative){% endif %};">
-                            {% if txn.type == 'income' %}+{% else %}-{% endif %}${{ "%.2f"|format(txn.amount) }}
+                            {% if txn.type == 'income' %}+{% else %}-{% endif %}${{ txn.amount|money }}
                         </td>
                         <td>
                             <span class="gw-dot" style="background-color: {{ txn.category.color }}"></span>{{ txn.category.name }}

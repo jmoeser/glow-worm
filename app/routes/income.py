@@ -1,9 +1,7 @@
-import json
 from decimal import Decimal, InvalidOperation
 
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import HTMLResponse, JSONResponse
-from fastapi.templating import Jinja2Templates
 from pydantic import ValidationError
 from sqlalchemy.orm import Session
 
@@ -11,9 +9,9 @@ from app.database import get_db
 from app.middleware import get_current_user
 from app.models import IncomeAllocation, IncomeAllocationToSinkingFund, SinkingFund
 from app.schemas import IncomeAllocationCreate, IncomeAllocationResponse
+from app.templating import templates
 
 router = APIRouter()
-templates = Jinja2Templates(directory="app/templates")
 
 
 def _upsert_allocation(
@@ -77,10 +75,10 @@ async def income_page(request: Request, db: Session = Depends(get_db)):
         for junction in allocation.sinking_fund_allocations:
             fund_allocation_map[junction.sinking_fund_id] = float(junction.allocation_amount)
 
-    sinking_funds_json = json.dumps([
+    sinking_funds_data = [
         {"id": f.id, "name": f.name, "color": f.color}
         for f in sinking_funds
-    ])
+    ]
 
     return templates.TemplateResponse(
         request,
@@ -90,7 +88,7 @@ async def income_page(request: Request, db: Session = Depends(get_db)):
             "allocation": allocation,
             "sinking_funds": sinking_funds,
             "fund_allocation_map": fund_allocation_map,
-            "sinking_funds_json": sinking_funds_json,
+            "sinking_funds_data": sinking_funds_data,
         },
     )
 

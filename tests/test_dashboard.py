@@ -31,9 +31,9 @@ class TestDashboardPageGet:
     def test_financial_summary_with_data(self, authed_client, sample_transactions):
         response = authed_client.get("/?month=1&year=2026")
         assert response.status_code == 200
-        assert "5000.00" in response.text  # income
+        assert "5,000.00" in response.text  # income
         assert "75.50" in response.text    # expense
-        assert "4924.50" in response.text  # net
+        assert "4,924.50" in response.text  # net
 
     def test_budget_overview(self, authed_client, sample_budgets):
         month, year = _current_month_year()

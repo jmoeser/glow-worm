@@ -6,16 +6,15 @@ from decimal import Decimal, InvalidOperation
 import pytz
 from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import HTMLResponse, JSONResponse
-from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session, joinedload
 
 from app.database import get_db
 from app.middleware import get_current_user
 from app.models import Budget, MonthlyUnallocatedIncome, SinkingFund, Transaction
 from app.schemas import DashboardSummary, SinkingFundResponse, TransactionResponse
+from app.templating import templates
 
 router = APIRouter()
-templates = Jinja2Templates(directory="app/templates")
 
 BRISBANE = pytz.timezone("Australia/Brisbane")
 

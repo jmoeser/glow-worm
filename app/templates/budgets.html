@@ -5,12 +5,12 @@
     <td>
         <span class="gw-dot" style="background-color: {{ budget.category.color }}"></span>{{ budget.category.name }}
     </td>
-    <td class="text-right">${{ "%.2f"|format(budget.allocated_amount) }}</td>
-    <td class="text-right">${{ "%.2f"|format(budget.spent_amount) }}</td>
+    <td class="text-right">${{ budget.allocated_amount|money }}</td>
+    <td class="text-right">${{ budget.spent_amount|money }}</td>
     <td class="text-right" style="color: {% if budget.allocated_amount - budget.spent_amount < 0 %}var(--negative){% else %}var(--positive){% endif %}; font-weight: 600;">
-        ${{ "%.2f"|format(budget.allocated_amount - budget.spent_amount) }}
+        ${{ (budget.allocated_amount - budget.spent_amount)|money }}
     </td>
-    <td class="text-right">${{ "%.2f"|format(budget.fund_balance) }}</td>
+    <td class="text-right">${{ budget.fund_balance|money }}</td>
     <td>
         <button hx-get="/budgets/{{ budget.id }}/edit" hx-target="#budget-row-{{ budget.id }}" hx-swap="outerHTML"
                 class="gw-action-edit">Edit</button>
@@ -27,12 +27,12 @@
     <td>
         <span class="gw-dot" style="background-color: {{ budget.category.color }}"></span>{{ budget.category.name }}
     </td>
-    <td class="text-right">${{ "%.2f"|format(budget.allocated_amount) }}</td>
-    <td class="text-right">${{ "%.2f"|format(budget.spent_amount) }}</td>
+    <td class="text-right">${{ budget.allocated_amount|money }}</td>
+    <td class="text-right">${{ budget.spent_amount|money }}</td>
     <td class="text-right" style="color: {% if budget.allocated_amount - budget.spent_amount < 0 %}var(--negative){% else %}var(--positive){% endif %}; font-weight: 600;">
-        ${{ "%.2f"|format(budget.allocated_amount - budget.spent_amount) }}
+        ${{ (budget.allocated_amount - budget.spent_amount)|money }}
     </td>
-    <td class="text-right">${{ "%.2f"|format(budget.fund_balance) }}</td>
+    <td class="text-right">${{ budget.fund_balance|money }}</td>
     <td>
         <button hx-get="/budgets/{{ budget.id }}/edit" hx-target="#budget-row-{{ budget.id }}" hx-swap="outerHTML"
                 class="gw-action-edit">Edit</button>
@@ -53,9 +53,9 @@
                form="edit-form-{{ budget.id }}"
                class="gw-edit-input" style="text-align: right;">
     </td>
-    <td class="text-right gw-text-dim">${{ "%.2f"|format(budget.spent_amount) }}</td>
-    <td class="text-right gw-text-dim">${{ "%.2f"|format(budget.allocated_amount - budget.spent_amount) }}</td>
-    <td class="text-right gw-text-dim">${{ "%.2f"|format(budget.fund_balance) }}</td>
+    <td class="text-right gw-text-dim">${{ budget.spent_amount|money }}</td>
+    <td class="text-right gw-text-dim">${{ (budget.allocated_amount - budget.spent_amount)|money }}</td>
+    <td class="text-right gw-text-dim">${{ budget.fund_balance|money }}</td>
     <td>
         <form id="edit-form-{{ budget.id }}" hx-post="/budgets/{{ budget.id }}" hx-target="#budget-row-{{ budget.id }}" hx-swap="outerHTML" style="display: inline;">
             <button type="submit" class="gw-btn gw-btn-success gw-btn-sm">Save</button>
@@ -114,15 +114,15 @@
     <div class="gw-summary-bar gw-section">
         <div class="gw-summary-item">
             <span class="gw-summary-label">Total allocated:</span>
-            <span class="gw-summary-value">${{ total_allocated }}</span>
+            <span class="gw-summary-value">${{ total_allocated|money }}</span>
         </div>
         <div class="gw-summary-item">
             <span class="gw-summary-label">Total spent:</span>
-            <span class="gw-summary-value">${{ total_spent }}</span>
+            <span class="gw-summary-value">${{ total_spent|money }}</span>
         </div>
         <div class="gw-summary-item">
             <span class="gw-summary-label">Remaining:</span>
-            <span class="gw-summary-value" style="color: {% if total_remaining < 0 %}var(--negative){% else %}var(--positive){% endif %};">${{ total_remaining }}</span>
+            <span class="gw-summary-value" style="color: {% if total_remaining < 0 %}var(--negative){% else %}var(--positive){% endif %};">${{ total_remaining|money }}</span>
         </div>
     </div>
 
@@ -146,12 +146,12 @@
                         <td>
                             <span class="gw-dot" style="background-color: {{ budget.category.color }}"></span>{{ budget.category.name }}
                         </td>
-                        <td class="text-right">${{ "%.2f"|format(budget.allocated_amount) }}</td>
-                        <td class="text-right">${{ "%.2f"|format(budget.spent_amount) }}</td>
+                        <td class="text-right">${{ budget.allocated_amount|money }}</td>
+                        <td class="text-right">${{ budget.spent_amount|money }}</td>
                         <td class="text-right" style="color: {% if budget.allocated_amount - budget.spent_amount < 0 %}var(--negative){% else %}var(--positive){% endif %}; font-weight: 600;">
-                            ${{ "%.2f"|format(budget.allocated_amount - budget.spent_amount) }}
+                            ${{ (budget.allocated_amount - budget.spent_amount)|money }}
                         </td>
-                        <td class="text-right">${{ "%.2f"|format(budget.fund_balance) }}</td>
+                        <td class="text-right">${{ budget.fund_balance|money }}</td>
                         <td>
                             <button hx-get="/budgets/{{ budget.id }}/edit" hx-target="#budget-row-{{ budget.id }}" hx-swap="outerHTML"
                                     class="gw-action-edit">Edit</button>

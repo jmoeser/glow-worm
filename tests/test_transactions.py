@@ -50,9 +50,9 @@ class TestTransactionsPageGet:
     def test_summary_totals(self, authed_client, sample_transactions):
         response = authed_client.get("/transactions?month=1&year=2026")
         assert response.status_code == 200
-        assert "5000.00" in response.text  # income
+        assert "5,000.00" in response.text  # income
         assert "75.50" in response.text    # expense
-        assert "4924.50" in response.text  # net
+        assert "4,924.50" in response.text  # net
 
     def test_unauthenticated_redirects_to_login(self, client):
         response = client.get("/transactions", follow_redirects=False)
@@ -354,7 +354,8 @@ class TestApiTransactionsCreate:
         )
         assert response.status_code == 422
 
-    def test_403_without_csrf(self, authed_client, sample_category):
+    def test_api_csrf_exempt(self, authed_client, sample_category):
+        """API routes are CSRF-exempt (they use Bearer token auth instead)."""
         response = authed_client.post(
             "/api/transactions",
             json={
@@ -364,7 +365,7 @@ class TestApiTransactionsCreate:
                 "type": "expense",
             },
         )
-        assert response.status_code == 403
+        assert response.status_code == 201
 
 
 class TestApiTransactionsGet:
