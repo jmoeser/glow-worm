@@ -12,7 +12,6 @@ tests/
 htmlcov/
 .coverage
 *.md
-CLAUDE.md
-PROMPT.md
+!README.md
 Dockerfile
 .dockerignore
