@@ -14,6 +14,8 @@ A single-tenant household budgeting app. This is a Python/FastAPI project using:
 - **Run All Tests**: `uv run pytest`
 - **Run Specific Test**: `uv run pytest tests/test_filename.py`
 - **Coverage Report**: `uv run pytest --cov=app --cov-report=html`
+- **Build container**: `container build --tag test --file Dockerfile .`
+- **Run container**: `container run --name test --rm test`
 
 ## Architecture & Money Flow
 The app manages four distinct, separated systems:
