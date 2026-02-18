@@ -4,7 +4,7 @@ FROM python:3.14-slim AS builder
 # Install uv for fast, reproducible dependency resolution
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 
-WORKDIR /build
+WORKDIR /app
 
 # Copy only dependency files first (layer caching)
 COPY pyproject.toml uv.lock README.md ./
@@ -25,16 +25,17 @@ RUN uv sync --frozen --no-dev
 # ---------- runtime stage ----------
 FROM python:3.14-slim
 
-RUN groupadd --system appuser && useradd --system --gid appuser --no-create-home appuser
+RUN groupadd --system appuser && useradd --system --gid appuser --no-create-home appuser && \
+    mkdir -p /data && chown appuser:appuser /data
 
 WORKDIR /app
 
 # Copy the virtual env and source from the builder
-COPY --from=builder /build/.venv /app/.venv
-COPY --from=builder /build/app app/
-COPY --from=builder /build/alembic alembic/
-COPY --from=builder /build/alembic.ini ./
-COPY --from=builder /build/scripts scripts/
+COPY --from=builder /app/.venv /app/.venv
+COPY --from=builder /app/app app/
+COPY --from=builder /app/alembic alembic/
+COPY --from=builder /app/alembic.ini ./
+COPY --from=builder /app/scripts scripts/
 
 ENV PATH="/app/.venv/bin:$PATH" \
     PYTHONDONTWRITEBYTECODE=1 \
