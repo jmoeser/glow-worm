@@ -331,6 +331,10 @@ def process_due_bills(db: Session | None = None) -> None:
 
         processed = 0
         for bill in due_bills:
+            # Skip variable bills — they require manual payment
+            if getattr(bill, 'bill_type', 'fixed') == 'variable':
+                continue
+
             # Idempotency: skip if already paid today for this bill
             existing = (
                 db.query(Transaction)

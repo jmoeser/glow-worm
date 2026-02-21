@@ -7,6 +7,7 @@ from app.database import Base
 from app.schemas import (
     BillFrequency,
     BillsAllocationMethod,
+    BillType,
     CategoryType,
     TransactionType,
 )
@@ -76,6 +77,7 @@ class RecurringBill(Base):
     category_id: Mapped[int] = mapped_column(ForeignKey("categories.id"), nullable=False)
     end_date: Mapped[str | None] = mapped_column(String(10), nullable=True)
     is_active: Mapped[bool] = mapped_column(default=True)
+    bill_type: Mapped[str] = mapped_column(String(10), nullable=False, default="fixed")
     next_due_date: Mapped[str] = mapped_column(String(10), nullable=False)
     created_at: Mapped[datetime] = mapped_column(default=_utcnow)
     updated_at: Mapped[datetime] = mapped_column(default=_utcnow, onupdate=_utcnow)

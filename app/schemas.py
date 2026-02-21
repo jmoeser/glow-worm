@@ -34,6 +34,11 @@ class BillsAllocationMethod(str, Enum):
     fixed = "fixed"
 
 
+class BillType(str, Enum):
+    fixed = "fixed"
+    variable = "variable"
+
+
 # --- User Schemas ---
 
 class UserCreate(BaseModel):
@@ -204,6 +209,7 @@ class RecurringBillCreate(BaseModel):
     end_date: str | None = Field(None, pattern=r"^\d{4}-\d{2}-\d{2}$")
     is_active: bool = True
     next_due_date: str = Field(..., pattern=r"^\d{4}-\d{2}-\d{2}$")
+    bill_type: BillType = BillType.fixed
 
 
 class RecurringBillUpdate(BaseModel):
@@ -214,6 +220,7 @@ class RecurringBillUpdate(BaseModel):
     end_date: str | None = Field(None, pattern=r"^\d{4}-\d{2}-\d{2}$")
     is_active: bool | None = None
     next_due_date: str | None = Field(None, pattern=r"^\d{4}-\d{2}-\d{2}$")
+    bill_type: BillType | None = None
 
 
 class RecurringBillResponse(BaseModel):
@@ -228,9 +235,15 @@ class RecurringBillResponse(BaseModel):
     category_id: int
     end_date: str | None = None
     is_active: bool
+    bill_type: str
     next_due_date: str
     created_at: datetime
     updated_at: datetime
+
+
+class RecurringBillPay(BaseModel):
+    amount: Decimal = Field(..., gt=0)
+    date: str = Field(..., pattern=r"^\d{4}-\d{2}-\d{2}$")
 
 
 # --- Income Allocation Schemas ---

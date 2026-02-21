@@ -6,8 +6,19 @@
     <td class="gw-text-muted">{{ bill.debtor_provider }}</td>
     <td class="text-right" data-sort-value="{{ bill.amount }}">${{ bill.amount|money }}</td>
     <td class="gw-text-muted">{{ frequency_labels.get(bill.frequency, bill.frequency) }}</td>
+    <td>
+        {% if bill.bill_type == "variable" %}
+        <span class="gw-badge-variable">Variable</span>
+        {% else %}
+        <span class="gw-text-muted">Fixed</span>
+        {% endif %}
+    </td>
     <td class="gw-text-muted" data-sort-value="{{ bill.next_due_date }}">{{ bill.next_due_date }}</td>
     <td>
+        {% if bill.bill_type == "variable" %}
+        <button hx-get="/bills/{{ bill.id }}/pay" hx-target="#bill-row-{{ bill.id }}" hx-swap="outerHTML"
+                class="gw-action-pay">Pay</button>
+        {% endif %}
         <button hx-get="/bills/{{ bill.id }}/edit" hx-target="#bill-row-{{ bill.id }}" hx-swap="outerHTML"
                 class="gw-action-edit">Edit</button>
         <button hx-delete="/bills/{{ bill.id }}" hx-target="#bill-row-{{ bill.id }}" hx-swap="delete"
@@ -24,8 +35,19 @@
     <td class="gw-text-muted">{{ bill.debtor_provider }}</td>
     <td class="text-right" data-sort-value="{{ bill.amount }}">${{ bill.amount|money }}</td>
     <td class="gw-text-muted">{{ frequency_labels.get(bill.frequency, bill.frequency) }}</td>
+    <td>
+        {% if bill.bill_type == "variable" %}
+        <span class="gw-badge-variable">Variable</span>
+        {% else %}
+        <span class="gw-text-muted">Fixed</span>
+        {% endif %}
+    </td>
     <td class="gw-text-muted" data-sort-value="{{ bill.next_due_date }}">{{ bill.next_due_date }}</td>
     <td>
+        {% if bill.bill_type == "variable" %}
+        <button hx-get="/bills/{{ bill.id }}/pay" hx-target="#bill-row-{{ bill.id }}" hx-swap="outerHTML"
+                class="gw-action-pay">Pay</button>
+        {% endif %}
         <button hx-get="/bills/{{ bill.id }}/edit" hx-target="#bill-row-{{ bill.id }}" hx-swap="outerHTML"
                 class="gw-action-edit">Edit</button>
         <button hx-delete="/bills/{{ bill.id }}" hx-target="#bill-row-{{ bill.id }}" hx-swap="delete"
@@ -58,6 +80,12 @@
         </select>
     </td>
     <td>
+        <select name="bill_type" form="edit-form-{{ bill.id }}" class="gw-edit-input">
+            <option value="fixed" {{ 'selected' if bill.bill_type == 'fixed' }}>Fixed</option>
+            <option value="variable" {{ 'selected' if bill.bill_type == 'variable' }}>Variable</option>
+        </select>
+    </td>
+    <td>
         <input type="date" name="next_due_date" value="{{ bill.next_due_date }}" form="edit-form-{{ bill.id }}"
                class="gw-edit-input">
     </td>
@@ -70,11 +98,61 @@
     </td>
 </tr>
 
+{% elif fragment == "pay_row" %}
+{# --- Partial: inline pay row for variable bills --- #}
+<tr class="gw-edit-row" id="bill-row-{{ bill.id }}">
+    <td>{{ bill.name }}</td>
+    <td class="gw-text-muted">{{ bill.debtor_provider }}</td>
+    <td>
+        <input type="number" name="amount" value="{{ "%.2f"|format(bill.amount) }}" step="0.01" min="0.01"
+               form="pay-form-{{ bill.id }}"
+               class="gw-edit-input" style="text-align: right;" required>
+    </td>
+    <td class="gw-text-muted">{{ frequency_labels.get(bill.frequency, bill.frequency) }}</td>
+    <td><span class="gw-badge-variable">Variable</span></td>
+    <td>
+        <input type="date" name="date" value="{{ today }}" form="pay-form-{{ bill.id }}"
+               class="gw-edit-input" required>
+    </td>
+    <td>
+        <form id="pay-form-{{ bill.id }}" hx-post="/bills/{{ bill.id }}/pay" hx-target="#bill-row-{{ bill.id }}" hx-swap="outerHTML" style="display: inline;">
+            <button type="submit" class="gw-btn gw-btn-success gw-btn-sm">Record Payment</button>
+        </form>
+        <button class="gw-btn gw-btn-ghost gw-btn-sm"
+                hx-get="/bills/{{ bill.id }}" hx-target="#bill-row-{{ bill.id }}" hx-swap="outerHTML">Cancel</button>
+    </td>
+</tr>
+
 {% else %}
 {# --- Full page --- #}
 {% extends "base.html" %}
 {% block title %}Recurring Bills — Glow Worm{% endblock %}
 {% block content %}
+<style>
+.gw-badge-variable {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 0.75rem;
+    font-style: italic;
+    background-color: #dbeafe;
+    color: #1d4ed8;
+}
+.gw-action-pay {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 0.75rem;
+    background-color: #dcfce7;
+    color: #15803d;
+    border: 1px solid #bbf7d0;
+    cursor: pointer;
+    margin-right: 4px;
+}
+.gw-action-pay:hover {
+    background-color: #bbf7d0;
+}
+</style>
 <div style="max-width: 1100px;">
     <h2 class="gw-page-header">Recurring Bills</h2>
 
@@ -100,6 +178,14 @@
                 <label for="bill-amount" class="gw-label">Amount</label>
                 <input type="number" id="bill-amount" name="amount" step="0.01" min="0.01" required
                        class="gw-input" placeholder="0.00">
+                <p class="gw-text-muted" style="font-size: 0.75rem; margin-top: 4px;">For variable bills, enter your monthly estimate.</p>
+            </div>
+            <div>
+                <label for="bill-type" class="gw-label">Bill Type</label>
+                <select id="bill-type" name="bill_type" class="gw-select">
+                    <option value="fixed">Fixed</option>
+                    <option value="variable">Variable</option>
+                </select>
             </div>
             <div>
                 <label for="bill-frequency" class="gw-label">Frequency</label>
@@ -146,6 +232,7 @@
                         <th>Provider</th>
                         <th class="text-right gw-sortable" onclick="sortBills('amount')">Amount <span class="gw-sort-indicator" id="sort-indicator-amount"></span></th>
                         <th>Frequency</th>
+                        <th>Type</th>
                         <th class="gw-sortable" onclick="sortBills('next_due_date')">Next Due <span class="gw-sort-indicator" id="sort-indicator-next_due_date"></span></th>
                         <th>Actions</th>
                     </tr>
@@ -157,8 +244,19 @@
                         <td class="gw-text-muted">{{ bill.debtor_provider }}</td>
                         <td class="text-right" data-sort-value="{{ bill.amount }}">${{ bill.amount|money }}</td>
                         <td class="gw-text-muted">{{ frequency_labels.get(bill.frequency, bill.frequency) }}</td>
+                        <td>
+                            {% if bill.bill_type == "variable" %}
+                            <span class="gw-badge-variable">Variable</span>
+                            {% else %}
+                            <span class="gw-text-muted">Fixed</span>
+                            {% endif %}
+                        </td>
                         <td class="gw-text-muted" data-sort-value="{{ bill.next_due_date }}">{{ bill.next_due_date }}</td>
                         <td>
+                            {% if bill.bill_type == "variable" %}
+                            <button hx-get="/bills/{{ bill.id }}/pay" hx-target="#bill-row-{{ bill.id }}" hx-swap="outerHTML"
+                                    class="gw-action-pay">Pay</button>
+                            {% endif %}
                             <button hx-get="/bills/{{ bill.id }}/edit" hx-target="#bill-row-{{ bill.id }}" hx-swap="outerHTML"
                                     class="gw-action-edit">Edit</button>
                             <button hx-delete="/bills/{{ bill.id }}" hx-target="#bill-row-{{ bill.id }}" hx-swap="delete"
@@ -187,7 +285,7 @@
             currentSort.dir = 'asc';
         }
 
-        var colIndex = key === 'amount' ? 2 : 4;
+        var colIndex = key === 'amount' ? 2 : 5;
 
         rows.sort(function(a, b) {
             var aVal = a.children[colIndex].getAttribute('data-sort-value');
