@@ -43,7 +43,11 @@ def _upsert_allocation(
         allocation.monthly_income_amount = float(monthly_income_amount)
         allocation.monthly_budget_allocation = float(monthly_budget_allocation)
         allocation.bills_fund_allocation_type = bills_fund_allocation_type
-        allocation.bills_fund_fixed_amount = float(bills_fund_fixed_amount) if bills_fund_fixed_amount is not None else None
+        allocation.bills_fund_fixed_amount = (
+            float(bills_fund_fixed_amount)
+            if bills_fund_fixed_amount is not None
+            else None
+        )
         # Delete existing junction rows
         db.query(IncomeAllocationToSinkingFund).filter(
             IncomeAllocationToSinkingFund.income_allocation_id == allocation.id
@@ -112,12 +116,16 @@ async def income_save(request: Request, db: Session = Depends(get_db)):
 
     # Parse budget allocation
     try:
-        monthly_budget_allocation = Decimal(str(form.get("monthly_budget_allocation") or "0"))
+        monthly_budget_allocation = Decimal(
+            str(form.get("monthly_budget_allocation") or "0")
+        )
     except InvalidOperation, TypeError:
         monthly_budget_allocation = Decimal("0")
 
     # Parse bills fund allocation type
-    bills_fund_allocation_type = str(form.get("bills_fund_allocation_type") or "recommended")
+    bills_fund_allocation_type = str(
+        form.get("bills_fund_allocation_type") or "recommended"
+    )
     bills_fund_fixed_amount = None
 
     if bills_fund_allocation_type == "fixed":

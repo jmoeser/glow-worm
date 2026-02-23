@@ -25,7 +25,9 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = [
+    "detect-secrets>=1.5",
     "mypy>=1.19.1",
+    "pre-commit>=4.0",
     "pytest>=8.0",
     "pytest-cov>=5.0",
     "respx>=0.21",
@@ -47,4 +49,3 @@ packages = ["app"]
 python_version = "3.14"
 ignore_missing_imports = true
 plugins = ["pydantic.mypy"]
-

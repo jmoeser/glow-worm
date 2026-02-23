@@ -113,7 +113,11 @@ def _render_fund_row(
         templates.TemplateResponse(
             request,
             "sinking_funds.html",
-            {"fund": fund, "bills_recommended": bills_recommended, "fragment": "fund_row"},
+            {
+                "fund": fund,
+                "bills_recommended": bills_recommended,
+                "fragment": "fund_row",
+            },
         ).body
     ).decode()
 

@@ -24,7 +24,11 @@ def _render_table_body(request: Request, db: Session) -> str:
         templates.TemplateResponse(
             request,
             "users.html",
-            {"users": users, "current_user_id": current_user.id, "fragment": "table_body"},
+            {
+                "users": users,
+                "current_user_id": current_user.id,
+                "fragment": "table_body",
+            },
         ).body
     ).decode()
 

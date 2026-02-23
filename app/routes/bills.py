@@ -90,7 +90,11 @@ def _render_bill_row(request: Request, bill: RecurringBill) -> str:
         templates.TemplateResponse(
             request,
             "bills.html",
-            {"bill": bill, "frequency_labels": FREQUENCY_LABELS, "fragment": "bill_row"},
+            {
+                "bill": bill,
+                "frequency_labels": FREQUENCY_LABELS,
+                "fragment": "bill_row",
+            },
         ).body
     ).decode()
 
@@ -150,7 +154,9 @@ def _record_bill_payment(
     )
     db.add(txn)
 
-    bills_fund.current_balance = float(Decimal(str(bills_fund.current_balance)) - amount)
+    bills_fund.current_balance = float(
+        Decimal(str(bills_fund.current_balance)) - amount
+    )
 
     current_due = date.fromisoformat(bill.next_due_date)
     bill.next_due_date = advance_due_date(current_due, bill.frequency).isoformat()

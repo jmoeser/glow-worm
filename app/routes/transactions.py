@@ -292,8 +292,12 @@ async def transactions_create(request: Request, db: Session = Depends(get_db)):
     raw_sf = form.get("sinking_fund_id")
     raw_rb = form.get("recurring_bill_id")
     raw_bid = form.get("budget_id")
-    sinking_fund_id = _parse_optional_int(str(raw_sf) if isinstance(raw_sf, str) else None)
-    recurring_bill_id = _parse_optional_int(str(raw_rb) if isinstance(raw_rb, str) else None)
+    sinking_fund_id = _parse_optional_int(
+        str(raw_sf) if isinstance(raw_sf, str) else None
+    )
+    recurring_bill_id = _parse_optional_int(
+        str(raw_rb) if isinstance(raw_rb, str) else None
+    )
     budget_id = _parse_optional_int(str(raw_bid) if isinstance(raw_bid, str) else None)
     is_paid = form.get("is_paid") == "on" or form.get("is_paid") == "true"
 
@@ -396,13 +400,19 @@ async def transactions_update(
     # Optional FK fields — allow clearing by setting to empty string
     if "sinking_fund_id" in form:
         raw_sf = form.get("sinking_fund_id")
-        txn.sinking_fund_id = _parse_optional_int(str(raw_sf) if isinstance(raw_sf, str) else None)
+        txn.sinking_fund_id = _parse_optional_int(
+            str(raw_sf) if isinstance(raw_sf, str) else None
+        )
     if "recurring_bill_id" in form:
         raw_rb = form.get("recurring_bill_id")
-        txn.recurring_bill_id = _parse_optional_int(str(raw_rb) if isinstance(raw_rb, str) else None)
+        txn.recurring_bill_id = _parse_optional_int(
+            str(raw_rb) if isinstance(raw_rb, str) else None
+        )
     if "budget_id" in form:
         raw_bid = form.get("budget_id")
-        txn.budget_id = _parse_optional_int(str(raw_bid) if isinstance(raw_bid, str) else None)
+        txn.budget_id = _parse_optional_int(
+            str(raw_bid) if isinstance(raw_bid, str) else None
+        )
 
     if "is_paid" in form:
         txn.is_paid = form.get("is_paid") == "on" or form.get("is_paid") == "true"
