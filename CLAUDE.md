@@ -16,6 +16,8 @@ A single-tenant household budgeting app. This is a Python/FastAPI project using:
 - **Coverage Report**: `uv run pytest --cov=app --cov-report=html`
 - **Build container**: `container build --tag test --file Dockerfile .`
 - **Run container**: `container run --name test --rm -e SECRET_KEY=$(python3 -c "import secrets; print(secrets.token_urlsafe(48))") test`
+- **Run CLI (dev)**: `uv run glow --help`
+- **Install CLI via pipx**: `pipx install .`
 
 ## Architecture & Money Flow
 The app manages four distinct, separated systems:
@@ -58,6 +60,16 @@ Middleware execution order (outermost to innermost): CORS (optional) → Session
 - When modifying Pydantic models or API responses, ensure all values are JSON-serializable. Specifically, convert Decimal objects to float before returning them in responses or error payloads.
 - FastMCP 2.x `@mcp.tool()` wraps functions into `FunctionTool` objects, not plain callables. Use `.fn` to access the underlying function for testing.
 - SQLite needs batch mode (`render_as_batch=True`) for ALTER TABLE operations in Alembic migrations.
+
+## CLI (`glow`)
+- Entry point: `glow = "app.cli.main:app"` (defined in `[project.scripts]`).
+- Package lives in `app/cli/`: `main.py` (Typer app), `config.py` (config file), `client.py` (httpx wrapper), `commands/` (one module per subcommand group).
+- Config stored at `~/.config/glow-worm/config.toml` with `url` and `api_key` keys. Read via stdlib `tomllib`; written manually (no extra dep).
+- Auth: reads `api_key` from config, sends `Authorization: Bearer <key>` on every request.
+- `print_json()` helper in `client.py` — use for `--json` output, handles non-serialisable types via `default=str`.
+- All commands accept `--json` to output raw API response instead of rich tables.
+- Tests in `tests/test_cli.py`: use `typer.testing.CliRunner` + `respx` to mock httpx; patch `app.cli.client.require_config` for HTTP tests, patch `app.cli.config.CONFIG_FILE` / `CONFIG_DIR` for config file tests.
+- Subcommands: `config` (set-url, set-key, show), `dashboard`, `tx` (list, add, delete), `bills` (list, pay, add, delete), `funds` (list, add, delete), `budgets` (list, add, delete).
 
 ## MCP Server
 - Full MCP server implemented with **FastMCP 2.x**, mounted at `/mcp` via SSE transport.

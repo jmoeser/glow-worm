@@ -12,6 +12,7 @@ An opinionated, single-tenant household budgeting app built with Python and Fast
 - **Dashboard** -- At-a-glance view of your budget status, upcoming bills, fund balances, and unallocated income.
 - **MCP Server** -- Built-in [Model Context Protocol](https://modelcontextprotocol.io/) server so AI agents can manage your transactions and bills programmatically.
 - **API Keys** -- Generate Bearer tokens for API and MCP access, managed from the web UI.
+- **CLI (`glow`)** -- A `pipx`-installable command-line tool for managing transactions, bills, budgets, and sinking funds from the terminal.
 
 ## Tech Stack
 
@@ -175,6 +176,79 @@ Example Claude Desktop configuration (`claude_desktop_config.json`):
 }
 ```
 
+## CLI (`glow`)
+
+Glow-worm ships a `glow` CLI that talks to a running server over HTTP using an API key.
+
+### Installation
+
+Install with [pipx](https://pipx.pypa.io/) so it gets its own isolated environment:
+
+```bash
+pipx install git+https://github.com/jmoeser/glow-worm.git
+```
+
+Or, if you have the repo cloned locally:
+
+```bash
+pipx install .
+```
+
+### Setup
+
+1. **Generate an API key** from the web UI at `/api-keys` (or via `POST /api/keys`). The plaintext key is shown only once — copy it.
+
+2. **Configure the CLI:**
+
+   ```bash
+   glow config set-url http://localhost:8000
+   glow config set-key <your-api-key>
+   ```
+
+   Config is saved to `~/.config/glow-worm/config.toml`. Verify with:
+
+   ```bash
+   glow config show
+   ```
+
+### Commands
+
+| Command | Description |
+|---------|-------------|
+| `glow dashboard` | Budget summary, fund balances, recent transactions |
+| `glow tx list` | List transactions for the current month |
+| `glow tx add` | Add a new transaction (prompts for required fields) |
+| `glow tx delete <id>` | Delete a transaction |
+| `glow bills list` | List all active recurring bills |
+| `glow bills pay <id>` | Record payment for a bill |
+| `glow bills add` | Create a new recurring bill |
+| `glow bills delete <id>` | Deactivate a recurring bill |
+| `glow funds list` | List sinking funds with balances |
+| `glow funds add` | Create a new sinking fund |
+| `glow funds delete <id>` | Soft-delete a sinking fund |
+| `glow budgets list` | List budgets for the current month |
+| `glow budgets add` | Create a new budget entry |
+| `glow budgets delete <id>` | Delete a budget entry |
+
+All commands support `--help`. Pass `--month` / `--year` to `dashboard`, `tx list`, and `budgets list` to view other months.
+
+### JSON Output
+
+Every command accepts `--json` to output raw JSON instead of formatted tables — useful for scripting:
+
+```bash
+# Pipe to jq
+glow bills list --json | jq '.[] | {name, next_due_date, amount}'
+
+# View this month's transactions as JSON
+glow tx list --json
+
+# Dashboard summary as JSON
+glow dashboard --json | jq '{net_worth: .total_net_worth}'
+```
+
+Deletion and mutation commands also return the API response body as JSON when `--json` is set.
+
 ## Development
 
 ### Running Tests
@@ -206,15 +280,20 @@ glow-worm/
 │   ├── schemas.py         # Pydantic schemas & enums
 │   ├── auth.py            # Password hashing & verification
 │   ├── database.py        # DB engine & session
-│   ├── middleware.py       # Auth middleware
+│   ├── middleware.py      # Auth middleware
 │   ├── mcp_server.py      # MCP tool definitions
 │   ├── templating.py      # Jinja2 template helpers
 │   ├── routes/            # Route modules (auth, dashboard, bills, etc.)
 │   ├── templates/         # Jinja2 HTML templates
-│   └── static/            # CSS, logo, static assets
+│   ├── static/            # CSS, logo, static assets
+│   └── cli/               # glow CLI (pipx-installable)
+│       ├── main.py        # Typer app & entry point
+│       ├── config.py      # ~/.config/glow-worm/config.toml management
+│       ├── client.py      # httpx wrapper with Bearer auth
+│       └── commands/      # Subcommand modules (bills, tx, funds, budgets, …)
 ├── alembic/               # Database migrations
-├── scripts/               # CLI utilities (create_user, seed_data)
-├── tests/                 # Test suite
+├── scripts/               # Utility scripts (create_user, seed_data)
+├── tests/                 # Test suite (includes test_cli.py)
 ├── pyproject.toml         # Project metadata & dependencies
 └── alembic.ini            # Alembic configuration
 ```
