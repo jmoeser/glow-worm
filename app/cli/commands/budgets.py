@@ -52,7 +52,9 @@ def list_budgets(
 def add_budget(
     category_id: Annotated[int, typer.Option(prompt=True)],
     allocated_amount: Annotated[float, typer.Option(prompt=True)],
-    month: Annotated[Optional[int], typer.Option(help="Month (default: current)")] = None,
+    month: Annotated[
+        Optional[int], typer.Option(help="Month (default: current)")
+    ] = None,
     year: Annotated[Optional[int], typer.Option(help="Year (default: current)")] = None,
     json_output: Annotated[bool, typer.Option("--json", help="Output as JSON")] = False,
 ) -> None:
@@ -71,7 +73,9 @@ def add_budget(
     if json_output:
         print_json(b)
         return
-    typer.echo(f"Created budget #{b['id']} for category {b['category_id']} ({b['month']}/{b['year']})")
+    typer.echo(
+        f"Created budget #{b['id']} for category {b['category_id']} ({b['month']}/{b['year']})"
+    )
 
 
 @app.command("delete")

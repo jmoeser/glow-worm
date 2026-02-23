@@ -32,7 +32,9 @@ def create_user() -> None:
 
     db = SessionLocal()
     try:
-        existing = db.execute(select(User).where(User.username == username)).scalar_one_or_none()
+        existing = db.execute(
+            select(User).where(User.username == username)
+        ).scalar_one_or_none()
         if existing:
             print(f"Error: user '{username}' already exists.")
             sys.exit(1)

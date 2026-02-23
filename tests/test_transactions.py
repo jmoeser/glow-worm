@@ -34,7 +34,9 @@ class TestTransactionsPageGet:
         assert "year=2027" in response.text
 
     def test_type_filter(self, authed_client, sample_transactions):
-        response = authed_client.get("/transactions?month=1&year=2026&type_filter=income")
+        response = authed_client.get(
+            "/transactions?month=1&year=2026&type_filter=income"
+        )
         assert response.status_code == 200
         assert "Monthly income" in response.text
         assert "Groceries shopping" not in response.text
@@ -51,7 +53,7 @@ class TestTransactionsPageGet:
         response = authed_client.get("/transactions?month=1&year=2026")
         assert response.status_code == 200
         assert "5,000.00" in response.text  # income
-        assert "75.50" in response.text    # expense
+        assert "75.50" in response.text  # expense
         assert "4,924.50" in response.text  # net
 
     def test_unauthenticated_redirects_to_login(self, client):
@@ -78,9 +80,11 @@ class TestTransactionsPagePost:
             headers={"x-csrftoken": authed_client.csrf_token},
         )
         assert response.status_code == 200
-        txn = db_session.query(Transaction).filter(
-            Transaction.description == "Test purchase"
-        ).first()
+        txn = (
+            db_session.query(Transaction)
+            .filter(Transaction.description == "Test purchase")
+            .first()
+        )
         assert txn is not None
         assert float(txn.amount) == 42.99
 
@@ -165,7 +169,12 @@ class TestTransactionsPagePost:
         assert "income or expense" in response.text.lower()
 
     def test_creates_with_linked_entities(
-        self, authed_client, db_session, sample_category, sample_sinking_funds, sample_bills
+        self,
+        authed_client,
+        db_session,
+        sample_category,
+        sample_sinking_funds,
+        sample_bills,
     ):
         response = authed_client.post(
             "/transactions",
@@ -185,9 +194,11 @@ class TestTransactionsPagePost:
             headers={"x-csrftoken": authed_client.csrf_token},
         )
         assert response.status_code == 200
-        txn = db_session.query(Transaction).filter(
-            Transaction.description == "Bill payment"
-        ).first()
+        txn = (
+            db_session.query(Transaction)
+            .filter(Transaction.description == "Bill payment")
+            .first()
+        )
         assert txn is not None
         assert txn.sinking_fund_id == sample_sinking_funds[0].id
         assert txn.recurring_bill_id == sample_bills[0].id
@@ -268,7 +279,9 @@ class TestTransactionsEditPost:
 
 
 class TestTransactionsDelete:
-    def test_hard_deletes_transaction(self, authed_client, db_session, sample_transactions):
+    def test_hard_deletes_transaction(
+        self, authed_client, db_session, sample_transactions
+    ):
         txn = sample_transactions[0]
         txn_id = txn.id
         response = authed_client.delete(
@@ -277,7 +290,10 @@ class TestTransactionsDelete:
         )
         assert response.status_code == 200
         db_session.expire_all()
-        assert db_session.query(Transaction).filter(Transaction.id == txn_id).first() is None
+        assert (
+            db_session.query(Transaction).filter(Transaction.id == txn_id).first()
+            is None
+        )
 
     def test_returns_empty_response(self, authed_client, sample_transactions):
         txn = sample_transactions[0]
@@ -315,7 +331,9 @@ class TestApiTransactionsList:
         assert isinstance(data, list)
 
     def test_filter_by_type(self, authed_client, sample_transactions):
-        response = authed_client.get("/api/transactions?month=1&year=2026&type_filter=expense")
+        response = authed_client.get(
+            "/api/transactions?month=1&year=2026&type_filter=expense"
+        )
         assert response.status_code == 200
         data = response.json()
         assert len(data) == 1
@@ -383,7 +401,9 @@ class TestApiTransactionsGet:
 
 
 class TestApiTransactionsUpdate:
-    def test_updates_and_returns_200(self, authed_client, db_session, sample_transactions):
+    def test_updates_and_returns_200(
+        self, authed_client, db_session, sample_transactions
+    ):
         txn = sample_transactions[0]
         response = authed_client.put(
             f"/api/transactions/{txn.id}",
@@ -414,7 +434,9 @@ class TestApiTransactionsUpdate:
 
 
 class TestApiTransactionsDelete:
-    def test_hard_deletes_and_returns_200(self, authed_client, db_session, sample_transactions):
+    def test_hard_deletes_and_returns_200(
+        self, authed_client, db_session, sample_transactions
+    ):
         txn = sample_transactions[0]
         txn_id = txn.id
         response = authed_client.delete(
@@ -423,7 +445,10 @@ class TestApiTransactionsDelete:
         )
         assert response.status_code == 200
         db_session.expire_all()
-        assert db_session.query(Transaction).filter(Transaction.id == txn_id).first() is None
+        assert (
+            db_session.query(Transaction).filter(Transaction.id == txn_id).first()
+            is None
+        )
 
     def test_404_for_nonexistent(self, authed_client):
         response = authed_client.delete(

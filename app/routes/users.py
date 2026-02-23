@@ -69,9 +69,7 @@ async def users_create(request: Request, db: Session = Depends(get_db)):
     email = (form.get("email") or "").strip() or None
 
     if not username:
-        return HTMLResponse(
-            '<p class="text-red-600 text-sm">Username is required.</p>'
-        )
+        return HTMLResponse('<p class="text-red-600 text-sm">Username is required.</p>')
 
     if len(password) < 8:
         return HTMLResponse(
@@ -96,7 +94,9 @@ async def users_create(request: Request, db: Session = Depends(get_db)):
 
 
 @router.get("/users/{user_id}/edit", response_class=HTMLResponse)
-async def users_edit_form(request: Request, user_id: int, db: Session = Depends(get_db)):
+async def users_edit_form(
+    request: Request, user_id: int, db: Session = Depends(get_db)
+):
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
         return HTMLResponse("Not found", status_code=404)
@@ -113,7 +113,9 @@ async def users_update(request: Request, user_id: int, db: Session = Depends(get
 
     username = (form.get("username") or "").strip()
     if username and username != user.username:
-        existing = db.query(User).filter(User.username == username, User.id != user_id).first()
+        existing = (
+            db.query(User).filter(User.username == username, User.id != user_id).first()
+        )
         if existing:
             return HTMLResponse(
                 '<p class="text-red-600 text-sm">Username already exists.</p>'
@@ -211,7 +213,9 @@ async def api_get_user(request: Request, user_id: int, db: Session = Depends(get
 
 
 @router.put("/api/users/{user_id}")
-async def api_update_user(request: Request, user_id: int, db: Session = Depends(get_db)):
+async def api_update_user(
+    request: Request, user_id: int, db: Session = Depends(get_db)
+):
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
         return JSONResponse({"detail": "User not found"}, status_code=404)
@@ -231,9 +235,11 @@ async def api_update_user(request: Request, user_id: int, db: Session = Depends(
     updates = data.model_dump(exclude_unset=True)
 
     if "username" in updates and updates["username"] is not None:
-        existing = db.query(User).filter(
-            User.username == updates["username"], User.id != user_id
-        ).first()
+        existing = (
+            db.query(User)
+            .filter(User.username == updates["username"], User.id != user_id)
+            .first()
+        )
         if existing:
             return JSONResponse(
                 {"detail": "Username already exists."},
@@ -256,7 +262,9 @@ async def api_update_user(request: Request, user_id: int, db: Session = Depends(
 
 
 @router.delete("/api/users/{user_id}")
-async def api_delete_user(request: Request, user_id: int, db: Session = Depends(get_db)):
+async def api_delete_user(
+    request: Request, user_id: int, db: Session = Depends(get_db)
+):
     current_user = get_current_user(request)
     if current_user.id == user_id:
         return JSONResponse(

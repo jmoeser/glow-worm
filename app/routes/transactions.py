@@ -107,7 +107,9 @@ def _transaction_context(
     type_filter: str | None = None,
     category_filter: int | None = None,
 ) -> dict:
-    transactions = _transactions_for_month(db, month, year, type_filter, category_filter)
+    transactions = _transactions_for_month(
+        db, month, year, type_filter, category_filter
+    )
     categories = _all_categories(db)
     sinking_funds = _active_sinking_funds(db)
     recurring_bills = _active_recurring_bills(db)
@@ -160,11 +162,18 @@ def _parse_optional_int(value: str | None) -> int | None:
         return None
     try:
         return int(value)
-    except (ValueError, TypeError):
+    except ValueError, TypeError:
         return None
 
 
-def _render_table_body(request: Request, db: Session, month: int, year: int, type_filter=None, category_filter=None) -> str:
+def _render_table_body(
+    request: Request,
+    db: Session,
+    month: int,
+    year: int,
+    type_filter=None,
+    category_filter=None,
+) -> str:
     ctx = _transaction_context(db, month, year, type_filter, category_filter)
     return templates.TemplateResponse(
         request,
@@ -177,7 +186,11 @@ def _render_transaction_row(request: Request, txn: Transaction) -> str:
     return templates.TemplateResponse(
         request,
         "transactions.html",
-        {"txn": txn, "transaction_type_labels": TRANSACTION_TYPE_LABELS, "fragment": "transaction_row"},
+        {
+            "txn": txn,
+            "transaction_type_labels": TRANSACTION_TYPE_LABELS,
+            "fragment": "transaction_row",
+        },
     ).body.decode()
 
 
@@ -188,7 +201,7 @@ def _render_edit_row(request: Request, txn: Transaction, db: Session) -> str:
         parts = txn.date.split("-")
         year_val = int(parts[0])
         month_val = int(parts[1])
-    except (ValueError, IndexError):
+    except ValueError, IndexError:
         pass
 
     return templates.TemplateResponse(
@@ -245,28 +258,20 @@ async def transactions_create(request: Request, db: Session = Depends(get_db)):
     raw_year = form.get("year", "")
 
     if not date:
-        return HTMLResponse(
-            '<p class="text-red-600 text-sm">Date is required.</p>'
-        )
+        return HTMLResponse('<p class="text-red-600 text-sm">Date is required.</p>')
 
     if not raw_category_id:
-        return HTMLResponse(
-            '<p class="text-red-600 text-sm">Category is required.</p>'
-        )
+        return HTMLResponse('<p class="text-red-600 text-sm">Category is required.</p>')
 
     try:
         category_id = int(raw_category_id)
-    except (ValueError, TypeError):
-        return HTMLResponse(
-            '<p class="text-red-600 text-sm">Invalid category.</p>'
-        )
+    except ValueError, TypeError:
+        return HTMLResponse('<p class="text-red-600 text-sm">Invalid category.</p>')
 
     try:
         amount = Decimal(raw_amount)
-    except (InvalidOperation, TypeError):
-        return HTMLResponse(
-            '<p class="text-red-600 text-sm">Invalid amount.</p>'
-        )
+    except InvalidOperation, TypeError:
+        return HTMLResponse('<p class="text-red-600 text-sm">Invalid amount.</p>')
 
     if amount <= 0:
         return HTMLResponse(
@@ -286,7 +291,7 @@ async def transactions_create(request: Request, db: Session = Depends(get_db)):
     try:
         month = int(raw_month)
         year = int(raw_year)
-    except (ValueError, TypeError):
+    except ValueError, TypeError:
         month, year = _current_month_year()
 
     txn = Transaction(
@@ -308,7 +313,9 @@ async def transactions_create(request: Request, db: Session = Depends(get_db)):
 
 
 @router.get("/transactions/{txn_id}/edit", response_class=HTMLResponse)
-async def transactions_edit_form(request: Request, txn_id: int, db: Session = Depends(get_db)):
+async def transactions_edit_form(
+    request: Request, txn_id: int, db: Session = Depends(get_db)
+):
     txn = (
         db.query(Transaction)
         .options(
@@ -326,7 +333,9 @@ async def transactions_edit_form(request: Request, txn_id: int, db: Session = De
 
 
 @router.post("/transactions/{txn_id}", response_class=HTMLResponse)
-async def transactions_update(request: Request, txn_id: int, db: Session = Depends(get_db)):
+async def transactions_update(
+    request: Request, txn_id: int, db: Session = Depends(get_db)
+):
     txn = (
         db.query(Transaction)
         .options(
@@ -357,14 +366,14 @@ async def transactions_update(request: Request, txn_id: int, db: Session = Depen
             amount = Decimal(raw_amount)
             if amount > 0:
                 txn.amount = amount
-        except (InvalidOperation, TypeError):
+        except InvalidOperation, TypeError:
             pass
 
     raw_category_id = form.get("category_id")
     if raw_category_id:
         try:
             txn.category_id = int(raw_category_id)
-        except (ValueError, TypeError):
+        except ValueError, TypeError:
             pass
 
     txn_type = form.get("type")
@@ -393,7 +402,9 @@ async def transactions_update(request: Request, txn_id: int, db: Session = Depen
 
 
 @router.delete("/transactions/{txn_id}", response_class=HTMLResponse)
-async def transactions_delete(request: Request, txn_id: int, db: Session = Depends(get_db)):
+async def transactions_delete(
+    request: Request, txn_id: int, db: Session = Depends(get_db)
+):
     txn = db.query(Transaction).filter(Transaction.id == txn_id).first()
     if not txn:
         return HTMLResponse("Not found", status_code=404)
@@ -419,7 +430,10 @@ async def api_list_transactions(
     if month is None or year is None:
         month, year = _current_month_year()
     transactions = _transactions_for_month(db, month, year, type_filter, category_id)
-    return [TransactionResponse.model_validate(t).model_dump(mode="json") for t in transactions]
+    return [
+        TransactionResponse.model_validate(t).model_dump(mode="json")
+        for t in transactions
+    ]
 
 
 @router.post("/api/transactions")
@@ -457,7 +471,9 @@ async def api_create_transaction(request: Request, db: Session = Depends(get_db)
 
 
 @router.get("/api/transactions/{txn_id}")
-async def api_get_transaction(request: Request, txn_id: int, db: Session = Depends(get_db)):
+async def api_get_transaction(
+    request: Request, txn_id: int, db: Session = Depends(get_db)
+):
     txn = db.query(Transaction).filter(Transaction.id == txn_id).first()
     if not txn:
         return JSONResponse({"detail": "Transaction not found"}, status_code=404)
@@ -466,7 +482,9 @@ async def api_get_transaction(request: Request, txn_id: int, db: Session = Depen
 
 
 @router.put("/api/transactions/{txn_id}")
-async def api_update_transaction(request: Request, txn_id: int, db: Session = Depends(get_db)):
+async def api_update_transaction(
+    request: Request, txn_id: int, db: Session = Depends(get_db)
+):
     txn = db.query(Transaction).filter(Transaction.id == txn_id).first()
     if not txn:
         return JSONResponse({"detail": "Transaction not found"}, status_code=404)
@@ -497,7 +515,9 @@ async def api_update_transaction(request: Request, txn_id: int, db: Session = De
 
 
 @router.delete("/api/transactions/{txn_id}")
-async def api_delete_transaction(request: Request, txn_id: int, db: Session = Depends(get_db)):
+async def api_delete_transaction(
+    request: Request, txn_id: int, db: Session = Depends(get_db)
+):
     txn = db.query(Transaction).filter(Transaction.id == txn_id).first()
     if not txn:
         return JSONResponse({"detail": "Transaction not found"}, status_code=404)

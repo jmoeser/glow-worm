@@ -9,7 +9,12 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.middleware import get_current_user
 from app.models import Category, RecurringBill, SinkingFund, Transaction
-from app.schemas import RecurringBillCreate, RecurringBillPay, RecurringBillResponse, RecurringBillUpdate
+from app.schemas import (
+    RecurringBillCreate,
+    RecurringBillPay,
+    RecurringBillResponse,
+    RecurringBillUpdate,
+)
 from app.tasks import advance_due_date
 from app.templating import templates
 
@@ -56,7 +61,9 @@ def _compute_annual_cost(amount, frequency: str) -> Decimal:
 def _bill_context(db: Session):
     bills = _active_bills(db)
     categories = _expense_categories(db)
-    total_annual = sum((_compute_annual_cost(b.amount, b.frequency) for b in bills), Decimal("0"))
+    total_annual = sum(
+        (_compute_annual_cost(b.amount, b.frequency) for b in bills), Decimal("0")
+    )
     total_monthly = (total_annual / 12).quantize(Decimal("0.01"))
     return {
         "bills": bills,
@@ -111,7 +118,9 @@ def _render_pay_row(request: Request, bill: RecurringBill) -> str:
     ).body.decode()
 
 
-def _record_bill_payment(db: Session, bill: RecurringBill, amount: Decimal, payment_date_str: str) -> Transaction:
+def _record_bill_payment(
+    db: Session, bill: RecurringBill, amount: Decimal, payment_date_str: str
+) -> Transaction:
     """Create a transaction for a bill payment, deduct Bills fund, advance next_due_date."""
     bills_fund = (
         db.query(SinkingFund)
@@ -175,10 +184,8 @@ async def bills_create(request: Request, db: Session = Depends(get_db)):
 
     try:
         amount = Decimal(form.get("amount", "0"))
-    except (InvalidOperation, TypeError):
-        return HTMLResponse(
-            '<p class="text-red-600 text-sm">Invalid amount.</p>'
-        )
+    except InvalidOperation, TypeError:
+        return HTMLResponse('<p class="text-red-600 text-sm">Invalid amount.</p>')
 
     if amount <= 0:
         return HTMLResponse(
@@ -187,7 +194,11 @@ async def bills_create(request: Request, db: Session = Depends(get_db)):
 
     bills_category = (
         db.query(Category)
-        .filter(Category.name == "Bills", Category.type == "expense", Category.is_deleted == False)  # noqa: E712
+        .filter(
+            Category.name == "Bills",
+            Category.type == "expense",
+            Category.is_deleted == False,  # noqa: E712
+        )
         .first()
     )
     if not bills_category:
@@ -229,7 +240,9 @@ async def bills_get_row(request: Request, bill_id: int, db: Session = Depends(ge
 
 
 @router.get("/bills/{bill_id}/edit", response_class=HTMLResponse)
-async def bills_edit_form(request: Request, bill_id: int, db: Session = Depends(get_db)):
+async def bills_edit_form(
+    request: Request, bill_id: int, db: Session = Depends(get_db)
+):
     bill = db.query(RecurringBill).filter(RecurringBill.id == bill_id).first()
     if not bill:
         return HTMLResponse("Not found", status_code=404)
@@ -255,10 +268,8 @@ async def bills_pay(request: Request, bill_id: int, db: Session = Depends(get_db
 
     try:
         amount = Decimal(form.get("amount", "0"))
-    except (InvalidOperation, TypeError):
-        return HTMLResponse(
-            '<p class="text-red-600 text-sm">Invalid amount.</p>'
-        )
+    except InvalidOperation, TypeError:
+        return HTMLResponse('<p class="text-red-600 text-sm">Invalid amount.</p>')
 
     if amount <= 0:
         return HTMLResponse(
@@ -299,7 +310,7 @@ async def bills_update(request: Request, bill_id: int, db: Session = Depends(get
             amount = Decimal(raw_amount)
             if amount > 0:
                 bill.amount = amount
-        except (InvalidOperation, TypeError):
+        except InvalidOperation, TypeError:
             pass
 
     frequency = form.get("frequency")
@@ -310,7 +321,7 @@ async def bills_update(request: Request, bill_id: int, db: Session = Depends(get
     if category_id_raw:
         try:
             bill.category_id = int(category_id_raw)
-        except (ValueError, TypeError):
+        except ValueError, TypeError:
             pass
 
     next_due_date = (form.get("next_due_date") or "").strip()
@@ -345,7 +356,9 @@ async def bills_delete(request: Request, bill_id: int, db: Session = Depends(get
 @router.get("/api/bills")
 async def api_list_bills(request: Request, db: Session = Depends(get_db)):
     bills = _active_bills(db)
-    return [RecurringBillResponse.model_validate(b).model_dump(mode="json") for b in bills]
+    return [
+        RecurringBillResponse.model_validate(b).model_dump(mode="json") for b in bills
+    ]
 
 
 @router.post("/api/bills")
@@ -392,7 +405,9 @@ async def api_get_bill(request: Request, bill_id: int, db: Session = Depends(get
 
 
 @router.put("/api/bills/{bill_id}")
-async def api_update_bill(request: Request, bill_id: int, db: Session = Depends(get_db)):
+async def api_update_bill(
+    request: Request, bill_id: int, db: Session = Depends(get_db)
+):
     bill = db.query(RecurringBill).filter(RecurringBill.id == bill_id).first()
     if not bill:
         return JSONResponse({"detail": "Bill not found"}, status_code=404)
@@ -423,7 +438,9 @@ async def api_update_bill(request: Request, bill_id: int, db: Session = Depends(
 
 
 @router.delete("/api/bills/{bill_id}")
-async def api_delete_bill(request: Request, bill_id: int, db: Session = Depends(get_db)):
+async def api_delete_bill(
+    request: Request, bill_id: int, db: Session = Depends(get_db)
+):
     bill = db.query(RecurringBill).filter(RecurringBill.id == bill_id).first()
     if not bill:
         return JSONResponse({"detail": "Bill not found"}, status_code=404)

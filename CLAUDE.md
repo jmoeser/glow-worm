@@ -14,6 +14,9 @@ A single-tenant household budgeting app. This is a Python/FastAPI project using:
 - **Run All Tests**: `uv run pytest`
 - **Run Specific Test**: `uv run pytest tests/test_filename.py`
 - **Coverage Report**: `uv run pytest --cov=app --cov-report=html`
+- **Lint**: `uv run ruff check .`
+- **Format check**: `uv run ruff format --check .`
+- **Format fix**: `uv run ruff format .`
 - **Build container**: `container build --tag test --file Dockerfile .`
 - **Run container**: `container run --name test --rm -e SECRET_KEY=$(python3 -c "import secrets; print(secrets.token_urlsafe(48))") test`
 - **Run CLI (dev)**: `uv run glow --help`

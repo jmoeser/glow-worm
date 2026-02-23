@@ -165,7 +165,9 @@ class TestUsersPageUpdate:
         assert response.status_code == 200
         assert "at least 8 characters" in response.text
 
-    def test_rejects_duplicate_username_on_update(self, authed_client, test_user, db_session):
+    def test_rejects_duplicate_username_on_update(
+        self, authed_client, test_user, db_session
+    ):
         other = User(username="bob", password_hash="x" * 60, email=None)
         db_session.add(other)
         db_session.commit()
@@ -228,11 +230,13 @@ class TestApiUsers:
     def test_create_user(self, authed_client, db_session):
         response = authed_client.post(
             "/api/users",
-            content=json.dumps({
-                "username": "frank",
-                "password": "Secure1234",
-                "email": "frank@example.com",
-            }),
+            content=json.dumps(
+                {
+                    "username": "frank",
+                    "password": "Secure1234",
+                    "email": "frank@example.com",
+                }
+            ),
             headers={
                 "Content-Type": "application/json",
                 "x-csrftoken": authed_client.csrf_token,

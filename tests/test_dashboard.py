@@ -1,9 +1,8 @@
 from datetime import datetime
-from decimal import Decimal
 
 import pytz
 
-from app.models import Budget, Category, MonthlyUnallocatedIncome, SinkingFund, Transaction
+from app.models import Category, MonthlyUnallocatedIncome, Transaction
 
 BRISBANE = pytz.timezone("Australia/Brisbane")
 
@@ -22,6 +21,7 @@ class TestDashboardPageGet:
     def test_defaults_to_current_month(self, authed_client):
         month, year = _current_month_year()
         import calendar
+
         month_name = calendar.month_name[month]
         response = authed_client.get("/")
         assert response.status_code == 200
@@ -32,7 +32,7 @@ class TestDashboardPageGet:
         response = authed_client.get("/?month=1&year=2026")
         assert response.status_code == 200
         assert "5,000.00" in response.text  # income
-        assert "75.50" in response.text    # expense
+        assert "75.50" in response.text  # expense
         assert "4,924.50" in response.text  # net
 
     def test_budget_overview(self, authed_client, sample_budgets):
@@ -76,7 +76,9 @@ class TestDashboardPageGet:
     def test_unallocated_income_displayed(self, authed_client, db_session):
         month, year = _current_month_year()
         row = MonthlyUnallocatedIncome(
-            month=month, year=year, unallocated_amount=350.75,
+            month=month,
+            year=year,
+            unallocated_amount=350.75,
         )
         db_session.add(row)
         db_session.commit()
@@ -86,7 +88,9 @@ class TestDashboardPageGet:
         assert "350.75" in response.text
 
     def test_transaction_limit_10(self, authed_client, db_session):
-        cat = Category(name="Test", type="expense", color="#123456", is_budget_category=False)
+        cat = Category(
+            name="Test", type="expense", color="#123456", is_budget_category=False
+        )
         db_session.add(cat)
         db_session.commit()
         db_session.refresh(cat)
@@ -301,7 +305,9 @@ class TestApiDashboard:
     def test_unallocated_income_from_db(self, authed_client, db_session):
         month, year = _current_month_year()
         row = MonthlyUnallocatedIncome(
-            month=month, year=year, unallocated_amount=123.45,
+            month=month,
+            year=year,
+            unallocated_amount=123.45,
         )
         db_session.add(row)
         db_session.commit()

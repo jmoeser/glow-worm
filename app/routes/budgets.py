@@ -128,7 +128,12 @@ def _render_edit_row(request: Request, budget: Budget) -> str:
 
 
 @router.get("/budgets", response_class=HTMLResponse)
-async def budgets_page(request: Request, month: int | None = None, year: int | None = None, db: Session = Depends(get_db)):
+async def budgets_page(
+    request: Request,
+    month: int | None = None,
+    year: int | None = None,
+    db: Session = Depends(get_db),
+):
     user = get_current_user(request)
     if month is None or year is None:
         month, year = _current_month_year()
@@ -150,20 +155,16 @@ async def budgets_create(request: Request, db: Session = Depends(get_db)):
     raw_year = form.get("year", "")
 
     if not raw_category_id:
-        return HTMLResponse(
-            '<p class="text-red-600 text-sm">Category is required.</p>'
-        )
+        return HTMLResponse('<p class="text-red-600 text-sm">Category is required.</p>')
 
     try:
         category_id = int(raw_category_id)
-    except (ValueError, TypeError):
-        return HTMLResponse(
-            '<p class="text-red-600 text-sm">Invalid category.</p>'
-        )
+    except ValueError, TypeError:
+        return HTMLResponse('<p class="text-red-600 text-sm">Invalid category.</p>')
 
     try:
         allocated_amount = Decimal(raw_allocated)
-    except (InvalidOperation, TypeError):
+    except InvalidOperation, TypeError:
         return HTMLResponse(
             '<p class="text-red-600 text-sm">Invalid allocated amount.</p>'
         )
@@ -176,7 +177,7 @@ async def budgets_create(request: Request, db: Session = Depends(get_db)):
     try:
         month = int(raw_month)
         year = int(raw_year)
-    except (ValueError, TypeError):
+    except ValueError, TypeError:
         month, year = _current_month_year()
 
     # Check for duplicate
@@ -209,7 +210,9 @@ async def budgets_create(request: Request, db: Session = Depends(get_db)):
 
 
 @router.get("/budgets/{budget_id}/edit", response_class=HTMLResponse)
-async def budgets_edit_form(request: Request, budget_id: int, db: Session = Depends(get_db)):
+async def budgets_edit_form(
+    request: Request, budget_id: int, db: Session = Depends(get_db)
+):
     budget = (
         db.query(Budget)
         .options(joinedload(Budget.category))
@@ -222,7 +225,9 @@ async def budgets_edit_form(request: Request, budget_id: int, db: Session = Depe
 
 
 @router.post("/budgets/{budget_id}", response_class=HTMLResponse)
-async def budgets_update(request: Request, budget_id: int, db: Session = Depends(get_db)):
+async def budgets_update(
+    request: Request, budget_id: int, db: Session = Depends(get_db)
+):
     budget = (
         db.query(Budget)
         .options(joinedload(Budget.category))
@@ -239,7 +244,7 @@ async def budgets_update(request: Request, budget_id: int, db: Session = Depends
         allocated_amount = Decimal(raw_allocated)
         if allocated_amount >= 0:
             budget.allocated_amount = allocated_amount
-    except (InvalidOperation, TypeError):
+    except InvalidOperation, TypeError:
         pass
 
     db.commit()
@@ -249,7 +254,9 @@ async def budgets_update(request: Request, budget_id: int, db: Session = Depends
 
 
 @router.delete("/budgets/{budget_id}", response_class=HTMLResponse)
-async def budgets_delete(request: Request, budget_id: int, db: Session = Depends(get_db)):
+async def budgets_delete(
+    request: Request, budget_id: int, db: Session = Depends(get_db)
+):
     budget = db.query(Budget).filter(Budget.id == budget_id).first()
     if not budget:
         return HTMLResponse("Not found", status_code=404)
@@ -264,7 +271,12 @@ async def budgets_delete(request: Request, budget_id: int, db: Session = Depends
 
 
 @router.get("/api/budgets")
-async def api_list_budgets(request: Request, month: int | None = None, year: int | None = None, db: Session = Depends(get_db)):
+async def api_list_budgets(
+    request: Request,
+    month: int | None = None,
+    year: int | None = None,
+    db: Session = Depends(get_db),
+):
     if month is None or year is None:
         month, year = _current_month_year()
     budgets = _budgets_for_month(db, month, year)
@@ -318,7 +330,9 @@ async def api_create_budget(request: Request, db: Session = Depends(get_db)):
 
 
 @router.get("/api/budgets/{budget_id}")
-async def api_get_budget(request: Request, budget_id: int, db: Session = Depends(get_db)):
+async def api_get_budget(
+    request: Request, budget_id: int, db: Session = Depends(get_db)
+):
     budget = db.query(Budget).filter(Budget.id == budget_id).first()
     if not budget:
         return JSONResponse({"detail": "Budget not found"}, status_code=404)
@@ -327,7 +341,9 @@ async def api_get_budget(request: Request, budget_id: int, db: Session = Depends
 
 
 @router.put("/api/budgets/{budget_id}")
-async def api_update_budget(request: Request, budget_id: int, db: Session = Depends(get_db)):
+async def api_update_budget(
+    request: Request, budget_id: int, db: Session = Depends(get_db)
+):
     budget = db.query(Budget).filter(Budget.id == budget_id).first()
     if not budget:
         return JSONResponse({"detail": "Budget not found"}, status_code=404)
@@ -355,7 +371,9 @@ async def api_update_budget(request: Request, budget_id: int, db: Session = Depe
 
 
 @router.delete("/api/budgets/{budget_id}")
-async def api_delete_budget(request: Request, budget_id: int, db: Session = Depends(get_db)):
+async def api_delete_budget(
+    request: Request, budget_id: int, db: Session = Depends(get_db)
+):
     budget = db.query(Budget).filter(Budget.id == budget_id).first()
     if not budget:
         return JSONResponse({"detail": "Budget not found"}, status_code=404)

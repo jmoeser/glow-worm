@@ -5,10 +5,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
 from app.schemas import (
-    BillFrequency,
     BillsAllocationMethod,
-    BillType,
-    CategoryType,
     TransactionType,
 )
 
@@ -43,7 +40,9 @@ class Category(Base):
 
     transactions: Mapped[list["Transaction"]] = relationship(back_populates="category")
     budgets: Mapped[list["Budget"]] = relationship(back_populates="category")
-    recurring_bills: Mapped[list["RecurringBill"]] = relationship(back_populates="category")
+    recurring_bills: Mapped[list["RecurringBill"]] = relationship(
+        back_populates="category"
+    )
 
 
 class SinkingFund(Base):
@@ -59,7 +58,9 @@ class SinkingFund(Base):
     created_at: Mapped[datetime] = mapped_column(default=_utcnow)
     updated_at: Mapped[datetime] = mapped_column(default=_utcnow, onupdate=_utcnow)
 
-    transactions: Mapped[list["Transaction"]] = relationship(back_populates="sinking_fund")
+    transactions: Mapped[list["Transaction"]] = relationship(
+        back_populates="sinking_fund"
+    )
     income_allocations: Mapped[list["IncomeAllocationToSinkingFund"]] = relationship(
         back_populates="sinking_fund"
     )
@@ -74,7 +75,9 @@ class RecurringBill(Base):
     debtor_provider: Mapped[str] = mapped_column(String(150), nullable=False)
     start_date: Mapped[str] = mapped_column(String(10), nullable=False)
     frequency: Mapped[str] = mapped_column(String(20), nullable=False)
-    category_id: Mapped[int] = mapped_column(ForeignKey("categories.id"), nullable=False)
+    category_id: Mapped[int] = mapped_column(
+        ForeignKey("categories.id"), nullable=False
+    )
     end_date: Mapped[str | None] = mapped_column(String(10), nullable=True)
     is_active: Mapped[bool] = mapped_column(default=True)
     bill_type: Mapped[str] = mapped_column(String(10), nullable=False, default="fixed")
@@ -83,7 +86,9 @@ class RecurringBill(Base):
     updated_at: Mapped[datetime] = mapped_column(default=_utcnow, onupdate=_utcnow)
 
     category: Mapped["Category"] = relationship(back_populates="recurring_bills")
-    transactions: Mapped[list["Transaction"]] = relationship(back_populates="recurring_bill")
+    transactions: Mapped[list["Transaction"]] = relationship(
+        back_populates="recurring_bill"
+    )
 
 
 class Budget(Base):
@@ -91,7 +96,9 @@ class Budget(Base):
     __table_args__ = (UniqueConstraint("category_id", "month", "year"),)
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    category_id: Mapped[int] = mapped_column(ForeignKey("categories.id"), nullable=False)
+    category_id: Mapped[int] = mapped_column(
+        ForeignKey("categories.id"), nullable=False
+    )
     month: Mapped[int] = mapped_column(nullable=False)
     year: Mapped[int] = mapped_column(nullable=False)
     allocated_amount: Mapped[float] = mapped_column(Numeric(12, 2), nullable=False)
@@ -111,18 +118,32 @@ class Transaction(Base):
     date: Mapped[str] = mapped_column(String(10), nullable=False)
     description: Mapped[str | None] = mapped_column(String(500), nullable=True)
     amount: Mapped[float] = mapped_column(Numeric(12, 2), nullable=False)
-    category_id: Mapped[int] = mapped_column(ForeignKey("categories.id"), nullable=False)
+    category_id: Mapped[int] = mapped_column(
+        ForeignKey("categories.id"), nullable=False
+    )
     type: Mapped[str] = mapped_column(String(10), nullable=False)
-    transaction_type: Mapped[str] = mapped_column(String(20), nullable=False, default=TransactionType.regular.value)
-    sinking_fund_id: Mapped[int | None] = mapped_column(ForeignKey("sinking_funds.id"), nullable=True)
-    recurring_bill_id: Mapped[int | None] = mapped_column(ForeignKey("recurring_bills.id"), nullable=True)
-    budget_id: Mapped[int | None] = mapped_column(ForeignKey("budgets.id"), nullable=True)
+    transaction_type: Mapped[str] = mapped_column(
+        String(20), nullable=False, default=TransactionType.regular.value
+    )
+    sinking_fund_id: Mapped[int | None] = mapped_column(
+        ForeignKey("sinking_funds.id"), nullable=True
+    )
+    recurring_bill_id: Mapped[int | None] = mapped_column(
+        ForeignKey("recurring_bills.id"), nullable=True
+    )
+    budget_id: Mapped[int | None] = mapped_column(
+        ForeignKey("budgets.id"), nullable=True
+    )
     is_paid: Mapped[bool] = mapped_column(default=True)
     created_at: Mapped[datetime] = mapped_column(default=_utcnow)
 
     category: Mapped["Category"] = relationship(back_populates="transactions")
-    sinking_fund: Mapped["SinkingFund | None"] = relationship(back_populates="transactions")
-    recurring_bill: Mapped["RecurringBill | None"] = relationship(back_populates="transactions")
+    sinking_fund: Mapped["SinkingFund | None"] = relationship(
+        back_populates="transactions"
+    )
+    recurring_bill: Mapped["RecurringBill | None"] = relationship(
+        back_populates="transactions"
+    )
     budget: Mapped["Budget | None"] = relationship(back_populates="transactions")
 
 
@@ -131,16 +152,20 @@ class IncomeAllocation(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     monthly_income_amount: Mapped[float] = mapped_column(Numeric(12, 2), nullable=False)
-    monthly_budget_allocation: Mapped[float] = mapped_column(Numeric(12, 2), nullable=False)
+    monthly_budget_allocation: Mapped[float] = mapped_column(
+        Numeric(12, 2), nullable=False
+    )
     bills_fund_allocation_type: Mapped[str] = mapped_column(
         String(20), nullable=False, default=BillsAllocationMethod.recommended.value
     )
-    bills_fund_fixed_amount: Mapped[float | None] = mapped_column(Numeric(12, 2), nullable=True)
+    bills_fund_fixed_amount: Mapped[float | None] = mapped_column(
+        Numeric(12, 2), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(default=_utcnow)
     updated_at: Mapped[datetime] = mapped_column(default=_utcnow, onupdate=_utcnow)
 
-    sinking_fund_allocations: Mapped[list["IncomeAllocationToSinkingFund"]] = relationship(
-        back_populates="income_allocation", cascade="all, delete-orphan"
+    sinking_fund_allocations: Mapped[list["IncomeAllocationToSinkingFund"]] = (
+        relationship(back_populates="income_allocation", cascade="all, delete-orphan")
     )
 
 
@@ -159,7 +184,9 @@ class IncomeAllocationToSinkingFund(Base):
     income_allocation: Mapped["IncomeAllocation"] = relationship(
         back_populates="sinking_fund_allocations"
     )
-    sinking_fund: Mapped["SinkingFund"] = relationship(back_populates="income_allocations")
+    sinking_fund: Mapped["SinkingFund"] = relationship(
+        back_populates="income_allocations"
+    )
 
 
 class ApiKey(Base):

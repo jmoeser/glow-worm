@@ -73,11 +73,12 @@ async def income_page(request: Request, db: Session = Depends(get_db)):
     fund_allocation_map: dict[int, float] = {}
     if allocation:
         for junction in allocation.sinking_fund_allocations:
-            fund_allocation_map[junction.sinking_fund_id] = float(junction.allocation_amount)
+            fund_allocation_map[junction.sinking_fund_id] = float(
+                junction.allocation_amount
+            )
 
     sinking_funds_data = [
-        {"id": f.id, "name": f.name, "color": f.color}
-        for f in sinking_funds
+        {"id": f.id, "name": f.name, "color": f.color} for f in sinking_funds
     ]
 
     return templates.TemplateResponse(
@@ -100,7 +101,7 @@ async def income_save(request: Request, db: Session = Depends(get_db)):
     # Parse income amount
     try:
         monthly_income_amount = Decimal(form.get("monthly_income_amount", "0"))
-    except (InvalidOperation, TypeError):
+    except InvalidOperation, TypeError:
         monthly_income_amount = Decimal("0")
 
     if monthly_income_amount <= 0:
@@ -111,7 +112,7 @@ async def income_save(request: Request, db: Session = Depends(get_db)):
     # Parse budget allocation
     try:
         monthly_budget_allocation = Decimal(form.get("monthly_budget_allocation", "0"))
-    except (InvalidOperation, TypeError):
+    except InvalidOperation, TypeError:
         monthly_budget_allocation = Decimal("0")
 
     # Parse bills fund allocation type
@@ -126,7 +127,7 @@ async def income_save(request: Request, db: Session = Depends(get_db)):
             )
         try:
             bills_fund_fixed_amount = Decimal(raw)
-        except (InvalidOperation, TypeError):
+        except InvalidOperation, TypeError:
             return HTMLResponse(
                 '<p class="text-red-600 text-sm">Fixed amount is required when type is fixed.</p>'
             )
@@ -142,7 +143,7 @@ async def income_save(request: Request, db: Session = Depends(get_db)):
                     fund_allocations.append(
                         {"sinking_fund_id": fund_id, "allocation_amount": amount}
                     )
-            except (ValueError, InvalidOperation):
+            except ValueError, InvalidOperation:
                 continue
 
     _upsert_allocation(
@@ -182,7 +183,10 @@ async def api_post_income(request: Request, db: Session = Depends(get_db)):
         return JSONResponse({"detail": str(exc)}, status_code=422)
 
     fund_allocations = [
-        {"sinking_fund_id": fa.sinking_fund_id, "allocation_amount": fa.allocation_amount}
+        {
+            "sinking_fund_id": fa.sinking_fund_id,
+            "allocation_amount": fa.allocation_amount,
+        }
         for fa in data.sinking_fund_allocations
     ]
 

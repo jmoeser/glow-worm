@@ -71,7 +71,9 @@ def _dashboard_data(db: Session, month: int, year: int) -> dict:
         (Decimal(str(b.spent_amount)) for b in budgets),
         Decimal("0"),
     ).quantize(Decimal("0.01"))
-    budget_total_remaining = (budget_total_allocated - budget_total_spent).quantize(Decimal("0.01"))
+    budget_total_remaining = (budget_total_allocated - budget_total_spent).quantize(
+        Decimal("0.01")
+    )
 
     # Sinking funds (non-deleted, ordered by name)
     sinking_funds = (
@@ -101,7 +103,9 @@ def _dashboard_data(db: Session, month: int, year: int) -> dict:
         (Decimal(str(sf.current_balance)) for sf in sinking_funds),
         Decimal("0"),
     ).quantize(Decimal("0.01"))
-    total_net_worth = (total_sinking_funds + unallocated_income + budget_total_remaining).quantize(Decimal("0.01"))
+    total_net_worth = (
+        total_sinking_funds + unallocated_income + budget_total_remaining
+    ).quantize(Decimal("0.01"))
 
     # Daily remaining: budget remaining / days left in month
     now = datetime.now(BRISBANE)
@@ -183,9 +187,7 @@ async def quick_expense(
     get_current_user(request)
 
     def _error(msg: str) -> HTMLResponse:
-        return HTMLResponse(
-            f'<p class="text-red-400 text-sm">{msg}</p>'
-        )
+        return HTMLResponse(f'<p class="text-red-400 text-sm">{msg}</p>')
 
     # Validate budget_id
     if not budget_id:
@@ -270,7 +272,11 @@ async def api_dashboard(
         budget_total_remaining=data["budget_total_remaining"],
         total_sinking_funds=data["total_sinking_funds"],
         total_net_worth=data["total_net_worth"],
-        sinking_funds=[SinkingFundResponse.model_validate(sf) for sf in data["sinking_funds"]],
-        recent_transactions=[TransactionResponse.model_validate(t) for t in data["recent_transactions"]],
+        sinking_funds=[
+            SinkingFundResponse.model_validate(sf) for sf in data["sinking_funds"]
+        ],
+        recent_transactions=[
+            TransactionResponse.model_validate(t) for t in data["recent_transactions"]
+        ],
     )
     return JSONResponse(summary.model_dump(mode="json"))

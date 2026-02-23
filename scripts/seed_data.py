@@ -34,7 +34,9 @@ def seed_data() -> None:
         # Guard: require at least one user
         user = db.execute(select(User)).scalar_one_or_none()
         if not user:
-            print("Error: No user found. Run 'uv run python scripts/create_user.py' first.")
+            print(
+                "Error: No user found. Run 'uv run python scripts/create_user.py' first."
+            )
             sys.exit(1)
 
         # Guard: prevent duplicate seeding
@@ -50,61 +52,91 @@ def seed_data() -> None:
 
         # --- Categories ---
         income_cat = Category(
-            name="Salary", type=CategoryType.income.value, color="#22C55E",
+            name="Salary",
+            type=CategoryType.income.value,
+            color="#22C55E",
             is_budget_category=False,
         )
         groceries_cat = Category(
-            name="Groceries", type=CategoryType.expense.value, color="#EF4444",
+            name="Groceries",
+            type=CategoryType.expense.value,
+            color="#EF4444",
             is_budget_category=True,
         )
         dining_cat = Category(
-            name="Dining Out", type=CategoryType.expense.value, color="#F97316",
+            name="Dining Out",
+            type=CategoryType.expense.value,
+            color="#F97316",
             is_budget_category=True,
         )
         transport_cat = Category(
-            name="Transport", type=CategoryType.expense.value, color="#3B82F6",
+            name="Transport",
+            type=CategoryType.expense.value,
+            color="#3B82F6",
             is_budget_category=True,
         )
         entertainment_cat = Category(
-            name="Entertainment", type=CategoryType.expense.value, color="#8B5CF6",
+            name="Entertainment",
+            type=CategoryType.expense.value,
+            color="#8B5CF6",
             is_budget_category=True,
         )
         health_cat = Category(
-            name="Health", type=CategoryType.expense.value, color="#EC4899",
+            name="Health",
+            type=CategoryType.expense.value,
+            color="#EC4899",
             is_budget_category=True,
         )
         clothing_cat = Category(
-            name="Clothing", type=CategoryType.expense.value, color="#14B8A6",
+            name="Clothing",
+            type=CategoryType.expense.value,
+            color="#14B8A6",
             is_budget_category=True,
         )
         household_cat = Category(
-            name="Household", type=CategoryType.expense.value, color="#F59E0B",
+            name="Household",
+            type=CategoryType.expense.value,
+            color="#F59E0B",
             is_budget_category=True,
         )
 
         categories = [
-            income_cat, groceries_cat, dining_cat, transport_cat,
-            entertainment_cat, health_cat, clothing_cat, household_cat,
+            income_cat,
+            groceries_cat,
+            dining_cat,
+            transport_cat,
+            entertainment_cat,
+            health_cat,
+            clothing_cat,
+            household_cat,
         ]
         db.add_all(categories)
         db.flush()
 
         # --- Sinking Funds ---
         bills_fund = SinkingFund(
-            name="Bills", color="#EF4444",
-            monthly_allocation=800, current_balance=800,
+            name="Bills",
+            color="#EF4444",
+            monthly_allocation=800,
+            current_balance=800,
         )
         short_term_fund = SinkingFund(
-            name="Short Term Savings", color="#3B82F6",
-            monthly_allocation=300, current_balance=1200,
+            name="Short Term Savings",
+            color="#3B82F6",
+            monthly_allocation=300,
+            current_balance=1200,
         )
         long_term_fund = SinkingFund(
-            name="Long Term Savings", color="#22C55E",
-            monthly_allocation=500, current_balance=6000,
+            name="Long Term Savings",
+            color="#22C55E",
+            monthly_allocation=500,
+            current_balance=6000,
         )
         emergency_fund = SinkingFund(
-            name="Emergency Fund", color="#F59E0B",
-            monthly_allocation=200, current_balance=3000,
+            name="Emergency Fund",
+            color="#F59E0B",
+            monthly_allocation=200,
+            current_balance=3000,
         )
 
         funds = [bills_fund, short_term_fund, long_term_fund, emergency_fund]
@@ -116,7 +148,9 @@ def seed_data() -> None:
         # or create a dedicated one. The plan says "linked to a Bills expense category".
         # Since there's no Bills category in the categories list, we'll create one.
         bills_cat = Category(
-            name="Bills", type=CategoryType.expense.value, color="#EF4444",
+            name="Bills",
+            type=CategoryType.expense.value,
+            color="#EF4444",
             is_budget_category=False,
         )
         db.add(bills_cat)
@@ -133,29 +167,47 @@ def seed_data() -> None:
         next_month = add_months(first_of_month, 1)
 
         rent = RecurringBill(
-            name="Rent", amount=2400, debtor_provider="Landlord",
-            start_date=first_of_month.isoformat(), frequency=BillFrequency.monthly.value,
-            category_id=bills_cat.id, next_due_date=next_month.isoformat(),
+            name="Rent",
+            amount=2400,
+            debtor_provider="Landlord",
+            start_date=first_of_month.isoformat(),
+            frequency=BillFrequency.monthly.value,
+            category_id=bills_cat.id,
+            next_due_date=next_month.isoformat(),
         )
         electricity = RecurringBill(
-            name="Electricity", amount=150, debtor_provider="Energy Co",
-            start_date=first_of_month.isoformat(), frequency=BillFrequency.quarterly.value,
+            name="Electricity",
+            amount=150,
+            debtor_provider="Energy Co",
+            start_date=first_of_month.isoformat(),
+            frequency=BillFrequency.quarterly.value,
             category_id=bills_cat.id,
             next_due_date=add_months(first_of_month, 3).isoformat(),
         )
         internet = RecurringBill(
-            name="Internet", amount=89, debtor_provider="ISP Co",
-            start_date=first_of_month.isoformat(), frequency=BillFrequency.monthly.value,
-            category_id=bills_cat.id, next_due_date=next_month.isoformat(),
+            name="Internet",
+            amount=89,
+            debtor_provider="ISP Co",
+            start_date=first_of_month.isoformat(),
+            frequency=BillFrequency.monthly.value,
+            category_id=bills_cat.id,
+            next_due_date=next_month.isoformat(),
         )
         phone = RecurringBill(
-            name="Phone", amount=55, debtor_provider="Telco",
-            start_date=first_of_month.isoformat(), frequency=BillFrequency.monthly.value,
-            category_id=bills_cat.id, next_due_date=next_month.isoformat(),
+            name="Phone",
+            amount=55,
+            debtor_provider="Telco",
+            start_date=first_of_month.isoformat(),
+            frequency=BillFrequency.monthly.value,
+            category_id=bills_cat.id,
+            next_due_date=next_month.isoformat(),
         )
         car_insurance = RecurringBill(
-            name="Car Insurance", amount=1200, debtor_provider="Insurer Co",
-            start_date=first_of_month.isoformat(), frequency=BillFrequency.yearly.value,
+            name="Car Insurance",
+            amount=1200,
+            debtor_provider="Insurer Co",
+            start_date=first_of_month.isoformat(),
+            frequency=BillFrequency.yearly.value,
             category_id=bills_cat.id,
             next_due_date=date(current_year + 1, current_month, 1).isoformat(),
         )
@@ -178,8 +230,11 @@ def seed_data() -> None:
         budgets = []
         for cat, allocated, spent in budget_data:
             b = Budget(
-                category_id=cat.id, month=current_month, year=current_year,
-                allocated_amount=allocated, spent_amount=spent,
+                category_id=cat.id,
+                month=current_month,
+                year=current_year,
+                allocated_amount=allocated,
+                spent_amount=spent,
             )
             budgets.append(b)
         db.add_all(budgets)
@@ -204,39 +259,52 @@ def seed_data() -> None:
             (emergency_fund, 200),
         ]
         for fund, amount in junction_data:
-            db.add(IncomeAllocationToSinkingFund(
-                income_allocation_id=income_alloc.id,
-                sinking_fund_id=fund.id,
-                allocation_amount=amount,
-            ))
+            db.add(
+                IncomeAllocationToSinkingFund(
+                    income_allocation_id=income_alloc.id,
+                    sinking_fund_id=fund.id,
+                    allocation_amount=amount,
+                )
+            )
         db.flush()
 
         # --- Transactions ---
 
         # 1. Income on the 1st
-        db.add(Transaction(
-            date=first_of_month.isoformat(), description="Monthly income",
-            amount=6500, category_id=income_cat.id,
-            type=CategoryType.income.value,
-            transaction_type=TransactionType.income.value,
-        ))
+        db.add(
+            Transaction(
+                date=first_of_month.isoformat(),
+                description="Monthly income",
+                amount=6500,
+                category_id=income_cat.id,
+                type=CategoryType.income.value,
+                transaction_type=TransactionType.income.value,
+            )
+        )
 
         # 2. Income allocation transactions on the 1st
-        db.add(Transaction(
-            date=first_of_month.isoformat(), description="Budget allocation",
-            amount=1500, category_id=income_cat.id,
-            type=CategoryType.expense.value,
-            transaction_type=TransactionType.income_allocation.value,
-        ))
-        for fund, amount in junction_data:
-            db.add(Transaction(
+        db.add(
+            Transaction(
                 date=first_of_month.isoformat(),
-                description=f"Income allocation to {fund.name}",
-                amount=amount, category_id=income_cat.id,
+                description="Budget allocation",
+                amount=1500,
+                category_id=income_cat.id,
                 type=CategoryType.expense.value,
                 transaction_type=TransactionType.income_allocation.value,
-                sinking_fund_id=fund.id,
-            ))
+            )
+        )
+        for fund, amount in junction_data:
+            db.add(
+                Transaction(
+                    date=first_of_month.isoformat(),
+                    description=f"Income allocation to {fund.name}",
+                    amount=amount,
+                    category_id=income_cat.id,
+                    type=CategoryType.expense.value,
+                    transaction_type=TransactionType.income_allocation.value,
+                    sinking_fund_id=fund.id,
+                )
+            )
 
         # 3. Budget expense transactions spread through the month
         expense_transactions = [
@@ -255,43 +323,53 @@ def seed_data() -> None:
             # Don't create transactions in the future
             if tx_date > today:
                 continue
-            db.add(Transaction(
-                date=tx_date.isoformat(), description=desc,
-                amount=amount, category_id=cat.id,
-                type=CategoryType.expense.value,
-                transaction_type=TransactionType.budget_expense.value,
-                budget_id=cat_to_budget[cat.id].id,
-            ))
+            db.add(
+                Transaction(
+                    date=tx_date.isoformat(),
+                    description=desc,
+                    amount=amount,
+                    category_id=cat.id,
+                    type=CategoryType.expense.value,
+                    transaction_type=TransactionType.budget_expense.value,
+                    budget_id=cat_to_budget[cat.id].id,
+                )
+            )
 
         # 4. One contribution to a sinking fund
         contrib_date = first_of_month + timedelta(days=12)
         if contrib_date <= today:
-            db.add(Transaction(
-                date=contrib_date.isoformat(),
-                description="Extra savings contribution",
-                amount=100, category_id=income_cat.id,
-                type=CategoryType.expense.value,
-                transaction_type=TransactionType.contribution.value,
-                sinking_fund_id=short_term_fund.id,
-            ))
+            db.add(
+                Transaction(
+                    date=contrib_date.isoformat(),
+                    description="Extra savings contribution",
+                    amount=100,
+                    category_id=income_cat.id,
+                    type=CategoryType.expense.value,
+                    transaction_type=TransactionType.contribution.value,
+                    sinking_fund_id=short_term_fund.id,
+                )
+            )
 
         # --- Monthly Unallocated Income ---
         # Salary 6500 - Budget 1500 - Bills 800 - Short Term 300
         # - Long Term 500 - Emergency 200 = 3200
-        db.add(MonthlyUnallocatedIncome(
-            month=current_month, year=current_year,
-            unallocated_amount=3200,
-        ))
+        db.add(
+            MonthlyUnallocatedIncome(
+                month=current_month,
+                year=current_year,
+                unallocated_amount=3200,
+            )
+        )
 
         db.commit()
         print("Seed data created successfully.")
-        print(f"  - 9 categories")
-        print(f"  - 4 sinking funds")
-        print(f"  - 5 recurring bills")
+        print("  - 9 categories")
+        print("  - 4 sinking funds")
+        print("  - 5 recurring bills")
         print(f"  - 7 budgets ({current_month}/{current_year})")
-        print(f"  - 1 income allocation with 4 fund links")
-        print(f"  - Transactions for the current month")
-        print(f"  - 1 monthly unallocated income record")
+        print("  - 1 income allocation with 4 fund links")
+        print("  - Transactions for the current month")
+        print("  - 1 monthly unallocated income record")
 
     finally:
         db.close()

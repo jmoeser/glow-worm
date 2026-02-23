@@ -28,7 +28,7 @@ if not SECRET_KEY or SECRET_KEY == _INSECURE_DEFAULT:
     raise RuntimeError(
         "SECRET_KEY is not set or is using the insecure default value. "
         "Generate a random secret and add it to your .env file. Example:\n"
-        "  python -c \"import secrets; print(secrets.token_urlsafe(48))\""
+        '  python -c "import secrets; print(secrets.token_urlsafe(48))"'
     )
 
 SECURE_COOKIES = os.getenv("SECURE_COOKIES", "true").lower() == "true"

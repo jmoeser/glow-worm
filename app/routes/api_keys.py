@@ -72,9 +72,7 @@ async def api_keys_create(request: Request, db: Session = Depends(get_db)):
 
     error = _check_rate_limits(db, user.id)
     if error:
-        return HTMLResponse(
-            f'<p class="text-red-600 text-sm">{error}</p>'
-        )
+        return HTMLResponse(f'<p class="text-red-600 text-sm">{error}</p>')
 
     form = await request.form()
     name = (form.get("name") or "").strip() or "default"
@@ -91,7 +89,9 @@ async def api_keys_create(request: Request, db: Session = Depends(get_db)):
     db.commit()
     db.refresh(api_key)
 
-    logger.info("API key created: id=%d user=%s name=%s", api_key.id, user.username, name)
+    logger.info(
+        "API key created: id=%d user=%s name=%s", api_key.id, user.username, name
+    )
 
     keys = _all_keys(db, user.id)
     return templates.TemplateResponse(
@@ -106,9 +106,7 @@ async def api_keys_revoke(request: Request, key_id: int, db: Session = Depends(g
     user = get_current_user(request)
 
     api_key = (
-        db.query(ApiKey)
-        .filter(ApiKey.id == key_id, ApiKey.user_id == user.id)
-        .first()
+        db.query(ApiKey).filter(ApiKey.id == key_id, ApiKey.user_id == user.id).first()
     )
     if not api_key:
         return HTMLResponse("Not found", status_code=404)
@@ -169,7 +167,9 @@ async def create_api_key(
     db.commit()
     db.refresh(api_key)
 
-    logger.info("API key created: id=%d user=%s name=%s", api_key.id, user.username, data.name)
+    logger.info(
+        "API key created: id=%d user=%s name=%s", api_key.id, user.username, data.name
+    )
 
     response = ApiKeyCreatedResponse(
         key=plain_key,
@@ -199,9 +199,7 @@ async def revoke_api_key(
     user = get_current_user(request)
 
     api_key = (
-        db.query(ApiKey)
-        .filter(ApiKey.id == key_id, ApiKey.user_id == user.id)
-        .first()
+        db.query(ApiKey).filter(ApiKey.id == key_id, ApiKey.user_id == user.id).first()
     )
     if not api_key:
         return JSONResponse({"detail": "API key not found"}, status_code=404)

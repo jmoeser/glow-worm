@@ -41,7 +41,9 @@ class TestTransactionTools:
         result = _list_transactions(month=1, year=2026)
         assert result == []
 
-    def test_create_and_get_transaction(self, db_session, setup_database, sample_category):
+    def test_create_and_get_transaction(
+        self, db_session, setup_database, sample_category
+    ):
         result = _create_transaction(
             date="2026-01-15",
             amount=50.00,
@@ -69,7 +71,9 @@ class TestTransactionTools:
         assert isinstance(result, str)
         assert "not found" in result.lower()
 
-    def test_list_transactions_with_filters(self, db_session, setup_database, sample_category, sample_income_category):
+    def test_list_transactions_with_filters(
+        self, db_session, setup_database, sample_category, sample_income_category
+    ):
         _create_transaction(
             date="2026-01-10",
             amount=100.00,
@@ -177,7 +181,9 @@ class TestBillTools:
         assert isinstance(result, str)
         assert "not found" in result.lower()
 
-    def test_create_bill_invalid_frequency(self, db_session, setup_database, sample_category):
+    def test_create_bill_invalid_frequency(
+        self, db_session, setup_database, sample_category
+    ):
         result = _create_bill(
             name="Test",
             amount=10.00,

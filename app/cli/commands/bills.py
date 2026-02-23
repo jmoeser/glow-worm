@@ -43,8 +43,13 @@ def list_bills(
 @app.command("pay")
 def pay_bill(
     bill_id: Annotated[int, typer.Argument(help="Bill ID")],
-    amount: Annotated[Optional[float], typer.Option(help="Override payment amount")] = None,
-    pay_date: Annotated[Optional[str], typer.Option("--date", help="Payment date YYYY-MM-DD (default: today)")] = None,
+    amount: Annotated[
+        Optional[float], typer.Option(help="Override payment amount")
+    ] = None,
+    pay_date: Annotated[
+        Optional[str],
+        typer.Option("--date", help="Payment date YYYY-MM-DD (default: today)"),
+    ] = None,
     json_output: Annotated[bool, typer.Option("--json", help="Output as JSON")] = False,
 ) -> None:
     """Record payment for a bill."""
@@ -58,7 +63,9 @@ def pay_bill(
         amount = float(bill["amount"])
         typer.echo(f"Paying {bill['name']} — default amount ${amount}")
     typer.confirm(f"Confirm payment of ${amount:.2f} on {pay_date}?", abort=True)
-    resp = client.post(f"/api/bills/{bill_id}/pay", json={"amount": amount, "date": pay_date})
+    resp = client.post(
+        f"/api/bills/{bill_id}/pay", json={"amount": amount, "date": pay_date}
+    )
     raise_for_status(resp)
     if json_output:
         print_json(resp.json())
@@ -70,8 +77,12 @@ def pay_bill(
 def add_bill(
     name: Annotated[str, typer.Option(prompt=True)],
     amount: Annotated[float, typer.Option(prompt=True)],
-    provider: Annotated[str, typer.Option("--provider", prompt=True, help="Debtor/provider name")],
-    frequency: Annotated[str, typer.Option(prompt=True, help="28_days / monthly / quarterly / yearly")],
+    provider: Annotated[
+        str, typer.Option("--provider", prompt=True, help="Debtor/provider name")
+    ],
+    frequency: Annotated[
+        str, typer.Option(prompt=True, help="28_days / monthly / quarterly / yearly")
+    ],
     category_id: Annotated[int, typer.Option(prompt=True)],
     start_date: Annotated[str, typer.Option(prompt=True, help="YYYY-MM-DD")],
     next_due_date: Annotated[str, typer.Option(prompt=True, help="YYYY-MM-DD")],

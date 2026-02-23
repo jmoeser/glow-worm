@@ -2,8 +2,6 @@ import re
 from datetime import date, timedelta
 from decimal import Decimal, InvalidOperation
 
-_COLOR_RE = re.compile(r"^#[0-9a-fA-F]{6}$")
-
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 from pydantic import ValidationError
@@ -14,6 +12,8 @@ from app.middleware import get_current_user
 from app.models import RecurringBill, SinkingFund
 from app.schemas import SinkingFundCreate, SinkingFundResponse, SinkingFundUpdate
 from app.templating import templates
+
+_COLOR_RE = re.compile(r"^#[0-9a-fA-F]{6}$")
 
 router = APIRouter()
 
@@ -42,7 +42,8 @@ def _compute_bills_recommended(db: Session) -> Decimal:
     )
     total_annual = sum(
         (
-            Decimal(str(b.amount)) * Decimal(str(FREQUENCY_ANNUAL_MULTIPLIER.get(b.frequency, 1)))
+            Decimal(str(b.amount))
+            * Decimal(str(FREQUENCY_ANNUAL_MULTIPLIER.get(b.frequency, 1)))
             for b in bills
         ),
         Decimal("0"),
@@ -103,7 +104,9 @@ def _render_table_body(request: Request, db: Session) -> str:
     ).body.decode()
 
 
-def _render_fund_row(request: Request, fund: SinkingFund, bills_recommended: Decimal = Decimal("0")) -> str:
+def _render_fund_row(
+    request: Request, fund: SinkingFund, bills_recommended: Decimal = Decimal("0")
+) -> str:
     return templates.TemplateResponse(
         request,
         "sinking_funds.html",
@@ -144,9 +147,7 @@ async def sinking_funds_create(request: Request, db: Session = Depends(get_db)):
     color = (form.get("color") or "").strip()
 
     if not name:
-        return HTMLResponse(
-            '<p class="text-red-600 text-sm">Name is required.</p>'
-        )
+        return HTMLResponse('<p class="text-red-600 text-sm">Name is required.</p>')
 
     if not color or not _COLOR_RE.match(color):
         return HTMLResponse(
@@ -155,7 +156,7 @@ async def sinking_funds_create(request: Request, db: Session = Depends(get_db)):
 
     try:
         monthly_allocation = Decimal(form.get("monthly_allocation", "0"))
-    except (InvalidOperation, TypeError):
+    except InvalidOperation, TypeError:
         return HTMLResponse(
             '<p class="text-red-600 text-sm">Invalid allocation amount.</p>'
         )
@@ -167,7 +168,7 @@ async def sinking_funds_create(request: Request, db: Session = Depends(get_db)):
 
     try:
         current_balance = Decimal(form.get("current_balance", "0"))
-    except (InvalidOperation, TypeError):
+    except InvalidOperation, TypeError:
         return HTMLResponse(
             '<p class="text-red-600 text-sm">Invalid initial balance.</p>'
         )
@@ -186,7 +187,9 @@ async def sinking_funds_create(request: Request, db: Session = Depends(get_db)):
 
 
 @router.get("/sinking-funds/{fund_id}/edit", response_class=HTMLResponse)
-async def sinking_funds_edit_form(request: Request, fund_id: int, db: Session = Depends(get_db)):
+async def sinking_funds_edit_form(
+    request: Request, fund_id: int, db: Session = Depends(get_db)
+):
     fund = db.query(SinkingFund).filter(SinkingFund.id == fund_id).first()
     if not fund:
         return HTMLResponse("Not found", status_code=404)
@@ -194,7 +197,9 @@ async def sinking_funds_edit_form(request: Request, fund_id: int, db: Session = 
 
 
 @router.post("/sinking-funds/{fund_id}", response_class=HTMLResponse)
-async def sinking_funds_update(request: Request, fund_id: int, db: Session = Depends(get_db)):
+async def sinking_funds_update(
+    request: Request, fund_id: int, db: Session = Depends(get_db)
+):
     fund = db.query(SinkingFund).filter(SinkingFund.id == fund_id).first()
     if not fund:
         return HTMLResponse("Not found", status_code=404)
@@ -218,7 +223,7 @@ async def sinking_funds_update(request: Request, fund_id: int, db: Session = Dep
             allocation = Decimal(raw_allocation)
             if allocation >= 0:
                 fund.monthly_allocation = allocation
-        except (InvalidOperation, TypeError):
+        except InvalidOperation, TypeError:
             pass
 
     db.commit()
@@ -229,7 +234,9 @@ async def sinking_funds_update(request: Request, fund_id: int, db: Session = Dep
 
 
 @router.delete("/sinking-funds/{fund_id}", response_class=HTMLResponse)
-async def sinking_funds_delete(request: Request, fund_id: int, db: Session = Depends(get_db)):
+async def sinking_funds_delete(
+    request: Request, fund_id: int, db: Session = Depends(get_db)
+):
     fund = db.query(SinkingFund).filter(SinkingFund.id == fund_id).first()
     if not fund:
         return HTMLResponse("Not found", status_code=404)
@@ -246,7 +253,9 @@ async def sinking_funds_delete(request: Request, fund_id: int, db: Session = Dep
 @router.get("/api/sinking-funds")
 async def api_list_funds(request: Request, db: Session = Depends(get_db)):
     funds = _active_funds(db)
-    return [SinkingFundResponse.model_validate(f).model_dump(mode="json") for f in funds]
+    return [
+        SinkingFundResponse.model_validate(f).model_dump(mode="json") for f in funds
+    ]
 
 
 @router.post("/api/sinking-funds")
@@ -288,7 +297,9 @@ async def api_get_fund(request: Request, fund_id: int, db: Session = Depends(get
 
 
 @router.put("/api/sinking-funds/{fund_id}")
-async def api_update_fund(request: Request, fund_id: int, db: Session = Depends(get_db)):
+async def api_update_fund(
+    request: Request, fund_id: int, db: Session = Depends(get_db)
+):
     fund = db.query(SinkingFund).filter(SinkingFund.id == fund_id).first()
     if not fund:
         return JSONResponse({"detail": "Sinking fund not found"}, status_code=404)
@@ -316,7 +327,9 @@ async def api_update_fund(request: Request, fund_id: int, db: Session = Depends(
 
 
 @router.delete("/api/sinking-funds/{fund_id}")
-async def api_delete_fund(request: Request, fund_id: int, db: Session = Depends(get_db)):
+async def api_delete_fund(
+    request: Request, fund_id: int, db: Session = Depends(get_db)
+):
     fund = db.query(SinkingFund).filter(SinkingFund.id == fund_id).first()
     if not fund:
         return JSONResponse({"detail": "Sinking fund not found"}, status_code=404)

@@ -1,6 +1,4 @@
-from decimal import Decimal
-
-from app.models import RecurringBill, SinkingFund
+from app.models import SinkingFund
 
 
 class TestSinkingFundsPageGet:
@@ -19,7 +17,9 @@ class TestSinkingFundsPageGet:
         assert "Bills" in response.text
         assert "Savings" in response.text
 
-    def test_excludes_deleted_funds(self, authed_client, db_session, sample_sinking_funds):
+    def test_excludes_deleted_funds(
+        self, authed_client, db_session, sample_sinking_funds
+    ):
         fund = sample_sinking_funds[0]
         fund.is_deleted = True
         db_session.commit()
@@ -54,7 +54,11 @@ class TestSinkingFundsPagePost:
             headers={"x-csrftoken": authed_client.csrf_token},
         )
         assert response.status_code == 200
-        fund = db_session.query(SinkingFund).filter(SinkingFund.name == "Emergency").first()
+        fund = (
+            db_session.query(SinkingFund)
+            .filter(SinkingFund.name == "Emergency")
+            .first()
+        )
         assert fund is not None
         assert float(fund.monthly_allocation) == 200.0
         assert fund.color == "#FF5733"
@@ -124,7 +128,9 @@ class TestSinkingFundsPagePost:
             },
             headers={"x-csrftoken": authed_client.csrf_token},
         )
-        fund = db_session.query(SinkingFund).filter(SinkingFund.name == "New Fund").first()
+        fund = (
+            db_session.query(SinkingFund).filter(SinkingFund.name == "New Fund").first()
+        )
         assert fund is not None
         assert float(fund.current_balance) == 0
 
@@ -140,7 +146,9 @@ class TestSinkingFundsPagePost:
             headers={"x-csrftoken": authed_client.csrf_token},
         )
         assert response.status_code == 200
-        fund = db_session.query(SinkingFund).filter(SinkingFund.name == "Starter").first()
+        fund = (
+            db_session.query(SinkingFund).filter(SinkingFund.name == "Starter").first()
+        )
         assert fund is not None
         assert float(fund.current_balance) == 250.0
 
@@ -156,7 +164,11 @@ class TestSinkingFundsPagePost:
             headers={"x-csrftoken": authed_client.csrf_token},
         )
         assert response.status_code == 200
-        fund = db_session.query(SinkingFund).filter(SinkingFund.name == "Overdrawn").first()
+        fund = (
+            db_session.query(SinkingFund)
+            .filter(SinkingFund.name == "Overdrawn")
+            .first()
+        )
         assert fund is not None
         assert float(fund.current_balance) == -120.5
 
@@ -285,7 +297,9 @@ class TestApiFundsList:
         assert "Bills" in names
         assert "Savings" in names
 
-    def test_excludes_deleted_funds(self, authed_client, db_session, sample_sinking_funds):
+    def test_excludes_deleted_funds(
+        self, authed_client, db_session, sample_sinking_funds
+    ):
         sample_sinking_funds[0].is_deleted = True
         db_session.commit()
         response = authed_client.get("/api/sinking-funds")
@@ -383,7 +397,9 @@ class TestApiFundsGet:
 
 
 class TestApiFundsUpdate:
-    def test_updates_and_returns_200(self, authed_client, db_session, sample_sinking_funds):
+    def test_updates_and_returns_200(
+        self, authed_client, db_session, sample_sinking_funds
+    ):
         fund = sample_sinking_funds[0]
         response = authed_client.put(
             f"/api/sinking-funds/{fund.id}",
@@ -414,7 +430,9 @@ class TestApiFundsUpdate:
 
 
 class TestApiFundsDelete:
-    def test_soft_deletes_and_returns_200(self, authed_client, db_session, sample_sinking_funds):
+    def test_soft_deletes_and_returns_200(
+        self, authed_client, db_session, sample_sinking_funds
+    ):
         fund = sample_sinking_funds[0]
         response = authed_client.delete(
             f"/api/sinking-funds/{fund.id}",

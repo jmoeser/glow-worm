@@ -30,7 +30,9 @@ class AuthenticationMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         path = request.url.path
 
-        if path in self.PUBLIC_PATHS or any(path.startswith(p) for p in self.PUBLIC_PREFIXES):
+        if path in self.PUBLIC_PATHS or any(
+            path.startswith(p) for p in self.PUBLIC_PREFIXES
+        ):
             return await call_next(request)
 
         # Try Bearer token auth first (for API and MCP endpoints)
@@ -79,7 +81,9 @@ class AuthenticationMiddleware(BaseHTTPMiddleware):
             )
 
             if not api_key:
-                logger.warning("Invalid or revoked API key used from %s", request.client.host)
+                logger.warning(
+                    "Invalid or revoked API key used from %s", request.client.host
+                )
                 return JSONResponse(
                     {"detail": "Invalid or revoked API key"},
                     status_code=401,

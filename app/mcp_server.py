@@ -5,13 +5,13 @@ Authentication is handled at the HTTP middleware layer (Bearer token).
 """
 
 import logging
-from decimal import Decimal, InvalidOperation
+from decimal import Decimal
 
 from fastmcp import FastMCP
 
 from app.database import SessionLocal
 from app.middleware import get_current_user_context
-from app.models import Category, RecurringBill, SinkingFund, Transaction
+from app.models import Category, RecurringBill, Transaction
 from app.schemas import (
     RecurringBillCreate,
     RecurringBillResponse,
@@ -90,8 +90,7 @@ def list_transactions(
 
         txns = query.order_by(Transaction.date.desc(), Transaction.id.desc()).all()
         return [
-            TransactionResponse.model_validate(t).model_dump(mode="json")
-            for t in txns
+            TransactionResponse.model_validate(t).model_dump(mode="json") for t in txns
         ]
     finally:
         db.close()
@@ -188,7 +187,9 @@ def create_transaction(
         db.commit()
         db.refresh(txn)
 
-        logger.info("MCP [user=%s]: created transaction id=%d", _audit_username(), txn.id)
+        logger.info(
+            "MCP [user=%s]: created transaction id=%d", _audit_username(), txn.id
+        )
         return TransactionResponse.model_validate(txn).model_dump(mode="json")
     except Exception as exc:
         db.rollback()
@@ -273,7 +274,9 @@ def update_transaction(
         db.commit()
         db.refresh(txn)
 
-        logger.info("MCP [user=%s]: updated transaction id=%d", _audit_username(), txn.id)
+        logger.info(
+            "MCP [user=%s]: updated transaction id=%d", _audit_username(), txn.id
+        )
         return TransactionResponse.model_validate(txn).model_dump(mode="json")
     except Exception as exc:
         db.rollback()
@@ -301,7 +304,11 @@ def delete_transaction(transaction_id: int) -> str:
         db.delete(txn)
         db.commit()
 
-        logger.info("MCP [user=%s]: deleted transaction id=%d", _audit_username(), transaction_id)
+        logger.info(
+            "MCP [user=%s]: deleted transaction id=%d",
+            _audit_username(),
+            transaction_id,
+        )
         return f"Transaction {transaction_id} deleted."
     except Exception as exc:
         db.rollback()
@@ -424,7 +431,12 @@ def create_bill(
         db.commit()
         db.refresh(bill)
 
-        logger.info("MCP [user=%s]: created bill id=%d name=%s", _audit_username(), bill.id, bill.name)
+        logger.info(
+            "MCP [user=%s]: created bill id=%d name=%s",
+            _audit_username(),
+            bill.id,
+            bill.name,
+        )
         return RecurringBillResponse.model_validate(bill).model_dump(mode="json")
     except Exception as exc:
         db.rollback()

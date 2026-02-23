@@ -29,7 +29,13 @@ def _version_callback(value: bool) -> None:
 def main(
     version: Annotated[
         Optional[bool],
-        typer.Option("--version", "-v", callback=_version_callback, is_eager=True, help="Show version and exit."),
+        typer.Option(
+            "--version",
+            "-v",
+            callback=_version_callback,
+            is_eager=True,
+            help="Show version and exit.",
+        ),
     ] = None,
 ) -> None:
     pass

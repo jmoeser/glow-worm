@@ -31,7 +31,9 @@ def start_scheduler() -> None:
     )
 
     scheduler.start()
-    logger.info("Background scheduler started with income_allocation and bill_processing jobs")
+    logger.info(
+        "Background scheduler started with income_allocation and bill_processing jobs"
+    )
 
 
 def stop_scheduler() -> None:

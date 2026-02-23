@@ -332,7 +332,7 @@ def process_due_bills(db: Session | None = None) -> None:
         processed = 0
         for bill in due_bills:
             # Skip variable bills — they require manual payment
-            if getattr(bill, 'bill_type', 'fixed') == 'variable':
+            if getattr(bill, "bill_type", "fixed") == "variable":
                 continue
 
             # Idempotency: skip if already paid today for this bill
@@ -363,11 +363,15 @@ def process_due_bills(db: Session | None = None) -> None:
                 )
             )
 
-            bills_fund.current_balance = Decimal(str(bills_fund.current_balance)) - amount
+            bills_fund.current_balance = (
+                Decimal(str(bills_fund.current_balance)) - amount
+            )
 
             # Advance next_due_date
             current_due = date.fromisoformat(bill.next_due_date)
-            bill.next_due_date = advance_due_date(current_due, bill.frequency).isoformat()
+            bill.next_due_date = advance_due_date(
+                current_due, bill.frequency
+            ).isoformat()
             processed += 1
 
         db.commit()

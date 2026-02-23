@@ -15,7 +15,9 @@ console = Console()
 def list_transactions(
     month: Annotated[Optional[int], typer.Option(help="Month (1-12)")] = None,
     year: Annotated[Optional[int], typer.Option(help="Year")] = None,
-    type_filter: Annotated[Optional[str], typer.Option("--type", help="Filter: income or expense")] = None,
+    type_filter: Annotated[
+        Optional[str], typer.Option("--type", help="Filter: income or expense")
+    ] = None,
     limit: Annotated[Optional[int], typer.Option(help="Max rows to display")] = None,
     json_output: Annotated[bool, typer.Option("--json", help="Output as JSON")] = False,
 ) -> None:
@@ -56,13 +58,19 @@ def list_transactions(
 def add_transaction(
     amount: Annotated[float, typer.Option(prompt=True, help="Amount (positive)")],
     category_id: Annotated[int, typer.Option(prompt=True, help="Category ID")],
-    tx_type: Annotated[str, typer.Option("--type", prompt=True, help="income or expense")],
+    tx_type: Annotated[
+        str, typer.Option("--type", prompt=True, help="income or expense")
+    ],
     description: Annotated[Optional[str], typer.Option(help="Description")] = None,
-    transaction_type: Annotated[str, typer.Option(help="Transaction type (default: regular)")] = "regular",
+    transaction_type: Annotated[
+        str, typer.Option(help="Transaction type (default: regular)")
+    ] = "regular",
     fund_id: Annotated[Optional[int], typer.Option(help="Sinking fund ID")] = None,
     bill_id: Annotated[Optional[int], typer.Option(help="Recurring bill ID")] = None,
     budget_id: Annotated[Optional[int], typer.Option(help="Budget ID")] = None,
-    tx_date: Annotated[Optional[str], typer.Option("--date", help="Date YYYY-MM-DD (default: today)")] = None,
+    tx_date: Annotated[
+        Optional[str], typer.Option("--date", help="Date YYYY-MM-DD (default: today)")
+    ] = None,
     json_output: Annotated[bool, typer.Option("--json", help="Output as JSON")] = False,
 ) -> None:
     """Add a new transaction."""

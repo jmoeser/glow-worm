@@ -46,7 +46,9 @@ class TestBudgetsPageGet:
         assert "month=1" in response.text
         assert "year=2027" in response.text
 
-    def test_shows_add_form_with_available_categories(self, authed_client, sample_budget_categories):
+    def test_shows_add_form_with_available_categories(
+        self, authed_client, sample_budget_categories
+    ):
         response = authed_client.get("/budgets")
         assert response.status_code == 200
         assert "Add Budget Category" in response.text
@@ -75,7 +77,9 @@ class TestBudgetsPageGet:
 
 
 class TestBudgetsPagePost:
-    def test_creates_new_budget(self, authed_client, db_session, sample_budget_categories):
+    def test_creates_new_budget(
+        self, authed_client, db_session, sample_budget_categories
+    ):
         month, year = _current_month_year()
         response = authed_client.post(
             "/budgets",
@@ -88,15 +92,21 @@ class TestBudgetsPagePost:
             headers={"x-csrftoken": authed_client.csrf_token},
         )
         assert response.status_code == 200
-        budget = db_session.query(Budget).filter(
-            Budget.category_id == sample_budget_categories[0].id,
-            Budget.month == month,
-            Budget.year == year,
-        ).first()
+        budget = (
+            db_session.query(Budget)
+            .filter(
+                Budget.category_id == sample_budget_categories[0].id,
+                Budget.month == month,
+                Budget.year == year,
+            )
+            .first()
+        )
         assert budget is not None
         assert float(budget.allocated_amount) == 500.0
 
-    def test_returns_updated_table_body(self, authed_client, sample_budgets, sample_budget_categories):
+    def test_returns_updated_table_body(
+        self, authed_client, sample_budgets, sample_budget_categories
+    ):
         month, year = _current_month_year()
         response = authed_client.post(
             "/budgets",
@@ -142,12 +152,16 @@ class TestBudgetsPagePost:
         assert response.status_code == 200
         assert "Invalid" in response.text
 
-    def test_error_on_duplicate_category_month(self, authed_client, sample_budgets, sample_budget_categories):
+    def test_error_on_duplicate_category_month(
+        self, authed_client, sample_budgets, sample_budget_categories
+    ):
         month, year = _current_month_year()
         response = authed_client.post(
             "/budgets",
             data={
-                "category_id": str(sample_budget_categories[0].id),  # Groceries already budgeted
+                "category_id": str(
+                    sample_budget_categories[0].id
+                ),  # Groceries already budgeted
                 "allocated_amount": "100.00",
                 "month": str(month),
                 "year": str(year),
@@ -269,7 +283,9 @@ class TestApiBudgetsList:
 
 
 class TestApiBudgetsCreate:
-    def test_creates_budget_returns_201(self, authed_client, db_session, sample_budget_categories):
+    def test_creates_budget_returns_201(
+        self, authed_client, db_session, sample_budget_categories
+    ):
         month, year = _current_month_year()
         response = authed_client.post(
             "/api/budgets",
@@ -294,7 +310,9 @@ class TestApiBudgetsCreate:
         )
         assert response.status_code == 422
 
-    def test_409_on_duplicate(self, authed_client, sample_budgets, sample_budget_categories):
+    def test_409_on_duplicate(
+        self, authed_client, sample_budgets, sample_budget_categories
+    ):
         month, year = _current_month_year()
         response = authed_client.post(
             "/api/budgets",
@@ -368,7 +386,9 @@ class TestApiBudgetsUpdate:
 
 
 class TestApiBudgetsDelete:
-    def test_hard_deletes_and_returns_200(self, authed_client, db_session, sample_budgets):
+    def test_hard_deletes_and_returns_200(
+        self, authed_client, db_session, sample_budgets
+    ):
         budget = sample_budgets[0]
         budget_id = budget.id
         response = authed_client.delete(

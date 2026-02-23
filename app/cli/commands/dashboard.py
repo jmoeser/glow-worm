@@ -10,7 +10,9 @@ console = Console()
 
 
 def dashboard(
-    month: Annotated[Optional[int], typer.Option("--month", "-m", help="Month (1-12)")] = None,
+    month: Annotated[
+        Optional[int], typer.Option("--month", "-m", help="Month (1-12)")
+    ] = None,
     year: Annotated[Optional[int], typer.Option("--year", "-y", help="Year")] = None,
     json_output: Annotated[bool, typer.Option("--json", help="Output as JSON")] = False,
 ) -> None:
@@ -44,7 +46,9 @@ def dashboard(
     summary.add_row("Budget spent", f"${data['budget_total_spent']}")
     summary.add_row("Budget remaining", f"${data['budget_total_remaining']}")
     summary.add_row("Sinking funds total", f"${data['total_sinking_funds']}")
-    summary.add_row("[bold]Net worth[/bold]", f"[bold]${data['total_net_worth']}[/bold]")
+    summary.add_row(
+        "[bold]Net worth[/bold]", f"[bold]${data['total_net_worth']}[/bold]"
+    )
     console.print(summary)
 
     if data.get("sinking_funds"):

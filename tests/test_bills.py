@@ -1,5 +1,3 @@
-from decimal import Decimal
-
 import pytest
 
 from app.models import RecurringBill, SinkingFund, Transaction
@@ -60,12 +58,18 @@ class TestBillsPagePost:
             headers={"x-csrftoken": authed_client.csrf_token},
         )
         assert response.status_code == 200
-        bill = db_session.query(RecurringBill).filter(RecurringBill.name == "Power").first()
+        bill = (
+            db_session.query(RecurringBill)
+            .filter(RecurringBill.name == "Power")
+            .first()
+        )
         assert bill is not None
         assert float(bill.amount) == 150.0
         assert bill.category_id == sample_category.id
 
-    def test_returns_updated_table_body(self, authed_client, sample_category, sample_bills):
+    def test_returns_updated_table_body(
+        self, authed_client, sample_category, sample_bills
+    ):
         response = authed_client.post(
             "/bills",
             data={
@@ -353,6 +357,7 @@ class TestApiBillsDelete:
 # bill_type / variable bill tests
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture
 def bills_fund(db_session):
     fund = SinkingFund(
@@ -386,7 +391,9 @@ def variable_bill(db_session, sample_category):
 
 
 class TestBillTypeDefault:
-    def test_default_bill_type_is_fixed(self, authed_client, db_session, sample_category):
+    def test_default_bill_type_is_fixed(
+        self, authed_client, db_session, sample_category
+    ):
         authed_client.post(
             "/api/bills",
             json={
@@ -399,7 +406,9 @@ class TestBillTypeDefault:
                 "next_due_date": "2026-02-01",
             },
         )
-        bill = db_session.query(RecurringBill).filter(RecurringBill.name == "Rent").first()
+        bill = (
+            db_session.query(RecurringBill).filter(RecurringBill.name == "Rent").first()
+        )
         assert bill.bill_type == "fixed"
 
     def test_bill_type_appears_in_api_response(self, authed_client, sample_bills):
@@ -410,7 +419,9 @@ class TestBillTypeDefault:
         assert "bill_type" in data
         assert data["bill_type"] == "fixed"
 
-    def test_create_variable_bill_via_api(self, authed_client, db_session, sample_category):
+    def test_create_variable_bill_via_api(
+        self, authed_client, db_session, sample_category
+    ):
         response = authed_client.post(
             "/api/bills",
             json={
@@ -430,7 +441,9 @@ class TestBillTypeDefault:
 
 
 class TestProcessDueBillsVariableSkip:
-    def test_variable_bill_skipped_by_scheduler(self, db_session, bills_fund, variable_bill):
+    def test_variable_bill_skipped_by_scheduler(
+        self, db_session, bills_fund, variable_bill
+    ):
         original_due = variable_bill.next_due_date
         process_due_bills(db=db_session)
 

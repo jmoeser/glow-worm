@@ -6,7 +6,6 @@ The conftest setup_database fixture runs (autouse) but is a no-op for these test
 """
 
 import json
-from pathlib import Path
 from unittest.mock import patch
 
 import httpx
@@ -52,10 +51,19 @@ DASHBOARD_RESPONSE = {
     "year": 2026,
     "sinking_funds": [
         {"name": "Bills", "current_balance": "2000.00", "monthly_allocation": "500.00"},
-        {"name": "Savings", "current_balance": "1000.00", "monthly_allocation": "200.00"},
+        {
+            "name": "Savings",
+            "current_balance": "1000.00",
+            "monthly_allocation": "200.00",
+        },
     ],
     "recent_transactions": [
-        {"date": "2026-02-15", "description": "Groceries", "amount": "85.00", "type": "expense"},
+        {
+            "date": "2026-02-15",
+            "description": "Groceries",
+            "amount": "85.00",
+            "type": "expense",
+        },
     ],
 }
 
@@ -172,7 +180,9 @@ class TestConfigCommands:
 
     def test_show_masks_api_key(self, tmp_path, monkeypatch):
         config_file = tmp_path / "config.toml"
-        config_file.write_text('url = "http://localhost:8000"\napi_key = "supersecretkey"\n')
+        config_file.write_text(
+            'url = "http://localhost:8000"\napi_key = "supersecretkey"\n'
+        )
         monkeypatch.setattr("app.cli.config.CONFIG_FILE", config_file)
         monkeypatch.setattr("app.cli.config.CONFIG_DIR", tmp_path)
         result = runner.invoke(app, ["config", "show"])
@@ -273,7 +283,9 @@ class TestDashboard:
                 return_value=httpx.Response(200, json=DASHBOARD_RESPONSE)
             )
             runner.invoke(app, ["dashboard"])
-        assert route.calls[0].request.headers["authorization"] == "Bearer test-key-abc123"
+        assert (
+            route.calls[0].request.headers["authorization"] == "Bearer test-key-abc123"
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -325,12 +337,19 @@ class TestTransactions:
             route = respx.post(f"{SERVER_URL}/api/transactions").mock(
                 return_value=httpx.Response(201, json=created)
             )
-            result = runner.invoke(app, [
-                "tx", "add",
-                "--amount", "85.00",
-                "--category-id", "1",
-                "--type", "expense",
-            ])
+            result = runner.invoke(
+                app,
+                [
+                    "tx",
+                    "add",
+                    "--amount",
+                    "85.00",
+                    "--category-id",
+                    "1",
+                    "--type",
+                    "expense",
+                ],
+            )
         assert result.exit_code == 0
         assert "#3" in result.output
         body = json.loads(route.calls[0].request.content)
@@ -345,15 +364,25 @@ class TestTransactions:
             route = respx.post(f"{SERVER_URL}/api/transactions").mock(
                 return_value=httpx.Response(201, json=created)
             )
-            runner.invoke(app, [
-                "tx", "add",
-                "--amount", "50",
-                "--category-id", "1",
-                "--type", "expense",
-                "--description", "Coffee",
-                "--fund-id", "2",
-                "--date", "2026-02-20",
-            ])
+            runner.invoke(
+                app,
+                [
+                    "tx",
+                    "add",
+                    "--amount",
+                    "50",
+                    "--category-id",
+                    "1",
+                    "--type",
+                    "expense",
+                    "--description",
+                    "Coffee",
+                    "--fund-id",
+                    "2",
+                    "--date",
+                    "2026-02-20",
+                ],
+            )
         body = json.loads(route.calls[0].request.content)
         assert body["description"] == "Coffee"
         assert body["sinking_fund_id"] == 2
@@ -450,16 +479,27 @@ class TestBills:
             route = respx.post(f"{SERVER_URL}/api/bills").mock(
                 return_value=httpx.Response(201, json=SAMPLE_BILLS[0])
             )
-            runner.invoke(app, [
-                "bills", "add",
-                "--name", "Internet",
-                "--amount", "89",
-                "--provider", "ISP Co",
-                "--frequency", "monthly",
-                "--category-id", "1",
-                "--start-date", "2026-01-01",
-                "--next-due-date", "2026-03-01",
-            ])
+            runner.invoke(
+                app,
+                [
+                    "bills",
+                    "add",
+                    "--name",
+                    "Internet",
+                    "--amount",
+                    "89",
+                    "--provider",
+                    "ISP Co",
+                    "--frequency",
+                    "monthly",
+                    "--category-id",
+                    "1",
+                    "--start-date",
+                    "2026-01-01",
+                    "--next-due-date",
+                    "2026-03-01",
+                ],
+            )
         body = json.loads(route.calls[0].request.content)
         assert body["name"] == "Internet"
         assert body["debtor_provider"] == "ISP Co"
@@ -515,12 +555,19 @@ class TestFunds:
             route = respx.post(f"{SERVER_URL}/api/sinking-funds").mock(
                 return_value=httpx.Response(201, json=created)
             )
-            result = runner.invoke(app, [
-                "funds", "add",
-                "--name", "Emergency",
-                "--monthly-allocation", "300.00",
-                "--color", "#3b82f6",
-            ])
+            result = runner.invoke(
+                app,
+                [
+                    "funds",
+                    "add",
+                    "--name",
+                    "Emergency",
+                    "--monthly-allocation",
+                    "300.00",
+                    "--color",
+                    "#3b82f6",
+                ],
+            )
         assert result.exit_code == 0
         body = json.loads(route.calls[0].request.content)
         assert body["name"] == "Emergency"
@@ -533,13 +580,21 @@ class TestFunds:
             route = respx.post(f"{SERVER_URL}/api/sinking-funds").mock(
                 return_value=httpx.Response(201, json=SAMPLE_FUNDS[0])
             )
-            runner.invoke(app, [
-                "funds", "add",
-                "--name", "Holidays",
-                "--monthly-allocation", "100",
-                "--color", "#aabbcc",
-                "--description", "Annual leave savings",
-            ])
+            runner.invoke(
+                app,
+                [
+                    "funds",
+                    "add",
+                    "--name",
+                    "Holidays",
+                    "--monthly-allocation",
+                    "100",
+                    "--color",
+                    "#aabbcc",
+                    "--description",
+                    "Annual leave savings",
+                ],
+            )
         body = json.loads(route.calls[0].request.content)
         assert body["description"] == "Annual leave savings"
 
@@ -601,13 +656,21 @@ class TestBudgets:
             route = respx.post(f"{SERVER_URL}/api/budgets").mock(
                 return_value=httpx.Response(201, json=created)
             )
-            result = runner.invoke(app, [
-                "budgets", "add",
-                "--category-id", "1",
-                "--allocated-amount", "600.00",
-                "--month", "2",
-                "--year", "2026",
-            ])
+            result = runner.invoke(
+                app,
+                [
+                    "budgets",
+                    "add",
+                    "--category-id",
+                    "1",
+                    "--allocated-amount",
+                    "600.00",
+                    "--month",
+                    "2",
+                    "--year",
+                    "2026",
+                ],
+            )
         assert result.exit_code == 0
         body = json.loads(route.calls[0].request.content)
         assert body["category_id"] == 1
@@ -669,13 +732,20 @@ class TestJsonOutput:
             respx.post(f"{SERVER_URL}/api/transactions").mock(
                 return_value=httpx.Response(201, json=created)
             )
-            result = runner.invoke(app, [
-                "tx", "add",
-                "--amount", "50",
-                "--category-id", "1",
-                "--type", "expense",
-                "--json",
-            ])
+            result = runner.invoke(
+                app,
+                [
+                    "tx",
+                    "add",
+                    "--amount",
+                    "50",
+                    "--category-id",
+                    "1",
+                    "--type",
+                    "expense",
+                    "--json",
+                ],
+            )
         assert result.exit_code == 0
         data = json.loads(result.output)
         assert data["id"] == 10

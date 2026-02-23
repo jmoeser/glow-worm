@@ -7,6 +7,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 # --- Enums ---
 
+
 class CategoryType(str, Enum):
     income = "income"
     expense = "expense"
@@ -41,6 +42,7 @@ class BillType(str, Enum):
 
 # --- User Schemas ---
 
+
 class UserCreate(BaseModel):
     username: str = Field(..., min_length=1)
     password: str = Field(..., min_length=8)
@@ -64,6 +66,7 @@ class UserResponse(BaseModel):
 
 
 # --- Category Schemas ---
+
 
 class CategoryCreate(BaseModel):
     name: str = Field(..., min_length=1)
@@ -91,6 +94,7 @@ class CategoryResponse(BaseModel):
 
 
 # --- Transaction Schemas ---
+
 
 class TransactionCreate(BaseModel):
     date: str = Field(..., pattern=r"^\d{4}-\d{2}-\d{2}$")
@@ -137,6 +141,7 @@ class TransactionResponse(BaseModel):
 
 # --- Budget Schemas ---
 
+
 class BudgetCreate(BaseModel):
     category_id: int
     month: int = Field(..., ge=1, le=12)
@@ -168,6 +173,7 @@ class BudgetResponse(BaseModel):
 
 # --- Sinking Fund Schemas ---
 
+
 class SinkingFundCreate(BaseModel):
     name: str = Field(..., min_length=1)
     description: str | None = None
@@ -198,6 +204,7 @@ class SinkingFundResponse(BaseModel):
 
 
 # --- Recurring Bill Schemas ---
+
 
 class RecurringBillCreate(BaseModel):
     name: str = Field(..., min_length=1)
@@ -248,6 +255,7 @@ class RecurringBillPay(BaseModel):
 
 # --- Income Allocation Schemas ---
 
+
 class IncomeAllocationToSinkingFundCreate(BaseModel):
     sinking_fund_id: int
     allocation_amount: Decimal = Field(..., ge=0)
@@ -264,7 +272,9 @@ class IncomeAllocationToSinkingFundResponse(BaseModel):
 class IncomeAllocationCreate(BaseModel):
     monthly_income_amount: Decimal = Field(..., gt=0)
     monthly_budget_allocation: Decimal = Field(..., ge=0)
-    bills_fund_allocation_type: BillsAllocationMethod = BillsAllocationMethod.recommended
+    bills_fund_allocation_type: BillsAllocationMethod = (
+        BillsAllocationMethod.recommended
+    )
     bills_fund_fixed_amount: Decimal | None = Field(None, ge=0)
     sinking_fund_allocations: list[IncomeAllocationToSinkingFundCreate] = []
 
@@ -292,6 +302,7 @@ class IncomeAllocationResponse(BaseModel):
 
 # --- Monthly Unallocated Income Schemas ---
 
+
 class MonthlyUnallocatedIncomeCreate(BaseModel):
     month: int = Field(..., ge=1, le=12)
     year: int = Field(..., ge=2000)
@@ -315,6 +326,7 @@ class MonthlyUnallocatedIncomeResponse(BaseModel):
 
 # --- API Key Schemas ---
 
+
 class ApiKeyCreate(BaseModel):
     name: str = Field(default="default", min_length=1, max_length=100)
 
@@ -332,20 +344,24 @@ class ApiKeyResponse(BaseModel):
 
 class ApiKeyCreatedResponse(BaseModel):
     """Returned only on creation — the only time the plaintext key is visible."""
+
     key: str
     api_key: ApiKeyResponse
 
 
 # --- Composite / API-specific Schemas ---
 
+
 class AllocateRemainderRequest(BaseModel):
     """Request to manually allocate unallocated income to a sinking fund."""
+
     sinking_fund_id: int
     amount: Decimal = Field(..., gt=0)
 
 
 class BudgetTransferRequest(BaseModel):
     """Transfer from a sinking fund to cover budget overspend."""
+
     sinking_fund_id: int
     budget_id: int
     amount: Decimal = Field(..., gt=0)
@@ -353,6 +369,7 @@ class BudgetTransferRequest(BaseModel):
 
 class DashboardSummary(BaseModel):
     """Aggregated dashboard data."""
+
     total_income: Decimal
     total_expenses: Decimal
     net: Decimal

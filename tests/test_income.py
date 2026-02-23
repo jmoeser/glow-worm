@@ -1,5 +1,3 @@
-import json
-
 from app.models import IncomeAllocation, IncomeAllocationToSinkingFund, SinkingFund
 
 
@@ -90,12 +88,21 @@ class TestIncomePageGet:
         response = authed_client.get("/income")
         assert response.status_code == 200
         assert "https://d3js.org/d3.v7.min.js" in response.text
-        assert "https://unpkg.com/d3-sankey@0.12.3/dist/d3-sankey.min.js" in response.text
+        assert (
+            "https://unpkg.com/d3-sankey@0.12.3/dist/d3-sankey.min.js" in response.text
+        )
 
     def test_fund_metadata_in_page(self, authed_client, db_session):
         funds = [
-            SinkingFund(name="Emergency", color="#EF4444", monthly_allocation=0, current_balance=0),
-            SinkingFund(name="Holiday", color="#8B5CF6", monthly_allocation=0, current_balance=0),
+            SinkingFund(
+                name="Emergency",
+                color="#EF4444",
+                monthly_allocation=0,
+                current_balance=0,
+            ),
+            SinkingFund(
+                name="Holiday", color="#8B5CF6", monthly_allocation=0, current_balance=0
+            ),
         ]
         db_session.add_all(funds)
         db_session.commit()
@@ -261,7 +268,9 @@ class TestIncomePagePost:
         assert response.status_code == 200
         assert "Fixed amount is required" in response.text
 
-    def test_stores_none_for_fixed_amount_when_recommended(self, authed_client, db_session):
+    def test_stores_none_for_fixed_amount_when_recommended(
+        self, authed_client, db_session
+    ):
         authed_client.post(
             "/income",
             data={
@@ -329,7 +338,10 @@ class TestApiGetIncome:
         response = authed_client.get("/api/income")
         data = response.json()
         assert len(data["sinking_fund_allocations"]) == 1
-        assert data["sinking_fund_allocations"][0]["sinking_fund_id"] == sample_sinking_funds[0].id
+        assert (
+            data["sinking_fund_allocations"][0]["sinking_fund_id"]
+            == sample_sinking_funds[0].id
+        )
 
     def test_unauthenticated_redirects(self, client):
         response = client.get("/api/income", follow_redirects=False)

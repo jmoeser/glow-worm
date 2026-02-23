@@ -9,12 +9,11 @@ os.environ["DATABASE_URL"] = "sqlite:///./test-glow-worm.db"
 os.environ["SECRET_KEY"] = "test-secret-key-do-not-use-in-production-1234567890"
 os.environ["SECURE_COOKIES"] = "false"
 
-from httpx import ASGITransport, AsyncClient  # noqa: E402
 
 from app.auth import hash_password  # noqa: E402
 from app.database import Base, get_db  # noqa: E402
 from app.main import app  # noqa: E402
-from app.models import ApiKey, Budget, Category, RecurringBill, SinkingFund, Transaction, User  # noqa: E402
+from app.models import Budget, Category, RecurringBill, SinkingFund, Transaction, User  # noqa: E402
 
 TEST_DATABASE_URL = "sqlite:///./test-glow-worm.db"
 
@@ -89,8 +88,12 @@ def authed_client(client, test_user):
 @pytest.fixture
 def sample_sinking_funds(db_session):
     funds = [
-        SinkingFund(name="Bills", color="#FF0000", monthly_allocation=0, current_balance=0),
-        SinkingFund(name="Savings", color="#00FF00", monthly_allocation=0, current_balance=0),
+        SinkingFund(
+            name="Bills", color="#FF0000", monthly_allocation=0, current_balance=0
+        ),
+        SinkingFund(
+            name="Savings", color="#00FF00", monthly_allocation=0, current_balance=0
+        ),
     ]
     db_session.add_all(funds)
     db_session.commit()
@@ -142,9 +145,18 @@ def sample_bills(db_session, sample_category):
 @pytest.fixture
 def sample_budget_categories(db_session):
     cats = [
-        Category(name="Groceries", type="expense", color="#22C55E", is_budget_category=True),
-        Category(name="Transport", type="expense", color="#3B82F6", is_budget_category=True),
-        Category(name="Entertainment", type="expense", color="#F59E0B", is_budget_category=True),
+        Category(
+            name="Groceries", type="expense", color="#22C55E", is_budget_category=True
+        ),
+        Category(
+            name="Transport", type="expense", color="#3B82F6", is_budget_category=True
+        ),
+        Category(
+            name="Entertainment",
+            type="expense",
+            color="#F59E0B",
+            is_budget_category=True,
+        ),
     ]
     db_session.add_all(cats)
     db_session.commit()
