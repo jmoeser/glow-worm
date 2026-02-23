@@ -175,23 +175,27 @@ def _render_table_body(
     category_filter=None,
 ) -> str:
     ctx = _transaction_context(db, month, year, type_filter, category_filter)
-    return templates.TemplateResponse(
-        request,
-        "transactions.html",
-        {**ctx, "fragment": "table_body"},
-    ).body.decode()
+    return bytes(
+        templates.TemplateResponse(
+            request,
+            "transactions.html",
+            {**ctx, "fragment": "table_body"},
+        ).body
+    ).decode()
 
 
 def _render_transaction_row(request: Request, txn: Transaction) -> str:
-    return templates.TemplateResponse(
-        request,
-        "transactions.html",
-        {
-            "txn": txn,
-            "transaction_type_labels": TRANSACTION_TYPE_LABELS,
-            "fragment": "transaction_row",
-        },
-    ).body.decode()
+    return bytes(
+        templates.TemplateResponse(
+            request,
+            "transactions.html",
+            {
+                "txn": txn,
+                "transaction_type_labels": TRANSACTION_TYPE_LABELS,
+                "fragment": "transaction_row",
+            },
+        ).body
+    ).decode()
 
 
 def _render_edit_row(request: Request, txn: Transaction, db: Session) -> str:
@@ -204,19 +208,21 @@ def _render_edit_row(request: Request, txn: Transaction, db: Session) -> str:
     except ValueError, IndexError:
         pass
 
-    return templates.TemplateResponse(
-        request,
-        "transactions.html",
-        {
-            "txn": txn,
-            "categories": _all_categories(db),
-            "sinking_funds": _active_sinking_funds(db),
-            "recurring_bills": _active_recurring_bills(db),
-            "budgets": _budgets_for_month_dropdown(db, month_val, year_val),
-            "transaction_type_labels": TRANSACTION_TYPE_LABELS,
-            "fragment": "edit_row",
-        },
-    ).body.decode()
+    return bytes(
+        templates.TemplateResponse(
+            request,
+            "transactions.html",
+            {
+                "txn": txn,
+                "categories": _all_categories(db),
+                "sinking_funds": _active_sinking_funds(db),
+                "recurring_bills": _active_recurring_bills(db),
+                "budgets": _budgets_for_month_dropdown(db, month_val, year_val),
+                "transaction_type_labels": TRANSACTION_TYPE_LABELS,
+                "fragment": "edit_row",
+            },
+        ).body
+    ).decode()
 
 
 # ---------------------------------------------------------------------------
@@ -248,14 +254,14 @@ async def transactions_page(
 async def transactions_create(request: Request, db: Session = Depends(get_db)):
     form = await request.form()
 
-    date = (form.get("date") or "").strip()
-    description = (form.get("description") or "").strip() or None
-    raw_amount = form.get("amount", "")
-    raw_category_id = form.get("category_id", "")
-    txn_type = form.get("type", "")
-    transaction_type = form.get("transaction_type", "regular")
-    raw_month = form.get("month", "")
-    raw_year = form.get("year", "")
+    date = str(form.get("date") or "").strip()
+    description = str(form.get("description") or "").strip() or None
+    raw_amount = str(form.get("amount") or "")
+    raw_category_id = str(form.get("category_id") or "")
+    txn_type = str(form.get("type") or "")
+    transaction_type = str(form.get("transaction_type") or "regular")
+    raw_month = str(form.get("month") or "")
+    raw_year = str(form.get("year") or "")
 
     if not date:
         return HTMLResponse('<p class="text-red-600 text-sm">Date is required.</p>')
@@ -283,9 +289,12 @@ async def transactions_create(request: Request, db: Session = Depends(get_db)):
             '<p class="text-red-600 text-sm">Type must be income or expense.</p>'
         )
 
-    sinking_fund_id = _parse_optional_int(form.get("sinking_fund_id"))
-    recurring_bill_id = _parse_optional_int(form.get("recurring_bill_id"))
-    budget_id = _parse_optional_int(form.get("budget_id"))
+    raw_sf = form.get("sinking_fund_id")
+    raw_rb = form.get("recurring_bill_id")
+    raw_bid = form.get("budget_id")
+    sinking_fund_id = _parse_optional_int(str(raw_sf) if isinstance(raw_sf, str) else None)
+    recurring_bill_id = _parse_optional_int(str(raw_rb) if isinstance(raw_rb, str) else None)
+    budget_id = _parse_optional_int(str(raw_bid) if isinstance(raw_bid, str) else None)
     is_paid = form.get("is_paid") == "on" or form.get("is_paid") == "true"
 
     try:
@@ -352,45 +361,48 @@ async def transactions_update(
 
     form = await request.form()
 
-    date = (form.get("date") or "").strip()
+    date = str(form.get("date") or "").strip()
     if date:
         txn.date = date
 
-    description = form.get("description")
-    if description is not None:
-        txn.description = description.strip() or None
+    description_raw = form.get("description")
+    if description_raw is not None:
+        txn.description = str(description_raw).strip() or None
 
     raw_amount = form.get("amount")
     if raw_amount:
         try:
-            amount = Decimal(raw_amount)
+            amount = Decimal(str(raw_amount))
             if amount > 0:
-                txn.amount = amount
+                txn.amount = float(amount)
         except InvalidOperation, TypeError:
             pass
 
     raw_category_id = form.get("category_id")
     if raw_category_id:
         try:
-            txn.category_id = int(raw_category_id)
+            txn.category_id = int(str(raw_category_id))
         except ValueError, TypeError:
             pass
 
     txn_type = form.get("type")
     if txn_type in ("income", "expense"):
-        txn.type = txn_type
+        txn.type = str(txn_type)
 
     transaction_type = form.get("transaction_type")
     if transaction_type and transaction_type in TRANSACTION_TYPE_LABELS:
-        txn.transaction_type = transaction_type
+        txn.transaction_type = str(transaction_type)
 
     # Optional FK fields — allow clearing by setting to empty string
     if "sinking_fund_id" in form:
-        txn.sinking_fund_id = _parse_optional_int(form.get("sinking_fund_id"))
+        raw_sf = form.get("sinking_fund_id")
+        txn.sinking_fund_id = _parse_optional_int(str(raw_sf) if isinstance(raw_sf, str) else None)
     if "recurring_bill_id" in form:
-        txn.recurring_bill_id = _parse_optional_int(form.get("recurring_bill_id"))
+        raw_rb = form.get("recurring_bill_id")
+        txn.recurring_bill_id = _parse_optional_int(str(raw_rb) if isinstance(raw_rb, str) else None)
     if "budget_id" in form:
-        txn.budget_id = _parse_optional_int(form.get("budget_id"))
+        raw_bid = form.get("budget_id")
+        txn.budget_id = _parse_optional_int(str(raw_bid) if isinstance(raw_bid, str) else None)
 
     if "is_paid" in form:
         txn.is_paid = form.get("is_paid") == "on" or form.get("is_paid") == "true"

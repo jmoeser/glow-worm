@@ -30,6 +30,7 @@ dev = [
     "pytest-cov>=5.0",
     "respx>=0.21",
     "ruff>=0.9",
+    "types-pytz>=2025.2.0.20251108",
 ]
 
 [project.scripts]
@@ -47,20 +48,3 @@ python_version = "3.14"
 ignore_missing_imports = true
 plugins = ["pydantic.mypy"]
 
-# Existing files grandfathered in — fix incrementally
-[[tool.mypy.overrides]]
-module = [
-    "app.middleware",
-    "app.mcp_server",
-    "app.tasks",
-    "app.routes.api_keys",
-    "app.routes.auth",
-    "app.routes.bills",
-    "app.routes.budgets",
-    "app.routes.dashboard",
-    "app.routes.income",
-    "app.routes.sinking_funds",
-    "app.routes.transactions",
-    "app.routes.users",
-]
-ignore_errors = true

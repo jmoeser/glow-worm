@@ -21,8 +21,8 @@ async def login_page(request: Request):
 @router.post("/login", response_class=HTMLResponse)
 async def login(request: Request, db: Session = Depends(get_db)):
     form = await request.form()
-    username = form.get("username", "").strip()
-    password = form.get("password", "")
+    username = str(form.get("username") or "").strip()
+    password = str(form.get("password") or "")
 
     if not username or not password:
         return HTMLResponse(

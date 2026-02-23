@@ -99,27 +99,33 @@ def _budget_context(db: Session, month: int, year: int) -> dict:
 
 def _render_table_body(request: Request, db: Session, month: int, year: int) -> str:
     ctx = _budget_context(db, month, year)
-    return templates.TemplateResponse(
-        request,
-        "budgets.html",
-        {**ctx, "fragment": "table_body"},
-    ).body.decode()
+    return bytes(
+        templates.TemplateResponse(
+            request,
+            "budgets.html",
+            {**ctx, "fragment": "table_body"},
+        ).body
+    ).decode()
 
 
 def _render_budget_row(request: Request, budget: Budget) -> str:
-    return templates.TemplateResponse(
-        request,
-        "budgets.html",
-        {"budget": budget, "fragment": "budget_row"},
-    ).body.decode()
+    return bytes(
+        templates.TemplateResponse(
+            request,
+            "budgets.html",
+            {"budget": budget, "fragment": "budget_row"},
+        ).body
+    ).decode()
 
 
 def _render_edit_row(request: Request, budget: Budget) -> str:
-    return templates.TemplateResponse(
-        request,
-        "budgets.html",
-        {"budget": budget, "fragment": "edit_row"},
-    ).body.decode()
+    return bytes(
+        templates.TemplateResponse(
+            request,
+            "budgets.html",
+            {"budget": budget, "fragment": "edit_row"},
+        ).body
+    ).decode()
 
 
 # ---------------------------------------------------------------------------
@@ -149,10 +155,10 @@ async def budgets_page(
 async def budgets_create(request: Request, db: Session = Depends(get_db)):
     form = await request.form()
 
-    raw_category_id = form.get("category_id", "")
-    raw_allocated = form.get("allocated_amount", "")
-    raw_month = form.get("month", "")
-    raw_year = form.get("year", "")
+    raw_category_id = str(form.get("category_id") or "")
+    raw_allocated = str(form.get("allocated_amount") or "")
+    raw_month = str(form.get("month") or "")
+    raw_year = str(form.get("year") or "")
 
     if not raw_category_id:
         return HTMLResponse('<p class="text-red-600 text-sm">Category is required.</p>')
@@ -238,12 +244,12 @@ async def budgets_update(
         return HTMLResponse("Not found", status_code=404)
 
     form = await request.form()
-    raw_allocated = form.get("allocated_amount", "")
+    raw_allocated = str(form.get("allocated_amount") or "")
 
     try:
         allocated_amount = Decimal(raw_allocated)
         if allocated_amount >= 0:
-            budget.allocated_amount = allocated_amount
+            budget.allocated_amount = float(allocated_amount)
     except InvalidOperation, TypeError:
         pass
 

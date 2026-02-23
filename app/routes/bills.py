@@ -76,46 +76,54 @@ def _bill_context(db: Session):
 
 def _render_table_body(request: Request, db: Session) -> str:
     ctx = _bill_context(db)
-    return templates.TemplateResponse(
-        request,
-        "bills.html",
-        {**ctx, "fragment": "table_body"},
-    ).body.decode()
+    return bytes(
+        templates.TemplateResponse(
+            request,
+            "bills.html",
+            {**ctx, "fragment": "table_body"},
+        ).body
+    ).decode()
 
 
 def _render_bill_row(request: Request, bill: RecurringBill) -> str:
-    return templates.TemplateResponse(
-        request,
-        "bills.html",
-        {"bill": bill, "frequency_labels": FREQUENCY_LABELS, "fragment": "bill_row"},
-    ).body.decode()
+    return bytes(
+        templates.TemplateResponse(
+            request,
+            "bills.html",
+            {"bill": bill, "frequency_labels": FREQUENCY_LABELS, "fragment": "bill_row"},
+        ).body
+    ).decode()
 
 
 def _render_edit_row(request: Request, bill: RecurringBill, categories) -> str:
-    return templates.TemplateResponse(
-        request,
-        "bills.html",
-        {
-            "bill": bill,
-            "categories": categories,
-            "frequency_labels": FREQUENCY_LABELS,
-            "fragment": "edit_row",
-        },
-    ).body.decode()
+    return bytes(
+        templates.TemplateResponse(
+            request,
+            "bills.html",
+            {
+                "bill": bill,
+                "categories": categories,
+                "frequency_labels": FREQUENCY_LABELS,
+                "fragment": "edit_row",
+            },
+        ).body
+    ).decode()
 
 
 def _render_pay_row(request: Request, bill: RecurringBill) -> str:
     today = date.today().isoformat()
-    return templates.TemplateResponse(
-        request,
-        "bills.html",
-        {
-            "bill": bill,
-            "frequency_labels": FREQUENCY_LABELS,
-            "today": today,
-            "fragment": "pay_row",
-        },
-    ).body.decode()
+    return bytes(
+        templates.TemplateResponse(
+            request,
+            "bills.html",
+            {
+                "bill": bill,
+                "frequency_labels": FREQUENCY_LABELS,
+                "today": today,
+                "fragment": "pay_row",
+            },
+        ).body
+    ).decode()
 
 
 def _record_bill_payment(
@@ -142,7 +150,7 @@ def _record_bill_payment(
     )
     db.add(txn)
 
-    bills_fund.current_balance = Decimal(str(bills_fund.current_balance)) - amount
+    bills_fund.current_balance = float(Decimal(str(bills_fund.current_balance)) - amount)
 
     current_due = date.fromisoformat(bill.next_due_date)
     bill.next_due_date = advance_due_date(current_due, bill.frequency).isoformat()
@@ -170,12 +178,12 @@ async def bills_page(request: Request, db: Session = Depends(get_db)):
 async def bills_create(request: Request, db: Session = Depends(get_db)):
     form = await request.form()
 
-    name = (form.get("name") or "").strip()
-    provider = (form.get("debtor_provider") or "").strip()
-    frequency = form.get("frequency", "")
-    start_date = (form.get("start_date") or "").strip()
-    next_due_date = (form.get("next_due_date") or "").strip()
-    bill_type = (form.get("bill_type") or "fixed").strip()
+    name = str(form.get("name") or "").strip()
+    provider = str(form.get("debtor_provider") or "").strip()
+    frequency = str(form.get("frequency") or "")
+    start_date = str(form.get("start_date") or "").strip()
+    next_due_date = str(form.get("next_due_date") or "").strip()
+    bill_type = str(form.get("bill_type") or "fixed").strip()
 
     if not name or not provider:
         return HTMLResponse(
@@ -183,7 +191,7 @@ async def bills_create(request: Request, db: Session = Depends(get_db)):
         )
 
     try:
-        amount = Decimal(form.get("amount", "0"))
+        amount = Decimal(str(form.get("amount") or "0"))
     except InvalidOperation, TypeError:
         return HTMLResponse('<p class="text-red-600 text-sm">Invalid amount.</p>')
 
@@ -267,7 +275,7 @@ async def bills_pay(request: Request, bill_id: int, db: Session = Depends(get_db
     form = await request.form()
 
     try:
-        amount = Decimal(form.get("amount", "0"))
+        amount = Decimal(str(form.get("amount") or "0"))
     except InvalidOperation, TypeError:
         return HTMLResponse('<p class="text-red-600 text-sm">Invalid amount.</p>')
 
@@ -276,7 +284,7 @@ async def bills_pay(request: Request, bill_id: int, db: Session = Depends(get_db
             '<p class="text-red-600 text-sm">Amount must be greater than zero.</p>'
         )
 
-    payment_date = (form.get("date") or "").strip() or date.today().isoformat()
+    payment_date = str(form.get("date") or "").strip() or date.today().isoformat()
 
     try:
         _record_bill_payment(db, bill, amount, payment_date)
@@ -296,8 +304,8 @@ async def bills_update(request: Request, bill_id: int, db: Session = Depends(get
 
     form = await request.form()
 
-    name = (form.get("name") or "").strip()
-    provider = (form.get("debtor_provider") or "").strip()
+    name = str(form.get("name") or "").strip()
+    provider = str(form.get("debtor_provider") or "").strip()
 
     if name:
         bill.name = name
@@ -307,30 +315,30 @@ async def bills_update(request: Request, bill_id: int, db: Session = Depends(get
     raw_amount = form.get("amount")
     if raw_amount:
         try:
-            amount = Decimal(raw_amount)
+            amount = Decimal(str(raw_amount))
             if amount > 0:
-                bill.amount = amount
+                bill.amount = float(amount)
         except InvalidOperation, TypeError:
             pass
 
     frequency = form.get("frequency")
     if frequency:
-        bill.frequency = frequency
+        bill.frequency = str(frequency)
 
     category_id_raw = form.get("category_id")
     if category_id_raw:
         try:
-            bill.category_id = int(category_id_raw)
+            bill.category_id = int(str(category_id_raw))
         except ValueError, TypeError:
             pass
 
-    next_due_date = (form.get("next_due_date") or "").strip()
+    next_due_date = str(form.get("next_due_date") or "").strip()
     if next_due_date:
         bill.next_due_date = next_due_date
 
     bill_type = form.get("bill_type")
     if bill_type in ("fixed", "variable"):
-        bill.bill_type = bill_type
+        bill.bill_type = str(bill_type)
 
     db.commit()
     db.refresh(bill)

@@ -75,7 +75,7 @@ async def api_keys_create(request: Request, db: Session = Depends(get_db)):
         return HTMLResponse(f'<p class="text-red-600 text-sm">{error}</p>')
 
     form = await request.form()
-    name = (form.get("name") or "").strip() or "default"
+    name = str(form.get("name") or "").strip() or "default"
 
     plain_key = generate_api_key()
     key_hash = hash_api_key(plain_key)

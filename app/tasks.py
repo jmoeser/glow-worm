@@ -95,6 +95,7 @@ def process_income_allocation(db: Session | None = None) -> None:
     _managed = db is None
     if _managed:
         db = SessionLocal()
+    assert db is not None
     try:
         today = _today()
         month, year = today.month, today.year
@@ -196,7 +197,7 @@ def process_income_allocation(db: Session | None = None) -> None:
                     sinking_fund_id=fund.id,
                 )
             )
-            fund.current_balance = Decimal(str(fund.current_balance)) + amount
+            fund.current_balance = float(Decimal(str(fund.current_balance)) + amount)
             total_allocated += amount
 
         # 3. Handle Bills fund allocation
@@ -218,7 +219,7 @@ def process_income_allocation(db: Session | None = None) -> None:
                         sinking_fund_id=bills_fund.id,
                     )
                 )
-                bills_fund.current_balance = (
+                bills_fund.current_balance = float(
                     Decimal(str(bills_fund.current_balance)) + bills_amount
                 )
                 total_allocated += bills_amount
@@ -267,7 +268,7 @@ def process_income_allocation(db: Session | None = None) -> None:
             .first()
         )
         if existing_unalloc:
-            existing_unalloc.unallocated_amount = unallocated
+            existing_unalloc.unallocated_amount = float(unallocated)
         else:
             db.add(
                 MonthlyUnallocatedIncome(
@@ -307,6 +308,7 @@ def process_due_bills(db: Session | None = None) -> None:
     _managed = db is None
     if _managed:
         db = SessionLocal()
+    assert db is not None
     try:
         today = _today()
         today_str = today.isoformat()
@@ -363,7 +365,7 @@ def process_due_bills(db: Session | None = None) -> None:
                 )
             )
 
-            bills_fund.current_balance = (
+            bills_fund.current_balance = float(
                 Decimal(str(bills_fund.current_balance)) - amount
             )
 

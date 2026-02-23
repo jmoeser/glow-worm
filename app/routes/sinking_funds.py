@@ -97,29 +97,35 @@ def _fund_context(db: Session):
 
 def _render_table_body(request: Request, db: Session) -> str:
     ctx = _fund_context(db)
-    return templates.TemplateResponse(
-        request,
-        "sinking_funds.html",
-        {**ctx, "fragment": "table_body"},
-    ).body.decode()
+    return bytes(
+        templates.TemplateResponse(
+            request,
+            "sinking_funds.html",
+            {**ctx, "fragment": "table_body"},
+        ).body
+    ).decode()
 
 
 def _render_fund_row(
     request: Request, fund: SinkingFund, bills_recommended: Decimal = Decimal("0")
 ) -> str:
-    return templates.TemplateResponse(
-        request,
-        "sinking_funds.html",
-        {"fund": fund, "bills_recommended": bills_recommended, "fragment": "fund_row"},
-    ).body.decode()
+    return bytes(
+        templates.TemplateResponse(
+            request,
+            "sinking_funds.html",
+            {"fund": fund, "bills_recommended": bills_recommended, "fragment": "fund_row"},
+        ).body
+    ).decode()
 
 
 def _render_edit_row(request: Request, fund: SinkingFund) -> str:
-    return templates.TemplateResponse(
-        request,
-        "sinking_funds.html",
-        {"fund": fund, "fragment": "edit_row"},
-    ).body.decode()
+    return bytes(
+        templates.TemplateResponse(
+            request,
+            "sinking_funds.html",
+            {"fund": fund, "fragment": "edit_row"},
+        ).body
+    ).decode()
 
 
 # ---------------------------------------------------------------------------
@@ -142,9 +148,9 @@ async def sinking_funds_page(request: Request, db: Session = Depends(get_db)):
 async def sinking_funds_create(request: Request, db: Session = Depends(get_db)):
     form = await request.form()
 
-    name = (form.get("name") or "").strip()
-    description = (form.get("description") or "").strip() or None
-    color = (form.get("color") or "").strip()
+    name = str(form.get("name") or "").strip()
+    description = str(form.get("description") or "").strip() or None
+    color = str(form.get("color") or "").strip()
 
     if not name:
         return HTMLResponse('<p class="text-red-600 text-sm">Name is required.</p>')
@@ -155,7 +161,7 @@ async def sinking_funds_create(request: Request, db: Session = Depends(get_db)):
         )
 
     try:
-        monthly_allocation = Decimal(form.get("monthly_allocation", "0"))
+        monthly_allocation = Decimal(str(form.get("monthly_allocation") or "0"))
     except InvalidOperation, TypeError:
         return HTMLResponse(
             '<p class="text-red-600 text-sm">Invalid allocation amount.</p>'
@@ -167,7 +173,7 @@ async def sinking_funds_create(request: Request, db: Session = Depends(get_db)):
         )
 
     try:
-        current_balance = Decimal(form.get("current_balance", "0"))
+        current_balance = Decimal(str(form.get("current_balance") or "0"))
     except InvalidOperation, TypeError:
         return HTMLResponse(
             '<p class="text-red-600 text-sm">Invalid initial balance.</p>'
@@ -206,9 +212,9 @@ async def sinking_funds_update(
 
     form = await request.form()
 
-    name = (form.get("name") or "").strip()
-    description = (form.get("description") or "").strip()
-    color = (form.get("color") or "").strip()
+    name = str(form.get("name") or "").strip()
+    description = str(form.get("description") or "").strip()
+    color = str(form.get("color") or "").strip()
 
     if name:
         fund.name = name
@@ -220,9 +226,9 @@ async def sinking_funds_update(
     raw_allocation = form.get("monthly_allocation")
     if raw_allocation:
         try:
-            allocation = Decimal(raw_allocation)
+            allocation = Decimal(str(raw_allocation))
             if allocation >= 0:
-                fund.monthly_allocation = allocation
+                fund.monthly_allocation = float(allocation)
         except InvalidOperation, TypeError:
             pass
 

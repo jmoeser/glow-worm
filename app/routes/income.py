@@ -26,10 +26,10 @@ def _upsert_allocation(
 
     Returns (allocation, created) where created is True if a new row was inserted.
     """
-    allocation = db.query(IncomeAllocation).first()
-    created = allocation is None
+    existing = db.query(IncomeAllocation).first()
+    created = existing is None
 
-    if created:
+    if existing is None:
         allocation = IncomeAllocation(
             monthly_income_amount=monthly_income_amount,
             monthly_budget_allocation=monthly_budget_allocation,
@@ -39,10 +39,11 @@ def _upsert_allocation(
         db.add(allocation)
         db.flush()
     else:
-        allocation.monthly_income_amount = monthly_income_amount
-        allocation.monthly_budget_allocation = monthly_budget_allocation
+        allocation = existing
+        allocation.monthly_income_amount = float(monthly_income_amount)
+        allocation.monthly_budget_allocation = float(monthly_budget_allocation)
         allocation.bills_fund_allocation_type = bills_fund_allocation_type
-        allocation.bills_fund_fixed_amount = bills_fund_fixed_amount
+        allocation.bills_fund_fixed_amount = float(bills_fund_fixed_amount) if bills_fund_fixed_amount is not None else None
         # Delete existing junction rows
         db.query(IncomeAllocationToSinkingFund).filter(
             IncomeAllocationToSinkingFund.income_allocation_id == allocation.id
@@ -100,7 +101,7 @@ async def income_save(request: Request, db: Session = Depends(get_db)):
 
     # Parse income amount
     try:
-        monthly_income_amount = Decimal(form.get("monthly_income_amount", "0"))
+        monthly_income_amount = Decimal(str(form.get("monthly_income_amount") or "0"))
     except InvalidOperation, TypeError:
         monthly_income_amount = Decimal("0")
 
@@ -111,16 +112,16 @@ async def income_save(request: Request, db: Session = Depends(get_db)):
 
     # Parse budget allocation
     try:
-        monthly_budget_allocation = Decimal(form.get("monthly_budget_allocation", "0"))
+        monthly_budget_allocation = Decimal(str(form.get("monthly_budget_allocation") or "0"))
     except InvalidOperation, TypeError:
         monthly_budget_allocation = Decimal("0")
 
     # Parse bills fund allocation type
-    bills_fund_allocation_type = form.get("bills_fund_allocation_type", "recommended")
+    bills_fund_allocation_type = str(form.get("bills_fund_allocation_type") or "recommended")
     bills_fund_fixed_amount = None
 
     if bills_fund_allocation_type == "fixed":
-        raw = form.get("bills_fund_fixed_amount", "")
+        raw = str(form.get("bills_fund_fixed_amount") or "")
         if not raw:
             return HTMLResponse(
                 '<p class="text-red-600 text-sm">Fixed amount is required when type is fixed.</p>'
@@ -138,7 +139,7 @@ async def income_save(request: Request, db: Session = Depends(get_db)):
         if key.startswith("fund_"):
             try:
                 fund_id = int(key.removeprefix("fund_"))
-                amount = Decimal(form[key])
+                amount = Decimal(str(form[key]))
                 if amount > 0:
                     fund_allocations.append(
                         {"sinking_fund_id": fund_id, "allocation_amount": amount}

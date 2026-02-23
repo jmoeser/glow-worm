@@ -6,6 +6,7 @@ Authentication is handled at the HTTP middleware layer (Bearer token).
 
 import logging
 from decimal import Decimal
+from typing import Any
 
 from fastmcp import FastMCP
 
@@ -232,7 +233,7 @@ def update_transaction(
     Returns:
         The updated transaction object, or an error message.
     """
-    update_data = {}
+    update_data: dict[str, Any] = {}
     if date is not None:
         update_data["date"] = date
     if amount is not None:
@@ -473,7 +474,7 @@ def update_bill(
     Returns:
         The updated bill object, or an error message.
     """
-    update_data = {}
+    update_data: dict[str, Any] = {}
     if name is not None:
         update_data["name"] = name
     if amount is not None:

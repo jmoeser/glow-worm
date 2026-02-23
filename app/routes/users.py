@@ -20,28 +20,34 @@ def _all_users(db: Session) -> list[User]:
 def _render_table_body(request: Request, db: Session) -> str:
     users = _all_users(db)
     current_user = get_current_user(request)
-    return templates.TemplateResponse(
-        request,
-        "users.html",
-        {"users": users, "current_user_id": current_user.id, "fragment": "table_body"},
-    ).body.decode()
+    return bytes(
+        templates.TemplateResponse(
+            request,
+            "users.html",
+            {"users": users, "current_user_id": current_user.id, "fragment": "table_body"},
+        ).body
+    ).decode()
 
 
 def _render_user_row(request: Request, user: User) -> str:
     current_user = get_current_user(request)
-    return templates.TemplateResponse(
-        request,
-        "users.html",
-        {"user": user, "current_user_id": current_user.id, "fragment": "user_row"},
-    ).body.decode()
+    return bytes(
+        templates.TemplateResponse(
+            request,
+            "users.html",
+            {"user": user, "current_user_id": current_user.id, "fragment": "user_row"},
+        ).body
+    ).decode()
 
 
 def _render_edit_row(request: Request, user: User) -> str:
-    return templates.TemplateResponse(
-        request,
-        "users.html",
-        {"user": user, "fragment": "edit_row"},
-    ).body.decode()
+    return bytes(
+        templates.TemplateResponse(
+            request,
+            "users.html",
+            {"user": user, "fragment": "edit_row"},
+        ).body
+    ).decode()
 
 
 # ---------------------------------------------------------------------------
@@ -64,9 +70,9 @@ async def users_page(request: Request, db: Session = Depends(get_db)):
 async def users_create(request: Request, db: Session = Depends(get_db)):
     form = await request.form()
 
-    username = (form.get("username") or "").strip()
-    password = form.get("password") or ""
-    email = (form.get("email") or "").strip() or None
+    username = str(form.get("username") or "").strip()
+    password = str(form.get("password") or "")
+    email = str(form.get("email") or "").strip() or None
 
     if not username:
         return HTMLResponse('<p class="text-red-600 text-sm">Username is required.</p>')
@@ -111,7 +117,7 @@ async def users_update(request: Request, user_id: int, db: Session = Depends(get
 
     form = await request.form()
 
-    username = (form.get("username") or "").strip()
+    username = str(form.get("username") or "").strip()
     if username and username != user.username:
         existing = (
             db.query(User).filter(User.username == username, User.id != user_id).first()
@@ -122,11 +128,11 @@ async def users_update(request: Request, user_id: int, db: Session = Depends(get
             )
         user.username = username
 
-    email = form.get("email")
-    if email is not None:
-        user.email = email.strip() or None
+    email_raw = form.get("email")
+    if email_raw is not None:
+        user.email = str(email_raw).strip() or None
 
-    password = form.get("password") or ""
+    password = str(form.get("password") or "")
     if password:
         if len(password) < 8:
             return HTMLResponse(

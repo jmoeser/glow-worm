@@ -64,11 +64,11 @@ class AuthenticationMiddleware(BaseHTTPMiddleware):
         finally:
             db.close()
 
-        token = _current_user_ctx.set(user)
+        ctx_token = _current_user_ctx.set(user)
         try:
             return await call_next(request)
         finally:
-            _current_user_ctx.reset(token)
+            _current_user_ctx.reset(ctx_token)
 
     async def _authenticate_bearer(self, request, call_next, token: str):
         db = SessionLocal()
@@ -106,11 +106,11 @@ class AuthenticationMiddleware(BaseHTTPMiddleware):
         finally:
             db.close()
 
-        token = _current_user_ctx.set(user)
+        ctx_token = _current_user_ctx.set(user)
         try:
             return await call_next(request)
         finally:
-            _current_user_ctx.reset(token)
+            _current_user_ctx.reset(ctx_token)
 
 
 def get_current_user(request: Request) -> User:
