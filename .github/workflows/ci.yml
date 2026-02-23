@@ -22,6 +22,9 @@ jobs:
       - name: Ruff format
         run: uv run ruff format --check .
 
+      - name: Mypy
+        run: uv run mypy app/
+
   test:
     runs-on: ubuntu-latest
 

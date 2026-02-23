@@ -14,6 +14,7 @@ A single-tenant household budgeting app. This is a Python/FastAPI project using:
 - **Run All Tests**: `uv run pytest`
 - **Run Specific Test**: `uv run pytest tests/test_filename.py`
 - **Coverage Report**: `uv run pytest --cov=app --cov-report=html`
+- **Type check**: `uv run mypy app/`
 - **Lint**: `uv run ruff check .`
 - **Format check**: `uv run ruff format --check .`
 - **Format fix**: `uv run ruff format .`
