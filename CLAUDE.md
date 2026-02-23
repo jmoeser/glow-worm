@@ -18,6 +18,7 @@ A single-tenant household budgeting app. This is a Python/FastAPI project using:
 - **Lint**: `uv run ruff check .`
 - **Format check**: `uv run ruff format --check .`
 - **Format fix**: `uv run ruff format .`
+- **Update secrets baseline**: `uv run detect-secrets scan > .secrets.baseline`
 - **Build container**: `container build --tag test --file Dockerfile .`
 - **Run container**: `container run --name test --rm -e SECRET_KEY=$(python3 -c "import secrets; print(secrets.token_urlsafe(48))") test`
 - **Run CLI (dev)**: `uv run glow --help`
@@ -59,6 +60,13 @@ Middleware execution order (outermost to innermost): CORS (optional) → Session
 - **Budget Funding**: The "Monthly Budget Allocation" is the **sum** of all individual category `allocated_amount` targets.
 - **Scheduler**: Use `APScheduler`. Handle Leap Years by defaulting to the last day of the month for invalid February dates (e.g., Feb 29th -> Feb 28th).
 - **Overspending**: Use `budget_transfer` type to move money from "Short Term Savings" sinking fund to a budget category's `fund_balance`.
+
+## Pre-commit Hooks
+Hooks run automatically on `git commit`. Install with `uv run pre-commit install` (already done). Run manually with `uv run pre-commit run --all-files`.
+
+- **detect-secrets**: Scans staged files for secrets (API keys, passwords, tokens). `.env.example` is excluded. If a false positive is detected, update the baseline: `uv run detect-secrets scan > .secrets.baseline`. After adding a new intentional placeholder to `.env.example` or similar, regenerate the baseline the same way.
+- **ruff**: Lint with auto-fix + format check.
+- **pre-commit-hooks**: Merge conflict markers, large files (>500KB), EOF newlines, trailing whitespace.
 
 ## Common Pitfalls
 - When modifying Pydantic models or API responses, ensure all values are JSON-serializable. Specifically, convert Decimal objects to float before returning them in responses or error payloads.
