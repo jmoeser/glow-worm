@@ -77,10 +77,11 @@ def income_setup(db_session):
     """Set up a complete income allocation scenario."""
     income_cat = Category(name="Salary", type="income", color="#00FF00")
     expense_cat = Category(name="Bills", type="expense", color="#FF0000")
+    transfer_cat = Category(name="Transfer", type="transfer", color="#6B7280")
     budget_cat = Category(
         name="Groceries", type="expense", color="#22C55E", is_budget_category=True
     )
-    db_session.add_all([income_cat, expense_cat, budget_cat])
+    db_session.add_all([income_cat, expense_cat, transfer_cat, budget_cat])
     db_session.flush()
 
     bills_fund = SinkingFund(
@@ -125,6 +126,7 @@ def income_setup(db_session):
     return {
         "income_cat": income_cat,
         "expense_cat": expense_cat,
+        "transfer_cat": transfer_cat,
         "budget_cat": budget_cat,
         "bills_fund": bills_fund,
         "savings_fund": savings_fund,
@@ -208,6 +210,8 @@ class TestProcessIncomeAllocation:
         )
         assert len(savings_txns) == 1
         assert Decimal(str(savings_txns[0].amount)) == Decimal("500")
+        assert savings_txns[0].type == "transfer"
+        assert savings_txns[0].category_id == income_setup["transfer_cat"].id
 
         # Savings fund balance increased: 1000 + 500 = 1500
         db_session.refresh(income_setup["savings_fund"])
@@ -226,6 +230,8 @@ class TestProcessIncomeAllocation:
         )
         assert len(bills_txns) == 1
         assert Decimal(str(bills_txns[0].amount)) == Decimal("1200.00")
+        assert bills_txns[0].type == "transfer"
+        assert bills_txns[0].category_id == income_setup["transfer_cat"].id
 
         # Bills fund balance increased: 500 + 1200 = 1700
         db_session.refresh(income_setup["bills_fund"])
@@ -302,6 +308,59 @@ class TestProcessIncomeAllocation:
         )
         assert bills_txn is not None
         assert Decimal(str(bills_txn.amount)) == Decimal("900")
+
+    @patch("app.tasks._today")
+    def test_budget_carries_forward_allocated_amount(
+        self, mock_today, db_session, income_setup
+    ):
+        """Budget allocated_amount should be copied from previous month's budget."""
+        # Seed a January budget row with a known allocated amount
+        db_session.add(
+            Budget(
+                category_id=income_setup["budget_cat"].id,
+                month=1,
+                year=2026,
+                allocated_amount=350,
+                spent_amount=0,
+                fund_balance=0,
+            )
+        )
+        db_session.commit()
+
+        mock_today.return_value = date(2026, 2, 1)
+        process_income_allocation(db=db_session)
+
+        budget = (
+            db_session.query(Budget)
+            .filter(
+                Budget.category_id == income_setup["budget_cat"].id,
+                Budget.month == 2,
+                Budget.year == 2026,
+            )
+            .first()
+        )
+        assert budget is not None
+        assert Decimal(str(budget.allocated_amount)) == Decimal("350")
+
+    @patch("app.tasks._today")
+    def test_budget_defaults_to_zero_when_no_previous_month(
+        self, mock_today, db_session, income_setup
+    ):
+        """Budget allocated_amount defaults to 0 when no prior month budget exists."""
+        mock_today.return_value = date(2026, 2, 1)
+        process_income_allocation(db=db_session)
+
+        budget = (
+            db_session.query(Budget)
+            .filter(
+                Budget.category_id == income_setup["budget_cat"].id,
+                Budget.month == 2,
+                Budget.year == 2026,
+            )
+            .first()
+        )
+        assert budget is not None
+        assert Decimal(str(budget.allocated_amount)) == Decimal("0")
 
 
 # ---------------------------------------------------------------------------

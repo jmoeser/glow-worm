@@ -23,6 +23,7 @@ A single-tenant household budgeting app. This is a Python/FastAPI project using:
 - **Run container**: `container run --name test --rm -e SECRET_KEY=$(python3 -c "import secrets; print(secrets.token_urlsafe(48))") test`
 - **Run CLI (dev)**: `uv run glow --help`
 - **Install CLI via pipx**: `pipx install .`
+- **Run process income allocation manually**: `uv run python -c "from app.tasks import process_income_allocation; process_income_allocation()"`
 
 ## Architecture & Money Flow
 The app manages four distinct, separated systems:

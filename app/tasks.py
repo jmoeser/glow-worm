@@ -135,13 +135,13 @@ def process_income_allocation(db: Session | None = None) -> None:
             logger.warning("No income category found, skipping income processing")
             return
 
-        expense_cat = (
+        transfer_cat = (
             db.query(Category)
-            .filter(Category.type == "expense", Category.is_deleted == False)  # noqa: E712
+            .filter(Category.type == "transfer", Category.is_deleted == False)  # noqa: E712
             .first()
         )
-        if not expense_cat:
-            logger.warning("No expense category found, skipping income processing")
+        if not transfer_cat:
+            logger.warning("No Transfer category found, skipping income processing")
             return
 
         # 1. Create income transaction
@@ -191,8 +191,8 @@ def process_income_allocation(db: Session | None = None) -> None:
                     date=date_str,
                     description=f"Income allocation to {fund.name}",
                     amount=amount,
-                    category_id=expense_cat.id,
-                    type="expense",
+                    category_id=transfer_cat.id,
+                    type="transfer",
                     transaction_type="income_allocation",
                     sinking_fund_id=fund.id,
                 )
@@ -213,8 +213,8 @@ def process_income_allocation(db: Session | None = None) -> None:
                         date=date_str,
                         description="Income allocation to Bills fund",
                         amount=bills_amount,
-                        category_id=expense_cat.id,
-                        type="expense",
+                        category_id=transfer_cat.id,
+                        type="transfer",
                         transaction_type="income_allocation",
                         sinking_fund_id=bills_fund.id,
                     )
@@ -225,6 +225,9 @@ def process_income_allocation(db: Session | None = None) -> None:
                 total_allocated += bills_amount
 
         # 4. Ensure Budget rows exist for this month
+        prev_month = month - 1 if month > 1 else 12
+        prev_year = year if month > 1 else year - 1
+
         budget_cats = (
             db.query(Category)
             .filter(
@@ -244,12 +247,22 @@ def process_income_allocation(db: Session | None = None) -> None:
                 .first()
             )
             if not existing_budget:
+                prev_budget = (
+                    db.query(Budget)
+                    .filter(
+                        Budget.category_id == cat.id,
+                        Budget.month == prev_month,
+                        Budget.year == prev_year,
+                    )
+                    .first()
+                )
+                allocated = prev_budget.allocated_amount if prev_budget else 0
                 db.add(
                     Budget(
                         category_id=cat.id,
                         month=month,
                         year=year,
-                        allocated_amount=0,
+                        allocated_amount=allocated,
                         spent_amount=0,
                         fund_balance=0,
                     )
