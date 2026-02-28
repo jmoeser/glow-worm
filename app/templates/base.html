@@ -36,64 +36,75 @@
                         link.classList.add('active');
                     }
                 });
+
+                // Sidebar collapse toggle
+                const sidebar = document.getElementById('gw-sidebar');
+                const collapseBtn = document.getElementById('gw-collapse-btn');
+                if (localStorage.getItem('sidebar-collapsed') === 'true') {
+                    sidebar.classList.add('collapsed');
+                }
+                collapseBtn.addEventListener('click', function() {
+                    const isCollapsed = sidebar.classList.toggle('collapsed');
+                    localStorage.setItem('sidebar-collapsed', isCollapsed);
+                });
             });
         </script>
     </head>
     <body>
-        <nav class="gw-sidebar">
+        <nav class="gw-sidebar" id="gw-sidebar">
             <div class="gw-logo">
                 <div class="gw-logo-text">
                     <img src="/static/logo.svg" class="gw-logo-icon" alt="Glow Worm" />
-                    Glow Worm
+                    <span class="gw-sidebar-label">Glow Worm</span>
                 </div>
             </div>
             <ul class="gw-nav">
                 <li>
-                    <a href="/">
+                    <a href="/" title="Dashboard">
                         <svg class="gw-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
-                        Dashboard
+                        <span class="gw-sidebar-label">Dashboard</span>
                     </a>
                 </li>
                 <li>
-                    <a href="/income">
+                    <a href="/income" title="Income">
                         <svg class="gw-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
-                        Income
+                        <span class="gw-sidebar-label">Income</span>
                     </a>
                 </li>
                 <li>
-                    <a href="/budgets">
+                    <a href="/budgets" title="Budgets">
                         <svg class="gw-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12V7H5a2 2 0 0 1 0-4h14v4"/><path d="M3 5v14a2 2 0 0 0 2 2h16v-5"/><path d="M18 12a2 2 0 0 0 0 4h4v-4Z"/></svg>
-                        Budgets
+                        <span class="gw-sidebar-label">Budgets</span>
                     </a>
                 </li>
                 <li>
-                    <a href="/transactions">
+                    <a href="/transactions" title="Transactions">
                         <svg class="gw-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3v18"/><path d="m12 18 5 3 5-3"/><path d="M7 21V3"/><path d="m12 6-5-3-5 3"/></svg>
-                        Transactions
+                        <span class="gw-sidebar-label">Transactions</span>
                     </a>
                 </li>
                 <li>
-                    <a href="/sinking-funds">
+                    <a href="/sinking-funds" title="Sinking Funds">
                         <svg class="gw-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 5c-1.5 0-2.8 1.4-3 2-3.5-1.5-11-.3-11 5 0 1.8 0 3 2 4.5V20h4v-2h3v2h4v-4c1-.5 1.7-1 2-2h2v-4h-2c0-1-.5-1.5-1-2"/><path d="M2 9v1c0 1.1.9 2 2 2h1"/><circle cx="16" cy="11" r="1"/></svg>
-                        Sinking Funds
+                        <span class="gw-sidebar-label">Sinking Funds</span>
                     </a>
                 </li>
                 <li>
-                    <a href="/bills">
+                    <a href="/bills" title="Bills">
                         <svg class="gw-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 2v20l2-1 2 1 2-1 2 1 2-1 2 1 2-1 2 1V2l-2 1-2-1-2 1-2-1-2 1-2-1-2 1Z"/><path d="M8 7h8"/><path d="M8 11h8"/><path d="M8 15h5"/></svg>
-                        Bills
+                        <span class="gw-sidebar-label">Bills</span>
                     </a>
                 </li>
                 <li>
-                    <a href="/users">
+                    <a href="/users" title="Users">
                         <svg class="gw-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="5"/><path d="M20 21a8 8 0 0 0-16 0"/></svg>
-                        Users
+                        <span class="gw-sidebar-label">Users</span>
                     </a>
                 </li>
                 <li>
-                    <a href="/api-keys">
+                    <a href="/api-keys" title="API Keys">
                         <svg class="gw-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg>
-                        API Keys
+                        <span class="gw-sidebar-label">API Keys</span>
                     </a>
                 </li>
             </ul>
@@ -111,6 +122,9 @@
                 </div>
             </div>
         </nav>
+        <button class="gw-collapse-btn" id="gw-collapse-btn" aria-label="Toggle sidebar">
+            <svg class="gw-collapse-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+        </button>
         <main class="gw-main">{% block content %}{% endblock %}</main>
     </body>
 </html>
