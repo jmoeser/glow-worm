@@ -1041,6 +1041,8 @@ input[type="color"] {
     .gw-grid-3 { grid-template-columns: 1fr; }
     .gw-grid-2 { grid-template-columns: 1fr; }
     .gw-main { padding: 20px 16px; }
+    .gw-two-col { flex-direction: column; }
+    .gw-two-col > * { width: 100% !important; position: static !important; }
 }
 
 /* --- Page load animation --- */

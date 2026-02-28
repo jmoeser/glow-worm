@@ -1,21 +1,15 @@
 {% extends "base.html" %}
 {% block title %}Income Allocation — Glow Worm{% endblock %}
 {% block content %}
-<div style="max-width: 1100px;">
+<div>
     <h2 class="gw-page-header">Income Allocation Settings</h2>
-
     <div id="income-message" style="margin-bottom: 16px;"></div>
 
-    <!-- Sankey Diagram -->
-    <div class="gw-section">
-        <h3 style="font-family: var(--font-display); font-size: 1.1rem; font-weight: 600; margin-bottom: 12px;">Income Breakdown</h3>
-        <div id="sankey-chart" class="gw-sankey-wrap">
-            <p class="gw-text-dim" style="font-size: 0.875rem;">Enter an income to see the breakdown</p>
-        </div>
-    </div>
+    <div class="gw-two-col" style="display: flex; gap: 24px; align-items: flex-start;">
 
-    <div style="max-width: 460px; margin: 0 auto;">
-        <form hx-post="/income" hx-target="#income-message" hx-swap="innerHTML" style="display: flex; flex-direction: column; gap: 20px;">
+        <!-- Left: Form -->
+        <div class="gw-section" style="width: 440px; flex-shrink: 0;">
+            <form hx-post="/income" hx-target="#income-message" hx-swap="innerHTML" style="display: flex; flex-direction: column; gap: 20px;">
 
                 <!-- Monthly Income -->
                 <div>
@@ -99,6 +93,18 @@
                     Save Allocation
                 </button>
             </form>
+        </div>
+
+        <!-- Right: Sankey diagram (sticky live preview) -->
+        <div style="flex: 1; min-width: 0; position: sticky; top: 20px;">
+            <div class="gw-section">
+                <h3 style="font-family: var(--font-display); font-size: 1.1rem; font-weight: 600; margin-bottom: 12px;">Income Breakdown</h3>
+                <div id="sankey-chart" class="gw-sankey-wrap">
+                    <p class="gw-text-dim" style="font-size: 0.875rem;">Enter an income to see the breakdown</p>
+                </div>
+            </div>
+        </div>
+
     </div>
 </div>
 
