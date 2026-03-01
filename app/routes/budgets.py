@@ -126,6 +126,17 @@ def _render_table_body(request: Request, db: Session, month: int, year: int) -> 
     ).decode()
 
 
+def _render_summary_bar(request: Request, db: Session, month: int, year: int) -> str:
+    ctx = _budget_context(db, month, year)
+    return bytes(
+        templates.TemplateResponse(
+            request,
+            "budgets.html",
+            {**ctx, "fragment": "summary_bar"},
+        ).body
+    ).decode()
+
+
 def _render_budget_row(request: Request, budget: Budget) -> str:
     return bytes(
         templates.TemplateResponse(
@@ -230,7 +241,10 @@ async def budgets_create(request: Request, db: Session = Depends(get_db)):
     db.add(budget)
     db.commit()
 
-    return HTMLResponse(_render_table_body(request, db, month, year))
+    return HTMLResponse(
+        _render_table_body(request, db, month, year)
+        + _render_summary_bar(request, db, month, year)
+    )
 
 
 @router.get("/budgets/{budget_id}/edit", response_class=HTMLResponse)
@@ -274,7 +288,10 @@ async def budgets_update(
     db.commit()
     db.refresh(budget)
 
-    return HTMLResponse(_render_budget_row(request, budget))
+    return HTMLResponse(
+        _render_budget_row(request, budget)
+        + _render_summary_bar(request, db, budget.month, budget.year)
+    )
 
 
 @router.delete("/budgets/{budget_id}", response_class=HTMLResponse)
@@ -284,9 +301,10 @@ async def budgets_delete(
     budget = db.query(Budget).filter(Budget.id == budget_id).first()
     if not budget:
         return HTMLResponse("Not found", status_code=404)
+    month, year = budget.month, budget.year
     db.delete(budget)
     db.commit()
-    return HTMLResponse("")
+    return HTMLResponse(_render_summary_bar(request, db, month, year))
 
 
 # ---------------------------------------------------------------------------

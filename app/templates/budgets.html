@@ -42,6 +42,35 @@
     </td>
 </tr>
 
+{% elif fragment == "summary_bar" %}
+{# --- Partial: summary bar (used for OOB swap after mutations) --- #}
+<div class="gw-summary-bar gw-section" id="budgets-summary-bar" hx-swap-oob="true">
+    {% if income_budget_allocation is not none %}
+    <div class="gw-summary-item">
+        <span class="gw-summary-label">Income assigned:</span>
+        <span class="gw-summary-value">${{ income_budget_allocation|money }}</span>
+    </div>
+    {% endif %}
+    <div class="gw-summary-item">
+        <span class="gw-summary-label">Total allocated:</span>
+        <span class="gw-summary-value">${{ total_allocated|money }}</span>
+    </div>
+    {% if income_unallocated is not none %}
+    <div class="gw-summary-item">
+        <span class="gw-summary-label">Unallocated:</span>
+        <span class="gw-summary-value" style="color: {% if income_unallocated < 0 %}var(--negative){% else %}var(--positive){% endif %}; font-weight: 600;">${{ income_unallocated|money }}</span>
+    </div>
+    {% endif %}
+    <div class="gw-summary-item">
+        <span class="gw-summary-label">Total spent:</span>
+        <span class="gw-summary-value">${{ total_spent|money }}</span>
+    </div>
+    <div class="gw-summary-item">
+        <span class="gw-summary-label">Remaining:</span>
+        <span class="gw-summary-value" style="color: {% if total_remaining < 0 %}var(--negative){% else %}var(--positive){% endif %};">${{ total_remaining|money }}</span>
+    </div>
+</div>
+
 {% elif fragment == "edit_row" %}
 {# --- Partial: inline edit row --- #}
 <tr class="gw-edit-row" id="budget-row-{{ budget.id }}">
@@ -111,7 +140,7 @@
     </details>
 
     <!-- Summary bar -->
-    <div class="gw-summary-bar gw-section">
+    <div class="gw-summary-bar gw-section" id="budgets-summary-bar">
         {% if income_budget_allocation is not none %}
         <div class="gw-summary-item">
             <span class="gw-summary-label">Income assigned:</span>
