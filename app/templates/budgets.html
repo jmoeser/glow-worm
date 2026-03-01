@@ -112,10 +112,22 @@
 
     <!-- Summary bar -->
     <div class="gw-summary-bar gw-section">
+        {% if income_budget_allocation is not none %}
+        <div class="gw-summary-item">
+            <span class="gw-summary-label">Income assigned:</span>
+            <span class="gw-summary-value">${{ income_budget_allocation|money }}</span>
+        </div>
+        {% endif %}
         <div class="gw-summary-item">
             <span class="gw-summary-label">Total allocated:</span>
             <span class="gw-summary-value">${{ total_allocated|money }}</span>
         </div>
+        {% if income_unallocated is not none %}
+        <div class="gw-summary-item">
+            <span class="gw-summary-label">Unallocated:</span>
+            <span class="gw-summary-value" style="color: {% if income_unallocated < 0 %}var(--negative){% else %}var(--positive){% endif %}; font-weight: 600;">${{ income_unallocated|money }}</span>
+        </div>
+        {% endif %}
         <div class="gw-summary-item">
             <span class="gw-summary-label">Total spent:</span>
             <span class="gw-summary-value">${{ total_spent|money }}</span>

@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session, joinedload
 
 from app.database import get_db
 from app.middleware import get_current_user
-from app.models import Budget, Category
+from app.models import Budget, Category, IncomeAllocation
 from app.schemas import BudgetCreate, BudgetResponse, BudgetUpdate
 from app.templating import templates
 
@@ -70,6 +70,22 @@ def _budget_context(db: Session, month: int, year: int) -> dict:
     ).quantize(Decimal("0.01"))
     total_remaining = (total_allocated - total_spent).quantize(Decimal("0.01"))
 
+    income_allocation = (
+        db.query(IncomeAllocation).order_by(IncomeAllocation.id.desc()).first()
+    )
+    income_budget_allocation = (
+        Decimal(str(income_allocation.monthly_budget_allocation)).quantize(
+            Decimal("0.01")
+        )
+        if income_allocation
+        else None
+    )
+    income_unallocated = (
+        (income_budget_allocation - total_allocated).quantize(Decimal("0.01"))
+        if income_budget_allocation is not None
+        else None
+    )
+
     # Prev/next month navigation
     if month == 1:
         prev_month, prev_year = 12, year - 1
@@ -90,6 +106,8 @@ def _budget_context(db: Session, month: int, year: int) -> dict:
         "total_allocated": total_allocated,
         "total_spent": total_spent,
         "total_remaining": total_remaining,
+        "income_budget_allocation": income_budget_allocation,
+        "income_unallocated": income_unallocated,
         "prev_month": prev_month,
         "prev_year": prev_year,
         "next_month": next_month,
