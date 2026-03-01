@@ -1,3 +1,25 @@
+{% macro allocation_bar(budgets, total_allocated, income_budget_allocation, income_unallocated) %}
+{% set bar_total = income_budget_allocation if (income_budget_allocation is not none and income_budget_allocation > 0) else total_allocated %}
+{% if bar_total > 0 %}
+<div style="flex-basis: 100%; width: 100%; margin-top: 10px;">
+    <div style="display:flex; height:10px; border-radius:5px; overflow:hidden; background:var(--surface-4);">
+        {% for budget in budgets %}{% if budget.allocated_amount > 0 %}
+        {% set pct = (budget.allocated_amount / bar_total * 100)|round(2) %}
+        <div style="width:{{ pct }}%; background-color:{{ budget.category.color }}; flex-shrink:0; cursor:default;"
+             data-tooltip="{{ budget.category.name }}: ${{ budget.allocated_amount|money }} ({{ pct|round(1) }}%)"
+             onmouseenter="showBudgetTooltip(event)" onmouseleave="hideBudgetTooltip()" onmousemove="moveBudgetTooltip(event)"></div>
+        {% endif %}{% endfor %}
+        {% if income_unallocated is not none and income_unallocated > 0 %}
+        {% set unalloc_pct = (income_unallocated / bar_total * 100)|round(2) %}
+        <div style="width:{{ unalloc_pct }}%; background:rgba(255,255,255,0.07); flex-shrink:0; cursor:default;"
+             data-tooltip="Unallocated: ${{ income_unallocated|money }} ({{ unalloc_pct|round(1) }}%)"
+             onmouseenter="showBudgetTooltip(event)" onmouseleave="hideBudgetTooltip()" onmousemove="moveBudgetTooltip(event)"></div>
+        {% endif %}
+    </div>
+</div>
+{% endif %}
+{% endmacro %}
+
 {% if fragment == "table_body" %}
 {# --- Partial: full table body rows --- #}
 {% for budget in budgets %}
@@ -69,6 +91,7 @@
         <span class="gw-summary-label">Remaining:</span>
         <span class="gw-summary-value" style="color: {% if total_remaining < 0 %}var(--negative){% else %}var(--positive){% endif %};">${{ total_remaining|money }}</span>
     </div>
+    {{ allocation_bar(budgets, total_allocated, income_budget_allocation, income_unallocated) }}
 </div>
 
 {% elif fragment == "edit_row" %}
@@ -165,6 +188,7 @@
             <span class="gw-summary-label">Remaining:</span>
             <span class="gw-summary-value" style="color: {% if total_remaining < 0 %}var(--negative){% else %}var(--positive){% endif %};">${{ total_remaining|money }}</span>
         </div>
+        {{ allocation_bar(budgets, total_allocated, income_budget_allocation, income_unallocated) }}
     </div>
 
     <!-- Budget table -->
@@ -207,5 +231,24 @@
         </div>
     </div>
 </div>
+
+<!-- Allocation bar tooltip -->
+<div id="budget-bar-tooltip" style="display:none; position:fixed; background:var(--surface-2); border:1px solid var(--border-mid); border-radius:var(--radius-sm); padding:5px 10px; font-size:0.78rem; color:var(--text-primary); pointer-events:none; z-index:1000; white-space:nowrap; box-shadow:var(--shadow-card);"></div>
+<script>
+function showBudgetTooltip(e) {
+    var t = document.getElementById('budget-bar-tooltip');
+    t.textContent = e.currentTarget.dataset.tooltip;
+    t.style.display = 'block';
+    moveBudgetTooltip(e);
+}
+function moveBudgetTooltip(e) {
+    var t = document.getElementById('budget-bar-tooltip');
+    t.style.left = (e.clientX + 14) + 'px';
+    t.style.top = (e.clientY - 38) + 'px';
+}
+function hideBudgetTooltip() {
+    document.getElementById('budget-bar-tooltip').style.display = 'none';
+}
+</script>
 {% endblock %}
 {% endif %}

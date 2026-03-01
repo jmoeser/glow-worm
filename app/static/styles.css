@@ -686,7 +686,8 @@ h1, h2, h3, h4 {
 /* --- Summary Bar --- */
 .gw-summary-bar {
     display: flex;
-    gap: 24px;
+    flex-wrap: wrap;
+    gap: 0 24px;
     padding: 14px 20px;
     background: var(--surface-1);
     border: 1px solid var(--border-subtle);
