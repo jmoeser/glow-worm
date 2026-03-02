@@ -23,7 +23,7 @@ def upgrade() -> None:
     op.execute(
         sa.text(
             "INSERT INTO categories (name, type, color, is_budget_category, is_deleted) "
-            "VALUES ('Transfer', 'transfer', '#6B7280', 0, 0)"
+            "VALUES ('Transfer', 'transfer', '#6B7280', false, false)"
         )
     )
 
