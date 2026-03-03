@@ -285,6 +285,21 @@ class TestSinkingFundsDelete:
         response = authed_client.delete(f"/sinking-funds/{fund.id}")
         assert response.status_code == 403
 
+    def test_cannot_delete_system_fund(
+        self, authed_client, db_session, sample_sinking_funds
+    ):
+        fund = sample_sinking_funds[0]
+        fund.is_system = True
+        db_session.commit()
+        response = authed_client.delete(
+            f"/sinking-funds/{fund.id}",
+            headers={"x-csrftoken": authed_client.csrf_token},
+        )
+        assert response.status_code == 400
+        assert "cannot be deleted" in response.text
+        db_session.refresh(fund)
+        assert fund.is_deleted is False
+
 
 class TestApiFundsList:
     def test_returns_json_list(self, authed_client, sample_sinking_funds):
@@ -330,6 +345,7 @@ class TestApiFundsCreate:
         assert data["name"] == "Holiday"
         assert float(data["monthly_allocation"]) == 150.0
         assert data["is_deleted"] is False
+        assert data["is_system"] is False
 
     def test_creates_fund_with_initial_balance(self, authed_client, db_session):
         response = authed_client.post(
@@ -449,6 +465,21 @@ class TestApiFundsDelete:
         )
         assert response.status_code == 404
 
+    def test_cannot_delete_system_fund(
+        self, authed_client, db_session, sample_sinking_funds
+    ):
+        fund = sample_sinking_funds[0]
+        fund.is_system = True
+        db_session.commit()
+        response = authed_client.delete(
+            f"/api/sinking-funds/{fund.id}",
+            headers={"x-csrftoken": authed_client.csrf_token},
+        )
+        assert response.status_code == 400
+        assert "cannot be deleted" in response.json()["detail"]
+        db_session.refresh(fund)
+        assert fund.is_deleted is False
+
 
 class TestBillsRecommendedAllocation:
     def test_recommended_shown_for_bills_fund(
@@ -500,3 +531,34 @@ class TestBufferWarning:
 
         response = authed_client.get("/sinking-funds")
         assert "Buffer Warning" not in response.text
+
+
+class TestSystemFundProtection:
+    def test_delete_button_hidden_for_system_fund(
+        self, authed_client, db_session, sample_sinking_funds
+    ):
+        fund = sample_sinking_funds[0]
+        fund.is_system = True
+        db_session.commit()
+        response = authed_client.get("/sinking-funds")
+        assert response.status_code == 200
+        # Delete button should not appear for the system fund's row
+        assert f'hx-delete="/sinking-funds/{fund.id}"' not in response.text
+
+    def test_delete_button_shown_for_non_system_fund(
+        self, authed_client, db_session, sample_sinking_funds
+    ):
+        non_system = sample_sinking_funds[1]  # "Savings"
+        response = authed_client.get("/sinking-funds")
+        assert response.status_code == 200
+        assert f'hx-delete="/sinking-funds/{non_system.id}"' in response.text
+
+    def test_is_system_in_api_response(
+        self, authed_client, db_session, sample_sinking_funds
+    ):
+        fund = sample_sinking_funds[0]
+        fund.is_system = True
+        db_session.commit()
+        response = authed_client.get(f"/api/sinking-funds/{fund.id}")
+        assert response.status_code == 200
+        assert response.json()["is_system"] is True

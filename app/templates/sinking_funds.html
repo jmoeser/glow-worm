@@ -16,9 +16,11 @@
     <td>
         <button hx-get="/sinking-funds/{{ fund.id }}/edit" hx-target="#fund-row-{{ fund.id }}" hx-swap="outerHTML"
                 class="gw-action-edit">Edit</button>
+        {% if not fund.is_system %}
         <button hx-delete="/sinking-funds/{{ fund.id }}" hx-target="#fund-row-{{ fund.id }}" hx-swap="delete"
                 hx-confirm="Delete this sinking fund?"
                 class="gw-action-delete">Delete</button>
+        {% endif %}
     </td>
 </tr>
 {% endfor %}
@@ -40,9 +42,11 @@
     <td>
         <button hx-get="/sinking-funds/{{ fund.id }}/edit" hx-target="#fund-row-{{ fund.id }}" hx-swap="outerHTML"
                 class="gw-action-edit">Edit</button>
+        {% if not fund.is_system %}
         <button hx-delete="/sinking-funds/{{ fund.id }}" hx-target="#fund-row-{{ fund.id }}" hx-swap="delete"
                 hx-confirm="Delete this sinking fund?"
                 class="gw-action-delete">Delete</button>
+        {% endif %}
     </td>
 </tr>
 
@@ -173,9 +177,11 @@
                         <td>
                             <button hx-get="/sinking-funds/{{ fund.id }}/edit" hx-target="#fund-row-{{ fund.id }}" hx-swap="outerHTML"
                                     class="gw-action-edit">Edit</button>
+                            {% if not fund.is_system %}
                             <button hx-delete="/sinking-funds/{{ fund.id }}" hx-target="#fund-row-{{ fund.id }}" hx-swap="delete"
                                     hx-confirm="Delete this sinking fund?"
                                     class="gw-action-delete">Delete</button>
+                            {% endif %}
                         </td>
                     </tr>
                     {% endfor %}

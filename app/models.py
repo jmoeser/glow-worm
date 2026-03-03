@@ -56,6 +56,7 @@ class SinkingFund(Base):
     current_balance: Mapped[float] = mapped_column(Numeric(12, 2), default=0)
     color: Mapped[str] = mapped_column(String(7), nullable=False)
     is_deleted: Mapped[bool] = mapped_column(default=False)
+    is_system: Mapped[bool] = mapped_column(default=False)
     created_at: Mapped[datetime] = mapped_column(default=_utcnow)
     updated_at: Mapped[datetime] = mapped_column(default=_utcnow, onupdate=_utcnow)
 

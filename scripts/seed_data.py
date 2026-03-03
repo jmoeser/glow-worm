@@ -144,6 +144,7 @@ def seed_data() -> None:
             color="#EF4444",
             monthly_allocation=800,
             current_balance=800,
+            is_system=True,
         )
         short_term_fund = SinkingFund(
             name="Short Term Savings",

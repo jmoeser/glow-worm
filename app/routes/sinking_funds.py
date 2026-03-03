@@ -250,6 +250,11 @@ async def sinking_funds_delete(
     fund = db.query(SinkingFund).filter(SinkingFund.id == fund_id).first()
     if not fund:
         return HTMLResponse("Not found", status_code=404)
+    if fund.is_system:
+        return HTMLResponse(
+            '<p class="text-red-600 text-sm">System sinking funds cannot be deleted.</p>',
+            status_code=400,
+        )
     fund.is_deleted = True
     db.commit()
     return HTMLResponse("")
@@ -343,6 +348,10 @@ async def api_delete_fund(
     fund = db.query(SinkingFund).filter(SinkingFund.id == fund_id).first()
     if not fund:
         return JSONResponse({"detail": "Sinking fund not found"}, status_code=404)
+    if fund.is_system:
+        return JSONResponse(
+            {"detail": "System sinking funds cannot be deleted."}, status_code=400
+        )
     fund.is_deleted = True
     db.commit()
     return JSONResponse({"detail": "Sinking fund deleted"}, status_code=200)

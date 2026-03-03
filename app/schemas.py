@@ -201,6 +201,7 @@ class SinkingFundResponse(BaseModel):
     current_balance: Decimal
     color: str
     is_deleted: bool
+    is_system: bool
     created_at: datetime
     updated_at: datetime
 
