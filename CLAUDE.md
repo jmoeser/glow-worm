@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project overview
 
-A single-tenant household budgeting app. This is a Python/FastAPI project using: SQLAlchemy + SQLite, Alembic migrations, Jinja2 templates, Pydantic schemas, uv for dependency management. Always use `uv run` to execute commands (e.g., `uv run pytest`, `uv run alembic`). When syncing dependencies, use `uv sync --extra dev` to include dev dependencies (they are under `[project.optional-dependencies]`, not `[dependency-groups]`).
+A single-tenant household budgeting app. This is a Python/FastAPI project using: SQLAlchemy + SQLite/PostgreSQL, Alembic migrations, Jinja2 templates, Pydantic schemas, uv for dependency management. Always use `uv run` to execute commands (e.g., `uv run pytest`, `uv run alembic`). When syncing dependencies, use `uv sync --extra dev` to include dev dependencies (they are under `[project.optional-dependencies]`, not `[dependency-groups]`).
 
 ## Common Commands
 - **Install Dependencies**: `uv sync`
@@ -35,7 +35,7 @@ The app manages four distinct, separated systems:
 ## Code Style & Standards
 - **Backend**: Python 3.14+, FastAPI (async routes), Pydantic (validation), SQLAlchemy (ORM).
 - **Frontend**: Jinja2 templates + HTMX for SPA-like feel. Tailwind CSS via CDN.
-- **Database**: SQLite (dev). Use **Soft Deletes** (`is_deleted=True`) for Categories and SinkingFunds to preserve history. System categories (`is_system=True`) cannot be deleted — these are required for income allocation (the first `income`-type and the `transfer`-type category).
+- **Database**: SQLite (default/dev) or PostgreSQL (production). Set via `DATABASE_URL` env var. Use **Soft Deletes** (`is_deleted=True`) for Categories and SinkingFunds to preserve history. System categories (`is_system=True`) cannot be deleted — these are required for income allocation (the first `income`-type and the `transfer`-type category).
 - **Dates**: Store as ISO 8601 strings (`YYYY-MM-DD`). Use `pytz` for timezone handling (`Australia/Brisbane`).
 - **TDD**: Write tests in `tests/` before implementation. Aim for >80% coverage.
 

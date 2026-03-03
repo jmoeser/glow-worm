@@ -20,7 +20,7 @@ An opinionated, single-tenant household budgeting app built with Python and Fast
 | Layer | Technology |
 |-------|------------|
 | Backend | Python 3.14+, FastAPI, Pydantic |
-| Database | SQLAlchemy + SQLite |
+| Database | SQLAlchemy + SQLite / PostgreSQL |
 | Migrations | Alembic |
 | Frontend | Jinja2 templates, HTMX, Tailwind CSS (CDN) |
 | Scheduling | APScheduler |
@@ -101,7 +101,7 @@ docker run -p 8000:8000 \
   glow-worm
 ```
 
-The SQLite database is stored in the `/data` volume so it persists across container restarts.
+The SQLite database is stored in the `/data` volume so it persists across container restarts. For PostgreSQL, set `DATABASE_URL=postgresql+psycopg2://user:password@host/dbname` instead.  <!-- pragma: allowlist secret -->
 
 To create your user account inside the container:
 
@@ -115,7 +115,7 @@ All configuration is via environment variables (see `.env.example`):
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `DATABASE_URL` | SQLite connection string | `sqlite:///./glow-worm.db` |
+| `DATABASE_URL` | Database connection string (SQLite or PostgreSQL) | `sqlite:///./glow-worm.db` |
 | `SECRET_KEY` | Session signing & CSRF tokens (required, min 32 chars) | -- |
 | `SECURE_COOKIES` | Set to `false` for local HTTP development | `true` |
 | `ALLOWED_ORIGINS` | Comma-separated CORS origins (leave empty to disable) | -- |
