@@ -35,7 +35,7 @@ The app manages four distinct, separated systems:
 ## Code Style & Standards
 - **Backend**: Python 3.14+, FastAPI (async routes), Pydantic (validation), SQLAlchemy (ORM).
 - **Frontend**: Jinja2 templates + HTMX for SPA-like feel. Tailwind CSS via CDN.
-- **Database**: SQLite (dev). Use **Soft Deletes** (`is_deleted=True`) for Categories and SinkingFunds to preserve history.
+- **Database**: SQLite (dev). Use **Soft Deletes** (`is_deleted=True`) for Categories and SinkingFunds to preserve history. System categories (`is_system=True`) cannot be deleted — these are required for income allocation (the first `income`-type and the `transfer`-type category).
 - **Dates**: Store as ISO 8601 strings (`YYYY-MM-DD`). Use `pytz` for timezone handling (`Australia/Brisbane`).
 - **TDD**: Write tests in `tests/` before implementation. Aim for >80% coverage.
 
@@ -92,4 +92,4 @@ Hooks run automatically on `git commit`. Install with `uv run pre-commit install
 
 ## API Routes
 - Keep `/api/` prefix for JSON-returning routes.
-- 31 API endpoints across: `/api/keys`, `/api/bills`, `/api/users`, `/api/dashboard`, `/api/budgets`, `/api/transactions`, `/api/sinking-funds`, `/api/income`.
+- 36 API endpoints across: `/api/keys`, `/api/bills`, `/api/users`, `/api/dashboard`, `/api/budgets`, `/api/categories`, `/api/transactions`, `/api/sinking-funds`, `/api/income`.
