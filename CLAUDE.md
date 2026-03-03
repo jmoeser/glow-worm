@@ -35,7 +35,7 @@ The app manages four distinct, separated systems:
 ## Code Style & Standards
 - **Backend**: Python 3.14+, FastAPI (async routes), Pydantic (validation), SQLAlchemy (ORM).
 - **Frontend**: Jinja2 templates + HTMX for SPA-like feel. Tailwind CSS via CDN.
-- **Database**: SQLite (default/dev) or PostgreSQL (production). Set via `DATABASE_URL` env var. Use **Soft Deletes** (`is_deleted=True`) for Categories and SinkingFunds to preserve history. System categories (`is_system=True`) cannot be deleted — these are required for income allocation (the first `income`-type and the `transfer`-type category).
+- **Database**: SQLite (default/dev) or PostgreSQL (production). Set via `DATABASE_URL` env var. Use **Soft Deletes** (`is_deleted=True`) for Categories and SinkingFunds to preserve history. System categories (`is_system=True`) cannot be deleted — these are required for income allocation (the first `income`-type and the `transfer`-type category) and bill tracking (the `Bills` expense category).
 - **Dates**: Store as ISO 8601 strings (`YYYY-MM-DD`). Use `pytz` for timezone handling (`Australia/Brisbane`).
 - **TDD**: Write tests in `tests/` before implementation. Aim for >80% coverage.
 

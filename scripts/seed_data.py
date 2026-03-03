@@ -177,6 +177,7 @@ def seed_data() -> None:
             type=CategoryType.expense.value,
             color="#EF4444",
             is_budget_category=False,
+            is_system=True,
         )
         db.add(bills_cat)
         db.flush()
