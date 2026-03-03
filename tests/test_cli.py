@@ -123,6 +123,27 @@ SAMPLE_FUNDS = [
     }
 ]
 
+SAMPLE_CATEGORIES = [
+    {
+        "id": 1,
+        "name": "Groceries",
+        "type": "expense",
+        "color": "#22c55e",
+        "is_budget_category": True,
+        "is_deleted": False,
+        "is_system": False,
+    },
+    {
+        "id": 2,
+        "name": "Salary",
+        "type": "income",
+        "color": "#3b82f6",
+        "is_budget_category": False,
+        "is_deleted": False,
+        "is_system": True,
+    },
+]
+
 SAMPLE_BUDGETS = [
     {
         "id": 1,
@@ -686,6 +707,115 @@ class TestBudgets:
             result = runner.invoke(app, ["budgets", "delete", "1", "--yes"])
         assert result.exit_code == 0
         assert route.called
+
+
+# ---------------------------------------------------------------------------
+# Categories
+# ---------------------------------------------------------------------------
+
+
+class TestCategories:
+    def test_list_shows_categories(self, mock_config):
+        with respx.mock:
+            respx.get(f"{SERVER_URL}/api/categories").mock(
+                return_value=httpx.Response(200, json=SAMPLE_CATEGORIES)
+            )
+            result = runner.invoke(app, ["categories", "list"])
+        assert result.exit_code == 0
+        assert "Groceries" in result.output
+        assert "expense" in result.output
+        assert "Salary" in result.output
+        assert "income" in result.output
+
+    def test_list_shows_system_flag(self, mock_config):
+        with respx.mock:
+            respx.get(f"{SERVER_URL}/api/categories").mock(
+                return_value=httpx.Response(200, json=SAMPLE_CATEGORIES)
+            )
+            result = runner.invoke(app, ["categories", "list"])
+        assert result.exit_code == 0
+        assert "Yes" in result.output  # is_system for Salary
+
+    def test_list_empty(self, mock_config):
+        with respx.mock:
+            respx.get(f"{SERVER_URL}/api/categories").mock(
+                return_value=httpx.Response(200, json=[])
+            )
+            result = runner.invoke(app, ["categories", "list"])
+        assert "No categories found" in result.output
+
+    def test_add_posts_correct_payload(self, mock_config):
+        created = {**SAMPLE_CATEGORIES[0], "id": 3, "name": "Dining Out"}
+        with respx.mock:
+            route = respx.post(f"{SERVER_URL}/api/categories").mock(
+                return_value=httpx.Response(201, json=created)
+            )
+            result = runner.invoke(
+                app,
+                [
+                    "categories",
+                    "add",
+                    "--name",
+                    "Dining Out",
+                    "--type",
+                    "expense",
+                    "--color",
+                    "#f59e0b",
+                ],
+            )
+        assert result.exit_code == 0
+        body = json.loads(route.calls[0].request.content)
+        assert body["name"] == "Dining Out"
+        assert body["type"] == "expense"
+        assert body["color"] == "#f59e0b"
+        assert body["is_budget_category"] is False
+
+    def test_add_with_budget_flag(self, mock_config):
+        created = {
+            **SAMPLE_CATEGORIES[0],
+            "id": 4,
+            "name": "Transport",
+            "is_budget_category": True,
+        }
+        with respx.mock:
+            route = respx.post(f"{SERVER_URL}/api/categories").mock(
+                return_value=httpx.Response(201, json=created)
+            )
+            runner.invoke(
+                app,
+                [
+                    "categories",
+                    "add",
+                    "--name",
+                    "Transport",
+                    "--type",
+                    "expense",
+                    "--color",
+                    "#6366f1",
+                    "--is-budget-category",
+                ],
+            )
+        body = json.loads(route.calls[0].request.content)
+        assert body["is_budget_category"] is True
+
+    def test_delete_soft_deletes(self, mock_config):
+        with respx.mock:
+            route = respx.delete(f"{SERVER_URL}/api/categories/1").mock(
+                return_value=httpx.Response(200, json={"detail": "deleted"})
+            )
+            result = runner.invoke(app, ["categories", "delete", "1", "--yes"])
+        assert result.exit_code == 0
+        assert route.called
+
+    def test_list_json(self, mock_config):
+        with respx.mock:
+            respx.get(f"{SERVER_URL}/api/categories").mock(
+                return_value=httpx.Response(200, json=SAMPLE_CATEGORIES)
+            )
+            result = runner.invoke(app, ["categories", "list", "--json"])
+        assert result.exit_code == 0
+        data = json.loads(result.output)
+        assert data[0]["name"] == "Groceries"
 
 
 # ---------------------------------------------------------------------------

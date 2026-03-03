@@ -83,7 +83,7 @@ Hooks run automatically on `git commit`. Install with `uv run pre-commit install
 - `print_json()` helper in `client.py` — use for `--json` output, handles non-serialisable types via `default=str`.
 - All commands accept `--json` to output raw API response instead of rich tables.
 - Tests in `tests/test_cli.py`: use `typer.testing.CliRunner` + `respx` to mock httpx; patch `app.cli.client.require_config` for HTTP tests, patch `app.cli.config.CONFIG_FILE` / `CONFIG_DIR` for config file tests.
-- Subcommands: `config` (set-url, set-key, show), `dashboard`, `tx` (list, add, delete), `bills` (list, pay, add, delete), `funds` (list, add, delete), `budgets` (list, add, delete).
+- Subcommands: `config` (set-url, set-key, show), `dashboard`, `tx` (list, add, delete), `bills` (list, pay, add, delete), `funds` (list, add, delete), `budgets` (list, add, delete), `categories` (list, add, delete).
 
 ## MCP Server
 - Full MCP server implemented with **FastMCP 2.x**, mounted at `/mcp` via SSE transport.

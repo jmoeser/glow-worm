@@ -2,7 +2,7 @@ from typing import Annotated, Optional
 
 import typer
 
-from app.cli.commands import bills, budgets, config, funds, transactions
+from app.cli.commands import bills, budgets, categories, config, funds, transactions
 from app.cli.commands.dashboard import dashboard
 
 app = typer.Typer(
@@ -16,6 +16,7 @@ app.add_typer(transactions.app, name="tx")
 app.add_typer(bills.app, name="bills")
 app.add_typer(funds.app, name="funds")
 app.add_typer(budgets.app, name="budgets")
+app.add_typer(categories.app, name="categories")
 app.command("dashboard")(dashboard)
 
 
