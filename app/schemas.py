@@ -11,6 +11,7 @@ from pydantic import BaseModel, ConfigDict, Field
 class CategoryType(str, Enum):
     income = "income"
     expense = "expense"
+    transfer = "transfer"
 
 
 class TransactionType(str, Enum):
@@ -91,6 +92,7 @@ class CategoryResponse(BaseModel):
     color: str
     is_budget_category: bool
     is_deleted: bool
+    is_system: bool
 
 
 # --- Transaction Schemas ---

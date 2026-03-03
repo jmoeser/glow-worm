@@ -37,6 +37,7 @@ class Category(Base):
     color: Mapped[str] = mapped_column(String(7), nullable=False)
     is_budget_category: Mapped[bool] = mapped_column(default=False)
     is_deleted: Mapped[bool] = mapped_column(default=False)
+    is_system: Mapped[bool] = mapped_column(default=False)
 
     transactions: Mapped[list["Transaction"]] = relationship(back_populates="category")
     budgets: Mapped[list["Budget"]] = relationship(back_populates="category")

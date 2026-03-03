@@ -1,0 +1,180 @@
+{% if fragment == "table_body" %}
+{# --- Partial: full table body rows --- #}
+{% for cat in categories %}
+<tr id="cat-row-{{ cat.id }}">
+    <td>
+        <span class="gw-dot" style="background-color: {{ cat.color }}"></span>{{ cat.name }}
+        {% if cat.is_system %}<span class="gw-text-dim" style="font-size: 0.7rem; margin-left: 4px;" title="System category — required for income allocation">system</span>{% endif %}
+    </td>
+    <td>
+        <span class="gw-badge {% if cat.type == 'income' %}gw-badge-income{% elif cat.type == 'transfer' %}gw-badge-transfer{% else %}gw-badge-expense{% endif %}">{{ cat.type }}</span>
+    </td>
+    <td>{{ "Yes" if cat.is_budget_category else "–" }}</td>
+    <td>
+        <button hx-get="/categories/{{ cat.id }}/edit" hx-target="#cat-row-{{ cat.id }}" hx-swap="outerHTML"
+                class="gw-action-edit">Edit</button>
+        {% if not cat.is_system %}
+        <button hx-delete="/categories/{{ cat.id }}" hx-target="#cat-row-{{ cat.id }}" hx-swap="delete"
+                hx-confirm="Delete this category?"
+                class="gw-action-delete">Delete</button>
+        {% else %}
+        <span class="gw-text-dim" style="font-size: 0.8rem;" title="System categories cannot be deleted">🔒</span>
+        {% endif %}
+    </td>
+</tr>
+{% endfor %}
+
+{% elif fragment == "category_row" %}
+{# --- Partial: single display row --- #}
+<tr id="cat-row-{{ cat.id }}">
+    <td>
+        <span class="gw-dot" style="background-color: {{ cat.color }}"></span>{{ cat.name }}
+        {% if cat.is_system %}<span class="gw-text-dim" style="font-size: 0.7rem; margin-left: 4px;" title="System category — required for income allocation">system</span>{% endif %}
+    </td>
+    <td>
+        <span class="gw-badge {% if cat.type == 'income' %}gw-badge-income{% elif cat.type == 'transfer' %}gw-badge-transfer{% else %}gw-badge-expense{% endif %}">{{ cat.type }}</span>
+    </td>
+    <td>{{ "Yes" if cat.is_budget_category else "–" }}</td>
+    <td>
+        <button hx-get="/categories/{{ cat.id }}/edit" hx-target="#cat-row-{{ cat.id }}" hx-swap="outerHTML"
+                class="gw-action-edit">Edit</button>
+        {% if not cat.is_system %}
+        <button hx-delete="/categories/{{ cat.id }}" hx-target="#cat-row-{{ cat.id }}" hx-swap="delete"
+                hx-confirm="Delete this category?"
+                class="gw-action-delete">Delete</button>
+        {% else %}
+        <span class="gw-text-dim" style="font-size: 0.8rem;" title="System categories cannot be deleted">🔒</span>
+        {% endif %}
+    </td>
+</tr>
+
+{% elif fragment == "edit_row" %}
+{# --- Partial: inline edit row --- #}
+<tr class="gw-edit-row" id="cat-row-{{ cat.id }}">
+    <td>
+        <div style="display: flex; align-items: center; gap: 8px;">
+            <input type="color" name="color" value="{{ cat.color }}" form="edit-form-{{ cat.id }}"
+                   style="width: 24px; height: 24px;">
+            <input type="text" name="name" value="{{ cat.name }}" form="edit-form-{{ cat.id }}"
+                   class="gw-edit-input">
+        </div>
+    </td>
+    <td>
+        <select name="type" form="edit-form-{{ cat.id }}" class="gw-edit-input">
+            <option value="income" {% if cat.type == "income" %}selected{% endif %}>income</option>
+            <option value="expense" {% if cat.type == "expense" %}selected{% endif %}>expense</option>
+            <option value="transfer" {% if cat.type == "transfer" %}selected{% endif %}>transfer</option>
+        </select>
+    </td>
+    <td>
+        <input type="checkbox" name="is_budget_category" value="on" form="edit-form-{{ cat.id }}"
+               {% if cat.is_budget_category %}checked{% endif %}>
+    </td>
+    <td>
+        <form id="edit-form-{{ cat.id }}" hx-post="/categories/{{ cat.id }}" hx-target="#cat-row-{{ cat.id }}" hx-swap="outerHTML" style="display: inline;">
+            <button type="submit" class="gw-btn gw-btn-success gw-btn-sm">Save</button>
+        </form>
+        <button class="gw-btn gw-btn-ghost gw-btn-sm"
+                onclick="event.preventDefault(); location.reload();">Cancel</button>
+    </td>
+</tr>
+
+{% else %}
+{# --- Full page --- #}
+{% extends "base.html" %}
+{% block title %}Categories — Glow Worm{% endblock %}
+{% block content %}
+<div style="max-width: 900px;">
+    <h2 class="gw-page-header">Categories</h2>
+
+    <div id="categories-message" style="margin-bottom: 16px;"></div>
+
+    <!-- Add New Category (collapsible) -->
+    <details class="gw-details gw-section">
+        <summary>Add New Category</summary>
+        <form hx-post="/categories" hx-target="#categories-table-body" hx-swap="innerHTML"
+              hx-on::after-request="if(event.detail.successful) { this.reset(); document.getElementById('categories-message').innerHTML = '<p class=\'gw-msg-success\'>Category added.</p>'; } else { document.getElementById('categories-message').innerHTML = event.detail.xhr.responseText; }"
+              class="gw-grid-2" style="margin-top: 16px;">
+            <div>
+                <label for="cat-name" class="gw-label">Name</label>
+                <input type="text" id="cat-name" name="name" required
+                       class="gw-input" placeholder="e.g. Groceries">
+            </div>
+            <div>
+                <label for="cat-type" class="gw-label">Type</label>
+                <select id="cat-type" name="type" required class="gw-input">
+                    <option value="expense">expense</option>
+                    <option value="income">income</option>
+                    <option value="transfer">transfer</option>
+                </select>
+            </div>
+            <div>
+                <label for="cat-color" class="gw-label">Color</label>
+                <input type="color" id="cat-color" name="color" value="#3B82F6" required
+                       style="width: 60px; height: 38px;">
+            </div>
+            <div style="display: flex; align-items: center; gap: 8px; padding-top: 24px;">
+                <input type="checkbox" id="cat-budget" name="is_budget_category" value="on">
+                <label for="cat-budget" class="gw-label" style="margin: 0;">Budget Category</label>
+            </div>
+            <div style="grid-column: 1 / -1;">
+                <button type="submit" class="gw-btn gw-btn-primary">Add Category</button>
+            </div>
+        </form>
+    </details>
+
+    <!-- Summary -->
+    <div class="gw-summary-bar gw-section">
+        <div class="gw-summary-item">
+            <span class="gw-summary-label">Total categories:</span>
+            <span class="gw-summary-value">{{ categories | length }}</span>
+        </div>
+        <div class="gw-summary-item">
+            <span class="gw-summary-label">Budget categories:</span>
+            <span class="gw-summary-value">{{ categories | selectattr("is_budget_category") | list | length }}</span>
+        </div>
+    </div>
+
+    <!-- Categories table -->
+    <div class="gw-table-wrap">
+        <div class="gw-overflow-x">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Name</th>
+                        <th>Type</th>
+                        <th>Budget Category</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="categories-table-body">
+                    {% for cat in categories %}
+                    <tr id="cat-row-{{ cat.id }}">
+                        <td>
+                            <span class="gw-dot" style="background-color: {{ cat.color }}"></span>{{ cat.name }}
+                            {% if cat.is_system %}<span class="gw-text-dim" style="font-size: 0.7rem; margin-left: 4px;" title="System category — required for income allocation">system</span>{% endif %}
+                        </td>
+                        <td>
+                            <span class="gw-badge {% if cat.type == 'income' %}gw-badge-income{% elif cat.type == 'transfer' %}gw-badge-transfer{% else %}gw-badge-expense{% endif %}">{{ cat.type }}</span>
+                        </td>
+                        <td>{{ "Yes" if cat.is_budget_category else "–" }}</td>
+                        <td>
+                            <button hx-get="/categories/{{ cat.id }}/edit" hx-target="#cat-row-{{ cat.id }}" hx-swap="outerHTML"
+                                    class="gw-action-edit">Edit</button>
+                            {% if not cat.is_system %}
+                            <button hx-delete="/categories/{{ cat.id }}" hx-target="#cat-row-{{ cat.id }}" hx-swap="delete"
+                                    hx-confirm="Delete this category?"
+                                    class="gw-action-delete">Delete</button>
+                            {% else %}
+                            <span class="gw-text-dim" style="font-size: 0.8rem;" title="System categories cannot be deleted">🔒</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}
+{% endif %}

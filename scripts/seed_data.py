@@ -39,8 +39,14 @@ def seed_data() -> None:
             )
             sys.exit(1)
 
-        # Guard: prevent duplicate seeding
-        existing = db.execute(select(Category)).scalars().first()
+        # Guard: prevent duplicate seeding.
+        # Exclude system categories (e.g. Transfer, seeded by migration) from the check
+        # so that a fresh install after `alembic upgrade head` still runs the seed.
+        existing = (
+            db.execute(select(Category).filter(Category.is_system == False))  # noqa: E712
+            .scalars()
+            .first()
+        )
         if existing:
             print("Seed data already exists. Aborting to prevent duplicates.")
             sys.exit(0)
@@ -56,6 +62,7 @@ def seed_data() -> None:
             type=CategoryType.income.value,
             color="#22C55E",
             is_budget_category=False,
+            is_system=True,
         )
         groceries_cat = Category(
             name="Groceries",
@@ -112,6 +119,24 @@ def seed_data() -> None:
         ]
         db.add_all(categories)
         db.flush()
+
+        # Ensure the Transfer system category exists (normally seeded by migration).
+        transfer_cat = (
+            db.execute(select(Category).filter(Category.type == "transfer"))
+            .scalars()
+            .first()
+        )
+        if not transfer_cat:
+            db.add(
+                Category(
+                    name="Transfer",
+                    type="transfer",
+                    color="#6B7280",
+                    is_budget_category=False,
+                    is_system=True,
+                )
+            )
+            db.flush()
 
         # --- Sinking Funds ---
         bills_fund = SinkingFund(
@@ -363,7 +388,7 @@ def seed_data() -> None:
 
         db.commit()
         print("Seed data created successfully.")
-        print("  - 9 categories")
+        print("  - 9+ categories (including system Transfer category)")
         print("  - 4 sinking funds")
         print("  - 5 recurring bills")
         print(f"  - 7 budgets ({current_month}/{current_year})")

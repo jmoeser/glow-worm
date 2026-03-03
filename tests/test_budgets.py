@@ -240,13 +240,15 @@ class TestBudgetsDelete:
         db_session.expire_all()
         assert db_session.query(Budget).filter(Budget.id == budget_id).first() is None
 
-    def test_returns_empty_response(self, authed_client, sample_budgets):
+    def test_returns_summary_bar_oob(self, authed_client, sample_budgets):
         budget = sample_budgets[0]
         response = authed_client.delete(
             f"/budgets/{budget.id}",
             headers={"x-csrftoken": authed_client.csrf_token},
         )
-        assert response.text == ""
+        assert response.status_code == 200
+        assert "budgets-summary-bar" in response.text
+        assert "hx-swap-oob" in response.text
 
     def test_404_for_nonexistent_budget(self, authed_client):
         response = authed_client.delete(
