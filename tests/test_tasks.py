@@ -16,6 +16,7 @@ from app.models import (
     MonthlyUnallocatedIncome,
     RecurringBill,
     IncomeAllocation,
+    IncomeAllocationRecurringTransfer,
     IncomeAllocationToSinkingFund,
     SinkingFund,
     Transaction,
@@ -361,6 +362,70 @@ class TestProcessIncomeAllocation:
         )
         assert budget is not None
         assert Decimal(str(budget.allocated_amount)) == Decimal("0")
+
+    @patch("app.tasks._today")
+    def test_process_income_allocation_creates_transfer_transactions(
+        self, mock_today, db_session, income_setup
+    ):
+        """Recurring transfers produce expense transactions with income_allocation type."""
+        mock_today.return_value = date(2026, 2, 1)
+
+        allocation = income_setup["allocation"]
+        db_session.add(
+            IncomeAllocationRecurringTransfer(
+                income_allocation_id=allocation.id,
+                description="Monthly transfer out",
+                amount=200,
+            )
+        )
+        db_session.commit()
+
+        process_income_allocation(db=db_session)
+
+        transfer_txns = (
+            db_session.query(Transaction)
+            .filter(
+                Transaction.transaction_type == "income_allocation",
+                Transaction.type == "expense",
+            )
+            .all()
+        )
+        assert len(transfer_txns) == 1
+        assert Decimal(str(transfer_txns[0].amount)) == Decimal("200")
+        assert "Monthly transfer out" in transfer_txns[0].description
+        assert transfer_txns[0].category_id == income_setup["transfer_cat"].id
+
+    @patch("app.tasks._today")
+    def test_transfer_amount_deducted_from_unallocated(
+        self, mock_today, db_session, income_setup
+    ):
+        """Recurring transfer amounts reduce the unallocated remainder."""
+        mock_today.return_value = date(2026, 2, 1)
+
+        allocation = income_setup["allocation"]
+        db_session.add(
+            IncomeAllocationRecurringTransfer(
+                income_allocation_id=allocation.id,
+                description="External savings",
+                amount=300,
+            )
+        )
+        db_session.commit()
+
+        process_income_allocation(db=db_session)
+
+        # Without transfer: 5000 - 500 (savings) - 1200 (bills) - 800 (budget) = 2500
+        # With $300 transfer: 2500 - 300 = 2200
+        unalloc = (
+            db_session.query(MonthlyUnallocatedIncome)
+            .filter(
+                MonthlyUnallocatedIncome.month == 2,
+                MonthlyUnallocatedIncome.year == 2026,
+            )
+            .first()
+        )
+        assert unalloc is not None
+        assert Decimal(str(unalloc.unallocated_amount)) == Decimal("2200")
 
 
 # ---------------------------------------------------------------------------

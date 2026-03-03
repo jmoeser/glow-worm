@@ -271,6 +271,19 @@ class IncomeAllocationToSinkingFundResponse(BaseModel):
     allocation_amount: Decimal
 
 
+class IncomeAllocationRecurringTransferCreate(BaseModel):
+    description: str = Field(..., min_length=1, max_length=200)
+    amount: Decimal = Field(..., gt=0)
+
+
+class IncomeAllocationRecurringTransferResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    description: str
+    amount: Decimal
+
+
 class IncomeAllocationCreate(BaseModel):
     monthly_income_amount: Decimal = Field(..., gt=0)
     monthly_budget_allocation: Decimal = Field(..., ge=0)
@@ -279,6 +292,7 @@ class IncomeAllocationCreate(BaseModel):
     )
     bills_fund_fixed_amount: Decimal | None = Field(None, ge=0)
     sinking_fund_allocations: list[IncomeAllocationToSinkingFundCreate] = []
+    recurring_transfers: list[IncomeAllocationRecurringTransferCreate] = []
 
 
 class IncomeAllocationUpdate(BaseModel):
@@ -298,6 +312,7 @@ class IncomeAllocationResponse(BaseModel):
     bills_fund_allocation_type: BillsAllocationMethod
     bills_fund_fixed_amount: Decimal | None = None
     sinking_fund_allocations: list[IncomeAllocationToSinkingFundResponse] = []
+    recurring_transfers: list[IncomeAllocationRecurringTransferResponse] = []
     created_at: datetime
     updated_at: datetime
 

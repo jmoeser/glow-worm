@@ -4,10 +4,11 @@ An opinionated, single-tenant household budgeting app built with Python and Fast
 
 ## Features
 
-- **Income Allocation** -- Configure how your monthly income is automatically distributed across budgets, sinking funds, and bills on the 1st of each month.
+- **Income Allocation** -- Configure how your monthly income is automatically distributed across budgets, sinking funds, bills, and recurring transfers on the 1st of each month. Includes a live Sankey diagram showing the breakdown.
 - **Monthly Budgets** -- Track spending against allocated amounts for repeating categories (Groceries, Eating Out, etc.) with color-coded progress bars.
 - **Sinking Funds** -- Savings pots (Bills, Savings, Emergency, etc.) that accumulate a balance over time via monthly contributions.
 - **Recurring Bills** -- Manage bills with flexible frequencies (monthly, quarterly, yearly, every 28 days). Bills are automatically generated as unpaid transactions when due.
+- **Recurring Transfers** -- Define fixed monthly outflows (e.g. an allowance, an external savings transfer) that are processed automatically as part of income allocation and deducted from the unallocated remainder.
 - **Category Management** -- Create and manage transaction categories (income, expense, transfer). System categories required for income allocation are protected from deletion.
 - **Transaction Ledger** -- Full transaction history with filters by date, category, and fund. Supports dual-linkage so a single transaction can reference both a sinking fund and a recurring bill.
 - **Dashboard** -- At-a-glance view of your budget status, upcoming bills, fund balances, and unallocated income.

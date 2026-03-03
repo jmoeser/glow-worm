@@ -224,6 +224,22 @@ def process_income_allocation(db: Session | None = None) -> None:
                 )
                 total_allocated += bills_amount
 
+        # 3b. Recurring transfers (money that leaves the household budget entirely)
+        month_name = today.strftime("%B")
+        for transfer in allocation.recurring_transfers:
+            transfer_amount = Decimal(str(transfer.amount))
+            db.add(
+                Transaction(
+                    date=date_str,
+                    description=f"{transfer.description} \u2014 {month_name} {year}",
+                    amount=float(transfer_amount),
+                    category_id=transfer_cat.id,
+                    type="expense",
+                    transaction_type="income_allocation",
+                )
+            )
+            total_allocated += transfer_amount
+
         # 4. Ensure Budget rows exist for this month
         prev_month = month - 1 if month > 1 else 12
         prev_year = year if month > 1 else year - 1

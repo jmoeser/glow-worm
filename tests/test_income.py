@@ -1,4 +1,9 @@
-from app.models import IncomeAllocation, IncomeAllocationToSinkingFund, SinkingFund
+from app.models import (
+    IncomeAllocation,
+    IncomeAllocationRecurringTransfer,
+    IncomeAllocationToSinkingFund,
+    SinkingFund,
+)
 
 
 class TestIncomePageGet:
@@ -431,3 +436,137 @@ class TestApiPostIncome:
             },
         )
         assert response.status_code == 201
+
+    def test_api_saves_recurring_transfers(self, authed_client, db_session):
+        response = authed_client.post(
+            "/api/income",
+            json={
+                "monthly_income_amount": "5000",
+                "monthly_budget_allocation": "2000",
+                "recurring_transfers": [
+                    {"description": "Partner pocket money", "amount": "200"},
+                    {"description": "External savings", "amount": "150"},
+                ],
+            },
+        )
+        assert response.status_code == 201
+
+        transfers = db_session.query(IncomeAllocationRecurringTransfer).all()
+        assert len(transfers) == 2
+        descriptions = {t.description for t in transfers}
+        assert descriptions == {"Partner pocket money", "External savings"}
+
+    def test_api_includes_recurring_transfers_in_response(self, authed_client):
+        response = authed_client.post(
+            "/api/income",
+            json={
+                "monthly_income_amount": "5000",
+                "monthly_budget_allocation": "2000",
+                "recurring_transfers": [
+                    {"description": "Household allowance", "amount": "300"},
+                ],
+            },
+        )
+        assert response.status_code == 201
+        data = response.json()
+        assert len(data["recurring_transfers"]) == 1
+        assert data["recurring_transfers"][0]["description"] == "Household allowance"
+        assert float(data["recurring_transfers"][0]["amount"]) == 300.0
+
+
+class TestRecurringTransfersFormPost:
+    def test_saves_recurring_transfers(self, authed_client, db_session):
+        response = authed_client.post(
+            "/income",
+            data={
+                "monthly_income_amount": "5000",
+                "monthly_budget_allocation": "2000",
+                "bills_fund_allocation_type": "recommended",
+                "transfer_description_0": "Personal allowance",
+                "transfer_amount_0": "200",
+            },
+            headers={"x-csrftoken": authed_client.csrf_token},
+        )
+        assert response.status_code == 200
+        assert "saved successfully" in response.text
+
+        transfers = db_session.query(IncomeAllocationRecurringTransfer).all()
+        assert len(transfers) == 1
+        assert transfers[0].description == "Personal allowance"
+        assert float(transfers[0].amount) == 200.0
+
+    def test_replaces_recurring_transfers_on_update(self, authed_client, db_session):
+        # First save with one transfer
+        authed_client.post(
+            "/income",
+            data={
+                "monthly_income_amount": "5000",
+                "monthly_budget_allocation": "2000",
+                "bills_fund_allocation_type": "recommended",
+                "transfer_description_0": "Old transfer",
+                "transfer_amount_0": "100",
+            },
+            headers={"x-csrftoken": authed_client.csrf_token},
+        )
+
+        # Second save replaces with different transfer
+        authed_client.post(
+            "/income",
+            data={
+                "monthly_income_amount": "5000",
+                "monthly_budget_allocation": "2000",
+                "bills_fund_allocation_type": "recommended",
+                "transfer_description_0": "New transfer",
+                "transfer_amount_0": "250",
+            },
+            headers={"x-csrftoken": authed_client.csrf_token},
+        )
+
+        db_session.expire_all()
+        transfers = db_session.query(IncomeAllocationRecurringTransfer).all()
+        assert len(transfers) == 1
+        assert transfers[0].description == "New transfer"
+        assert float(transfers[0].amount) == 250.0
+
+    def test_skips_blank_description_and_zero_amount(self, authed_client, db_session):
+        authed_client.post(
+            "/income",
+            data={
+                "monthly_income_amount": "5000",
+                "monthly_budget_allocation": "2000",
+                "bills_fund_allocation_type": "recommended",
+                "transfer_description_0": "",
+                "transfer_amount_0": "200",
+                "transfer_description_1": "Valid",
+                "transfer_amount_1": "0",
+                "transfer_description_2": "Also valid",
+                "transfer_amount_2": "50",
+            },
+            headers={"x-csrftoken": authed_client.csrf_token},
+        )
+
+        transfers = db_session.query(IncomeAllocationRecurringTransfer).all()
+        assert len(transfers) == 1
+        assert transfers[0].description == "Also valid"
+
+    def test_prefills_recurring_transfers_on_get(self, authed_client, db_session):
+        alloc = IncomeAllocation(
+            monthly_income_amount=5000,
+            monthly_budget_allocation=2000,
+            bills_fund_allocation_type="recommended",
+        )
+        db_session.add(alloc)
+        db_session.flush()
+        db_session.add(
+            IncomeAllocationRecurringTransfer(
+                income_allocation_id=alloc.id,
+                description="Household allowance",
+                amount=200,
+            )
+        )
+        db_session.commit()
+
+        response = authed_client.get("/income")
+        assert response.status_code == 200
+        assert "Household allowance" in response.text
+        assert "200" in response.text

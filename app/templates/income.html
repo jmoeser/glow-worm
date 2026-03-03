@@ -83,6 +83,32 @@
                     {% endif %}
                 </fieldset>
 
+                <!-- Recurring Transfers -->
+                <fieldset class="gw-fieldset">
+                    <legend>Recurring Transfers</legend>
+                    <p style="font-size: 0.8rem; color: var(--text-secondary); margin-bottom: 12px;">Money that leaves the household budget each month (e.g. pocket money, external savings).</p>
+                    <div id="recurring-transfers-list" style="display: flex; flex-direction: column; gap: 10px;">
+                        {% for transfer in recurring_transfers %}
+                        <div class="recurring-transfer-row" style="display: flex; gap: 8px; align-items: center;">
+                            <input type="text" name="transfer_description_{{ loop.index0 }}"
+                                   value="{{ transfer.description }}"
+                                   placeholder="Description"
+                                   class="gw-input" style="flex: 2;"
+                                   oninput="calculateRemainder()">
+                            <input type="number" name="transfer_amount_{{ loop.index0 }}"
+                                   value="{{ transfer.amount }}"
+                                   step="0.01" min="0" placeholder="0.00"
+                                   class="gw-input" style="flex: 1;"
+                                   oninput="calculateRemainder()">
+                            <button type="button" onclick="removeTransferRow(this)"
+                                    class="gw-btn" style="padding: 6px 10px; font-size: 0.8rem; flex-shrink: 0;">✕</button>
+                        </div>
+                        {% endfor %}
+                    </div>
+                    <button type="button" onclick="addTransferRow()"
+                            class="gw-btn" style="margin-top: 10px; font-size: 0.8rem;">+ Add Transfer</button>
+                </fieldset>
+
                 <!-- Remainder Display -->
                 <div id="remainder-display" class="gw-remainder gw-remainder--neutral">
                     Remainder: <span id="remainder-value">$0.00</span>
@@ -113,6 +139,34 @@
 <script>
 const FUND_META = {{ sinking_funds_data | tojson }};
 
+let transferRowCounter = {{ recurring_transfers | length }};
+
+function addTransferRow() {
+    const list = document.getElementById('recurring-transfers-list');
+    const idx = transferRowCounter++;
+    const row = document.createElement('div');
+    row.className = 'recurring-transfer-row';
+    row.style.cssText = 'display: flex; gap: 8px; align-items: center;';
+    row.innerHTML = `
+        <input type="text" name="transfer_description_${idx}"
+               placeholder="Description"
+               class="gw-input" style="flex: 2;"
+               oninput="calculateRemainder()">
+        <input type="number" name="transfer_amount_${idx}"
+               step="0.01" min="0" placeholder="0.00"
+               class="gw-input" style="flex: 1;"
+               oninput="calculateRemainder()">
+        <button type="button" onclick="removeTransferRow(this)"
+                class="gw-btn" style="padding: 6px 10px; font-size: 0.8rem; flex-shrink: 0;">✕</button>
+    `;
+    list.appendChild(row);
+}
+
+function removeTransferRow(btn) {
+    btn.closest('.recurring-transfer-row').remove();
+    calculateRemainder();
+}
+
 function calculateRemainder() {
     const income = parseFloat(document.getElementById('monthly_income_amount').value) || 0;
     const budget = parseFloat(document.getElementById('monthly_budget_allocation').value) || 0;
@@ -122,7 +176,12 @@ function calculateRemainder() {
         fundTotal += parseFloat(input.value) || 0;
     });
 
-    const remainder = income - budget - fundTotal;
+    let transferTotal = 0;
+    document.querySelectorAll('input[name^="transfer_amount_"]').forEach(function(input) {
+        transferTotal += parseFloat(input.value) || 0;
+    });
+
+    const remainder = income - budget - fundTotal - transferTotal;
     const el = document.getElementById('remainder-value');
     el.textContent = '$' + remainder.toLocaleString('en-AU', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
@@ -167,7 +226,21 @@ function renderSankey() {
         }
     });
 
-    const totalAllocated = budget + fundAllocations.reduce(function(sum, f) { return sum + f.amount; }, 0);
+    // Collect transfer allocations
+    const transferAllocations = [];
+    document.querySelectorAll('.recurring-transfer-row').forEach(function(row) {
+        const descInput = row.querySelector('input[name^="transfer_description_"]');
+        const amtInput = row.querySelector('input[name^="transfer_amount_"]');
+        const desc = descInput ? descInput.value.trim() : '';
+        const amount = amtInput ? (parseFloat(amtInput.value) || 0) : 0;
+        if (desc && amount > 0) {
+            transferAllocations.push({ name: desc, amount: amount });
+        }
+    });
+
+    const totalAllocated = budget
+        + fundAllocations.reduce(function(sum, f) { return sum + f.amount; }, 0)
+        + transferAllocations.reduce(function(sum, t) { return sum + t.amount; }, 0);
     const remainder = income - totalAllocated;
 
     // Build nodes: index 0 = Income (source)
@@ -184,6 +257,12 @@ function renderSankey() {
         const idx = nodes.length;
         nodes.push({ name: fund.name, color: fund.color });
         links.push({ source: 0, target: idx, value: fund.amount, color: fund.color });
+    });
+
+    transferAllocations.forEach(function(transfer) {
+        const idx = nodes.length;
+        nodes.push({ name: transfer.name, color: '#f59e0b' });
+        links.push({ source: 0, target: idx, value: transfer.amount, color: '#f59e0b' });
     });
 
     if (remainder > 0) {

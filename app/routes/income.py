@@ -7,8 +7,17 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.middleware import get_current_user
-from app.models import IncomeAllocation, IncomeAllocationToSinkingFund, SinkingFund
-from app.schemas import IncomeAllocationCreate, IncomeAllocationResponse
+from app.models import (
+    IncomeAllocation,
+    IncomeAllocationRecurringTransfer,
+    IncomeAllocationToSinkingFund,
+    SinkingFund,
+)
+from app.schemas import (
+    IncomeAllocationCreate,
+    IncomeAllocationRecurringTransferCreate,
+    IncomeAllocationResponse,
+)
 from app.templating import templates
 
 router = APIRouter()
@@ -21,6 +30,7 @@ def _upsert_allocation(
     bills_fund_allocation_type: str,
     bills_fund_fixed_amount: Decimal | None,
     fund_allocations: list[dict],
+    recurring_transfers: list[IncomeAllocationRecurringTransferCreate] | None = None,
 ) -> tuple[IncomeAllocation, bool]:
     """Create or update the single IncomeAllocation row.
 
@@ -62,6 +72,15 @@ def _upsert_allocation(
         )
         db.add(junction)
 
+    # Replace recurring transfers
+    allocation.recurring_transfers = [
+        IncomeAllocationRecurringTransfer(
+            description=t.description,
+            amount=float(t.amount),
+        )
+        for t in (recurring_transfers or [])
+    ]
+
     db.commit()
     db.refresh(allocation)
     return allocation, created
@@ -86,6 +105,8 @@ async def income_page(request: Request, db: Session = Depends(get_db)):
         {"id": f.id, "name": f.name, "color": f.color} for f in sinking_funds
     ]
 
+    recurring_transfers = allocation.recurring_transfers if allocation else []
+
     return templates.TemplateResponse(
         request,
         "income.html",
@@ -95,6 +116,7 @@ async def income_page(request: Request, db: Session = Depends(get_db)):
             "sinking_funds": sinking_funds,
             "fund_allocation_map": fund_allocation_map,
             "sinking_funds_data": sinking_funds_data,
+            "recurring_transfers": recurring_transfers,
         },
     )
 
@@ -155,6 +177,24 @@ async def income_save(request: Request, db: Session = Depends(get_db)):
             except ValueError, InvalidOperation:
                 continue
 
+    # Parse recurring transfers from transfer_description_N / transfer_amount_N keys
+    transfers: list[IncomeAllocationRecurringTransferCreate] = []
+    for key in form:
+        if key.startswith("transfer_description_"):
+            idx = key.removeprefix("transfer_description_")
+            desc = str(form.get(key, "")).strip()
+            amt_str = str(form.get(f"transfer_amount_{idx}", "0")).strip()
+            try:
+                amt = Decimal(amt_str or "0")
+            except InvalidOperation:
+                amt = Decimal("0")
+            if desc and amt > 0:
+                transfers.append(
+                    IncomeAllocationRecurringTransferCreate(
+                        description=desc, amount=amt
+                    )
+                )
+
     _upsert_allocation(
         db,
         monthly_income_amount,
@@ -162,6 +202,7 @@ async def income_save(request: Request, db: Session = Depends(get_db)):
         bills_fund_allocation_type,
         bills_fund_fixed_amount,
         fund_allocations,
+        transfers,
     )
 
     return HTMLResponse(
@@ -210,6 +251,7 @@ async def api_post_income(request: Request, db: Session = Depends(get_db)):
         data.bills_fund_allocation_type.value,
         bills_fixed,
         fund_allocations,
+        data.recurring_transfers,
     )
 
     response = IncomeAllocationResponse.model_validate(allocation)

@@ -168,6 +168,9 @@ class IncomeAllocation(Base):
     sinking_fund_allocations: Mapped[list["IncomeAllocationToSinkingFund"]] = (
         relationship(back_populates="income_allocation", cascade="all, delete-orphan")
     )
+    recurring_transfers: Mapped[list["IncomeAllocationRecurringTransfer"]] = (
+        relationship(back_populates="income_allocation", cascade="all, delete-orphan")
+    )
 
 
 class IncomeAllocationToSinkingFund(Base):
@@ -187,6 +190,21 @@ class IncomeAllocationToSinkingFund(Base):
     )
     sinking_fund: Mapped["SinkingFund"] = relationship(
         back_populates="income_allocations"
+    )
+
+
+class IncomeAllocationRecurringTransfer(Base):
+    __tablename__ = "income_allocation_recurring_transfers"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    income_allocation_id: Mapped[int] = mapped_column(
+        ForeignKey("income_allocations.id"), nullable=False
+    )
+    description: Mapped[str] = mapped_column(String(200), nullable=False)
+    amount: Mapped[float] = mapped_column(Numeric(12, 2), nullable=False)
+
+    income_allocation: Mapped["IncomeAllocation"] = relationship(
+        back_populates="recurring_transfers"
     )
 
 
