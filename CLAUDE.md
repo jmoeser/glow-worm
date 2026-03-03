@@ -90,6 +90,11 @@ Hooks run automatically on `git commit`. Install with `uv run pre-commit install
 - Uses `contextvars.ContextVar` to propagate the authenticated user from middleware to MCP tool handlers.
 - Authenticated via Bearer token (API keys), CSRF-exempt.
 
+## Keeping Docs Current
+After any feature addition or significant change, update:
+- **CLAUDE.md**: architecture facts, API endpoint counts, logic specifics, pitfalls
+- **README.md**: Features list, project structure if new files/dirs were added
+
 ## API Routes
 - Keep `/api/` prefix for JSON-returning routes.
 - 36 API endpoints across: `/api/keys`, `/api/bills`, `/api/users`, `/api/dashboard`, `/api/budgets`, `/api/categories`, `/api/transactions`, `/api/sinking-funds`, `/api/income`.
