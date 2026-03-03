@@ -54,6 +54,7 @@
                             <input type="number" id="bills_fund_fixed_amount" name="bills_fund_fixed_amount"
                                    step="0.01" min="0"
                                    value="{{ allocation.bills_fund_fixed_amount if allocation and allocation.bills_fund_fixed_amount else '' }}"
+                                   oninput="calculateRemainder()"
                                    class="gw-input"
                                    placeholder="0.00">
                         </div>
@@ -138,6 +139,9 @@
 <script src="https://unpkg.com/d3-sankey@0.12.3/dist/d3-sankey.min.js"></script>
 <script>
 const FUND_META = {{ sinking_funds_data | tojson }};
+// Bills Fund is handled separately in processing — identify it by name
+const BILLS_FUND = FUND_META.find(function(f) { return f.name === 'Bills'; }) || null;
+const BILLS_FUND_ID = BILLS_FUND ? BILLS_FUND.id : null;
 
 let transferRowCounter = {{ recurring_transfers | length }};
 
@@ -173,8 +177,17 @@ function calculateRemainder() {
 
     let fundTotal = 0;
     document.querySelectorAll('input[name^="fund_"]').forEach(function(input) {
+        // Bills Fund is handled separately — its fund_* input is skipped in processing
+        const fundId = parseInt(input.name.replace('fund_', ''));
+        if (BILLS_FUND_ID !== null && fundId === BILLS_FUND_ID) { return; }
         fundTotal += parseFloat(input.value) || 0;
     });
+
+    // Add Bills Fund fixed amount when that mode is selected
+    const billsFixedRadio = document.querySelector('input[name="bills_fund_allocation_type"][value="fixed"]');
+    if (billsFixedRadio && billsFixedRadio.checked) {
+        fundTotal += parseFloat(document.getElementById('bills_fund_fixed_amount').value) || 0;
+    }
 
     let transferTotal = 0;
     document.querySelectorAll('input[name^="transfer_amount_"]').forEach(function(input) {
@@ -203,6 +216,7 @@ function toggleFixedAmount() {
     } else {
         container.classList.add('hidden');
     }
+    calculateRemainder();
 }
 
 function renderSankey() {
@@ -216,15 +230,25 @@ function renderSankey() {
 
     const budget = parseFloat(document.getElementById('monthly_budget_allocation').value) || 0;
 
-    // Collect fund allocations
+    // Collect fund allocations (Bills Fund handled separately below)
     const fundAllocations = [];
     FUND_META.forEach(function(fund) {
+        if (BILLS_FUND_ID !== null && fund.id === BILLS_FUND_ID) { return; }
         const input = document.getElementById('fund_' + fund.id);
         const amount = input ? (parseFloat(input.value) || 0) : 0;
         if (amount > 0) {
             fundAllocations.push({ id: fund.id, name: fund.name, color: fund.color, amount: amount });
         }
     });
+
+    // Add Bills Fund if fixed mode is active
+    const billsFixedRadio = document.querySelector('input[name="bills_fund_allocation_type"][value="fixed"]');
+    if (billsFixedRadio && billsFixedRadio.checked && BILLS_FUND) {
+        const billsAmount = parseFloat(document.getElementById('bills_fund_fixed_amount').value) || 0;
+        if (billsAmount > 0) {
+            fundAllocations.push({ id: BILLS_FUND.id, name: BILLS_FUND.name, color: BILLS_FUND.color, amount: billsAmount });
+        }
+    }
 
     // Collect transfer allocations
     const transferAllocations = [];
