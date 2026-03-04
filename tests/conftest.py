@@ -88,12 +88,8 @@ def authed_client(client, test_user):
 @pytest.fixture
 def sample_sinking_funds(db_session):
     funds = [
-        SinkingFund(
-            name="Bills", color="#FF0000", monthly_allocation=0, current_balance=0
-        ),
-        SinkingFund(
-            name="Savings", color="#00FF00", monthly_allocation=0, current_balance=0
-        ),
+        SinkingFund(name="Bills", color="#FF0000", current_balance=0),
+        SinkingFund(name="Savings", color="#00FF00", current_balance=0),
     ]
     db_session.add_all(funds)
     db_session.commit()

@@ -142,26 +142,22 @@ def seed_data() -> None:
         bills_fund = SinkingFund(
             name="Bills",
             color="#EF4444",
-            monthly_allocation=800,
             current_balance=800,
             is_system=True,
         )
         short_term_fund = SinkingFund(
             name="Short Term Savings",
             color="#3B82F6",
-            monthly_allocation=300,
             current_balance=1200,
         )
         long_term_fund = SinkingFund(
             name="Long Term Savings",
             color="#22C55E",
-            monthly_allocation=500,
             current_balance=6000,
         )
         emergency_fund = SinkingFund(
             name="Emergency Fund",
             color="#F59E0B",
-            monthly_allocation=200,
             current_balance=3000,
         )
 

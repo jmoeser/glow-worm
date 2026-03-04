@@ -25,13 +25,12 @@ def list_funds(
     if not funds:
         typer.echo("No sinking funds found.")
         return
-    table = Table("ID", "Name", "Balance", "Monthly Allocation", "Description")
+    table = Table("ID", "Name", "Balance", "Description")
     for f in funds:
         table.add_row(
             str(f["id"]),
             f["name"],
             f"${f['current_balance']}",
-            f"${f['monthly_allocation']}",
             f.get("description") or "—",
         )
     console.print(table)
@@ -40,7 +39,6 @@ def list_funds(
 @app.command("add")
 def add_fund(
     name: Annotated[str, typer.Option(prompt=True)],
-    monthly_allocation: Annotated[float, typer.Option(prompt=True)],
     color: Annotated[str, typer.Option(prompt=True, help="Hex color, e.g. #3b82f6")],
     description: Annotated[Optional[str], typer.Option(help="Description")] = None,
     balance: Annotated[float, typer.Option(help="Starting balance")] = 0.0,
@@ -49,7 +47,6 @@ def add_fund(
     """Create a new sinking fund."""
     payload: dict = {
         "name": name,
-        "monthly_allocation": monthly_allocation,
         "color": color,
         "current_balance": balance,
     }

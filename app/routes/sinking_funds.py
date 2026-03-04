@@ -70,9 +70,6 @@ def _bills_due_next_30_days(db: Session) -> Decimal:
 
 def _fund_context(db: Session):
     funds = _active_funds(db)
-    total_monthly_allocation = sum(
-        (Decimal(str(f.monthly_allocation)) for f in funds), Decimal("0")
-    ).quantize(Decimal("0.01"))
     total_balance = sum(
         (Decimal(str(f.current_balance)) for f in funds), Decimal("0")
     ).quantize(Decimal("0.01"))
@@ -87,7 +84,6 @@ def _fund_context(db: Session):
 
     return {
         "funds": funds,
-        "total_monthly_allocation": total_monthly_allocation,
         "total_balance": total_balance,
         "bills_recommended": bills_recommended,
         "buffer_warning": buffer_warning,
@@ -165,18 +161,6 @@ async def sinking_funds_create(request: Request, db: Session = Depends(get_db)):
         )
 
     try:
-        monthly_allocation = Decimal(str(form.get("monthly_allocation") or "0"))
-    except InvalidOperation, TypeError:
-        return HTMLResponse(
-            '<p class="text-red-600 text-sm">Invalid allocation amount.</p>'
-        )
-
-    if monthly_allocation < 0:
-        return HTMLResponse(
-            '<p class="text-red-600 text-sm">Allocation must be zero or greater.</p>'
-        )
-
-    try:
         current_balance = Decimal(str(form.get("current_balance") or "0"))
     except InvalidOperation, TypeError:
         return HTMLResponse(
@@ -186,7 +170,6 @@ async def sinking_funds_create(request: Request, db: Session = Depends(get_db)):
     fund = SinkingFund(
         name=name,
         description=description,
-        monthly_allocation=monthly_allocation,
         color=color,
         current_balance=current_balance,
     )
@@ -226,15 +209,6 @@ async def sinking_funds_update(
         fund.description = description or None
     if color and _COLOR_RE.match(color):
         fund.color = color
-
-    raw_allocation = form.get("monthly_allocation")
-    if raw_allocation:
-        try:
-            allocation = Decimal(str(raw_allocation))
-            if allocation >= 0:
-                fund.monthly_allocation = float(allocation)
-        except InvalidOperation, TypeError:
-            pass
 
     db.commit()
     db.refresh(fund)
@@ -290,7 +264,6 @@ async def api_create_fund(request: Request, db: Session = Depends(get_db)):
     fund = SinkingFund(
         name=data.name,
         description=data.description,
-        monthly_allocation=data.monthly_allocation,
         current_balance=data.current_balance,
         color=data.color,
     )

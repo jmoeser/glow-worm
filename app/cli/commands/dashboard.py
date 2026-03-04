@@ -53,12 +53,11 @@ def dashboard(
 
     if data.get("sinking_funds"):
         console.print("\n[bold]Sinking Funds[/bold]")
-        sf_table = Table("Name", "Balance", "Monthly Allocation")
+        sf_table = Table("Name", "Balance")
         for sf in data["sinking_funds"]:
             sf_table.add_row(
                 sf["name"],
                 f"${sf['current_balance']}",
-                f"${sf['monthly_allocation']}",
             )
         console.print(sf_table)
 

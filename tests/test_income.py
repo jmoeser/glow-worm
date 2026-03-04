@@ -62,13 +62,10 @@ class TestIncomePageGet:
         assert "No active sinking funds" in response.text
 
     def test_excludes_soft_deleted_sinking_funds(self, authed_client, db_session):
-        active = SinkingFund(
-            name="Active Fund", color="#00FF00", monthly_allocation=0, current_balance=0
-        )
+        active = SinkingFund(name="Active Fund", color="#00FF00", current_balance=0)
         deleted = SinkingFund(
             name="Deleted Fund",
             color="#FF0000",
-            monthly_allocation=0,
             current_balance=0,
             is_deleted=True,
         )
@@ -102,12 +99,9 @@ class TestIncomePageGet:
             SinkingFund(
                 name="Emergency",
                 color="#EF4444",
-                monthly_allocation=0,
                 current_balance=0,
             ),
-            SinkingFund(
-                name="Holiday", color="#8B5CF6", monthly_allocation=0, current_balance=0
-            ),
+            SinkingFund(name="Holiday", color="#8B5CF6", current_balance=0),
         ]
         db_session.add_all(funds)
         db_session.commit()

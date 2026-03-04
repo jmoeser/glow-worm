@@ -50,11 +50,10 @@ DASHBOARD_RESPONSE = {
     "month_name": "February",
     "year": 2026,
     "sinking_funds": [
-        {"name": "Bills", "current_balance": "2000.00", "monthly_allocation": "500.00"},
+        {"name": "Bills", "current_balance": "2000.00"},
         {
             "name": "Savings",
             "current_balance": "1000.00",
-            "monthly_allocation": "200.00",
         },
     ],
     "recent_transactions": [
@@ -114,7 +113,6 @@ SAMPLE_FUNDS = [
         "id": 1,
         "name": "Bills",
         "current_balance": "2000.00",
-        "monthly_allocation": "500.00",
         "description": "For recurring bills",
         "color": "#FF0000",
         "is_deleted": False,
@@ -560,7 +558,6 @@ class TestFunds:
         assert result.exit_code == 0
         assert "Bills" in result.output
         assert "2000.00" in result.output
-        assert "500.00" in result.output
 
     def test_list_empty(self, mock_config):
         with respx.mock:
@@ -583,8 +580,6 @@ class TestFunds:
                     "add",
                     "--name",
                     "Emergency",
-                    "--monthly-allocation",
-                    "300.00",
                     "--color",
                     "#3b82f6",
                 ],
@@ -593,7 +588,6 @@ class TestFunds:
         body = json.loads(route.calls[0].request.content)
         assert body["name"] == "Emergency"
         assert body["color"] == "#3b82f6"
-        assert body["monthly_allocation"] == 300.0
         assert body["current_balance"] == 0.0
 
     def test_add_passes_optional_description(self, mock_config):
@@ -608,8 +602,6 @@ class TestFunds:
                     "add",
                     "--name",
                     "Holidays",
-                    "--monthly-allocation",
-                    "100",
                     "--color",
                     "#aabbcc",
                     "--description",

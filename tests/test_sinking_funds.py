@@ -8,7 +8,6 @@ class TestSinkingFundsPageGet:
         assert "Sinking Funds" in response.text
         assert "Name" in response.text
         assert "Description" in response.text
-        assert "Monthly Allocation" in response.text
         assert "Balance" in response.text
 
     def test_lists_active_funds(self, authed_client, sample_sinking_funds):
@@ -31,7 +30,6 @@ class TestSinkingFundsPageGet:
         response = authed_client.get("/sinking-funds")
         assert "Add New Fund" in response.text
         assert 'name="name"' in response.text
-        assert 'name="monthly_allocation"' in response.text
         assert 'name="current_balance"' in response.text
         assert 'name="color"' in response.text
 
@@ -48,7 +46,6 @@ class TestSinkingFundsPagePost:
             data={
                 "name": "Emergency",
                 "description": "For emergencies",
-                "monthly_allocation": "200.00",
                 "color": "#FF5733",
             },
             headers={"x-csrftoken": authed_client.csrf_token},
@@ -60,7 +57,6 @@ class TestSinkingFundsPagePost:
             .first()
         )
         assert fund is not None
-        assert float(fund.monthly_allocation) == 200.0
         assert fund.color == "#FF5733"
         assert fund.description == "For emergencies"
 
@@ -69,7 +65,6 @@ class TestSinkingFundsPagePost:
             "/sinking-funds",
             data={
                 "name": "Holiday",
-                "monthly_allocation": "100.00",
                 "color": "#00AAFF",
             },
             headers={"x-csrftoken": authed_client.csrf_token},
@@ -84,7 +79,6 @@ class TestSinkingFundsPagePost:
             "/sinking-funds",
             data={
                 "name": "",
-                "monthly_allocation": "100.00",
                 "color": "#FF0000",
             },
             headers={"x-csrftoken": authed_client.csrf_token},
@@ -97,7 +91,6 @@ class TestSinkingFundsPagePost:
             "/sinking-funds",
             data={
                 "name": "Test",
-                "monthly_allocation": "100.00",
                 "color": "",
             },
             headers={"x-csrftoken": authed_client.csrf_token},
@@ -105,25 +98,11 @@ class TestSinkingFundsPagePost:
         assert response.status_code == 200
         assert "required" in response.text.lower()
 
-    def test_error_on_invalid_allocation(self, authed_client):
-        response = authed_client.post(
-            "/sinking-funds",
-            data={
-                "name": "Test",
-                "monthly_allocation": "abc",
-                "color": "#FF0000",
-            },
-            headers={"x-csrftoken": authed_client.csrf_token},
-        )
-        assert response.status_code == 200
-        assert "Invalid" in response.text
-
     def test_current_balance_defaults_to_zero(self, authed_client, db_session):
         authed_client.post(
             "/sinking-funds",
             data={
                 "name": "New Fund",
-                "monthly_allocation": "50.00",
                 "color": "#123456",
             },
             headers={"x-csrftoken": authed_client.csrf_token},
@@ -139,7 +118,6 @@ class TestSinkingFundsPagePost:
             "/sinking-funds",
             data={
                 "name": "Starter",
-                "monthly_allocation": "100.00",
                 "current_balance": "250.00",
                 "color": "#AABB00",
             },
@@ -157,7 +135,6 @@ class TestSinkingFundsPagePost:
             "/sinking-funds",
             data={
                 "name": "Overdrawn",
-                "monthly_allocation": "50.00",
                 "current_balance": "-120.50",
                 "color": "#FF0000",
             },
@@ -177,7 +154,6 @@ class TestSinkingFundsPagePost:
             "/sinking-funds",
             data={
                 "name": "Bad Balance",
-                "monthly_allocation": "50.00",
                 "current_balance": "xyz",
                 "color": "#FF0000",
             },
@@ -191,7 +167,6 @@ class TestSinkingFundsPagePost:
             "/sinking-funds",
             data={
                 "name": "Test",
-                "monthly_allocation": "100.00",
                 "color": "#FF0000",
             },
         )
@@ -204,7 +179,6 @@ class TestSinkingFundsEditGet:
         response = authed_client.get(f"/sinking-funds/{fund.id}/edit")
         assert response.status_code == 200
         assert f'value="{fund.name}"' in response.text
-        assert 'name="monthly_allocation"' in response.text
         assert 'name="color"' in response.text
 
     def test_404_for_nonexistent_fund(self, authed_client):
@@ -220,7 +194,6 @@ class TestSinkingFundsEditPost:
             data={
                 "name": "Updated Bills",
                 "description": "Updated description",
-                "monthly_allocation": "500.00",
                 "color": "#AABBCC",
             },
             headers={"x-csrftoken": authed_client.csrf_token},
@@ -229,7 +202,6 @@ class TestSinkingFundsEditPost:
         db_session.refresh(fund)
         assert fund.name == "Updated Bills"
         assert fund.description == "Updated description"
-        assert float(fund.monthly_allocation) == 500.0
         assert fund.color == "#AABBCC"
 
     def test_returns_updated_row(self, authed_client, sample_sinking_funds):
@@ -238,7 +210,6 @@ class TestSinkingFundsEditPost:
             f"/sinking-funds/{fund.id}",
             data={
                 "name": "Updated Bills",
-                "monthly_allocation": "500.00",
                 "color": "#AABBCC",
             },
             headers={"x-csrftoken": authed_client.csrf_token},
@@ -335,7 +306,6 @@ class TestApiFundsCreate:
             json={
                 "name": "Holiday",
                 "description": "Holiday savings",
-                "monthly_allocation": "150.00",
                 "color": "#FF5733",
             },
             headers={"x-csrftoken": authed_client.csrf_token},
@@ -343,7 +313,6 @@ class TestApiFundsCreate:
         assert response.status_code == 201
         data = response.json()
         assert data["name"] == "Holiday"
-        assert float(data["monthly_allocation"]) == 150.0
         assert data["is_deleted"] is False
         assert data["is_system"] is False
 
@@ -352,7 +321,6 @@ class TestApiFundsCreate:
             "/api/sinking-funds",
             json={
                 "name": "Pre-funded",
-                "monthly_allocation": "100.00",
                 "current_balance": "500.00",
                 "color": "#00FF00",
             },
@@ -367,7 +335,6 @@ class TestApiFundsCreate:
             "/api/sinking-funds",
             json={
                 "name": "In Debt",
-                "monthly_allocation": "50.00",
                 "current_balance": "-200.00",
                 "color": "#FF0000",
             },
@@ -391,7 +358,6 @@ class TestApiFundsCreate:
             "/api/sinking-funds",
             json={
                 "name": "Test",
-                "monthly_allocation": "100",
                 "color": "#FF0000",
             },
         )
@@ -419,13 +385,12 @@ class TestApiFundsUpdate:
         fund = sample_sinking_funds[0]
         response = authed_client.put(
             f"/api/sinking-funds/{fund.id}",
-            json={"name": "Updated Bills", "monthly_allocation": "300"},
+            json={"name": "Updated Bills"},
             headers={"x-csrftoken": authed_client.csrf_token},
         )
         assert response.status_code == 200
         data = response.json()
         assert data["name"] == "Updated Bills"
-        assert float(data["monthly_allocation"]) == 300.0
 
     def test_404_for_nonexistent(self, authed_client):
         response = authed_client.put(
@@ -439,7 +404,7 @@ class TestApiFundsUpdate:
         fund = sample_sinking_funds[0]
         response = authed_client.put(
             f"/api/sinking-funds/{fund.id}",
-            json={"monthly_allocation": "-10"},
+            json={"color": "not-a-color"},
             headers={"x-csrftoken": authed_client.csrf_token},
         )
         assert response.status_code == 422

@@ -179,7 +179,6 @@ class BudgetResponse(BaseModel):
 class SinkingFundCreate(BaseModel):
     name: str = Field(..., min_length=1)
     description: str | None = None
-    monthly_allocation: Decimal = Field(..., ge=0)
     current_balance: Decimal = Field(default=Decimal("0"))
     color: str = Field(..., pattern=r"^#[0-9a-fA-F]{6}$")
 
@@ -187,7 +186,6 @@ class SinkingFundCreate(BaseModel):
 class SinkingFundUpdate(BaseModel):
     name: str | None = None
     description: str | None = None
-    monthly_allocation: Decimal | None = Field(None, ge=0)
     color: str | None = Field(None, pattern=r"^#[0-9a-fA-F]{6}$")
 
 
@@ -197,7 +195,6 @@ class SinkingFundResponse(BaseModel):
     id: int
     name: str
     description: str | None = None
-    monthly_allocation: Decimal
     current_balance: Decimal
     color: str
     is_deleted: bool

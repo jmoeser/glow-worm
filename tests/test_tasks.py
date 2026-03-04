@@ -85,12 +85,8 @@ def income_setup(db_session):
     db_session.add_all([income_cat, expense_cat, transfer_cat, budget_cat])
     db_session.flush()
 
-    bills_fund = SinkingFund(
-        name="Bills", color="#FF0000", monthly_allocation=0, current_balance=500
-    )
-    savings_fund = SinkingFund(
-        name="Savings", color="#00FF00", monthly_allocation=200, current_balance=1000
-    )
+    bills_fund = SinkingFund(name="Bills", color="#FF0000", current_balance=500)
+    savings_fund = SinkingFund(name="Savings", color="#00FF00", current_balance=1000)
     db_session.add_all([bills_fund, savings_fund])
     db_session.flush()
 
@@ -143,9 +139,7 @@ def bills_setup(db_session):
     db_session.add(expense_cat)
     db_session.flush()
 
-    bills_fund = SinkingFund(
-        name="Bills", color="#FF0000", monthly_allocation=0, current_balance=5000
-    )
+    bills_fund = SinkingFund(name="Bills", color="#FF0000", current_balance=5000)
     db_session.add(bills_fund)
     db_session.flush()
 

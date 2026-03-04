@@ -52,7 +52,6 @@ class SinkingFund(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     name: Mapped[str] = mapped_column(String(100), nullable=False)
     description: Mapped[str | None] = mapped_column(String(500), nullable=True)
-    monthly_allocation: Mapped[float] = mapped_column(Numeric(12, 2), nullable=False)
     current_balance: Mapped[float] = mapped_column(Numeric(12, 2), default=0)
     color: Mapped[str] = mapped_column(String(7), nullable=False)
     is_deleted: Mapped[bool] = mapped_column(default=False)

@@ -363,7 +363,6 @@ def bills_fund(db_session):
     fund = SinkingFund(
         name="Bills",
         color="#FF0000",
-        monthly_allocation=0,
         current_balance=500,
     )
     db_session.add(fund)
