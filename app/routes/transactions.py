@@ -157,6 +157,31 @@ def _transaction_context(
     }
 
 
+def _adjust_sinking_fund_balance(
+    db: Session,
+    sinking_fund_id: int | None,
+    txn_type: str,
+    amount: float,
+    reverse: bool = False,
+) -> None:
+    """Adjust a sinking fund's current_balance for a transaction.
+
+    Income transactions increase the balance; expense transactions decrease it.
+    Pass reverse=True to undo a previously applied transaction.
+    """
+    if sinking_fund_id is None:
+        return
+    fund = db.query(SinkingFund).filter(SinkingFund.id == sinking_fund_id).first()
+    if fund is None:
+        return
+    delta = Decimal(str(amount)) if txn_type == "income" else -Decimal(str(amount))
+    if reverse:
+        delta = -delta
+    fund.current_balance = float(
+        Decimal(str(fund.current_balance)).quantize(Decimal("0.01")) + delta
+    )
+
+
 def _parse_optional_int(value: str | None) -> int | None:
     if not value:
         return None
@@ -320,6 +345,7 @@ async def transactions_create(request: Request, db: Session = Depends(get_db)):
         is_paid=is_paid,
     )
     db.add(txn)
+    _adjust_sinking_fund_balance(db, sinking_fund_id, txn_type, float(amount))
     db.commit()
 
     return HTMLResponse(_render_table_body(request, db, month, year))
@@ -362,6 +388,10 @@ async def transactions_update(
     )
     if not txn:
         return HTMLResponse("Not found", status_code=404)
+
+    old_sf_id = txn.sinking_fund_id
+    old_type = txn.type
+    old_amount = float(txn.amount)
 
     form = await request.form()
 
@@ -417,6 +447,8 @@ async def transactions_update(
     if "is_paid" in form:
         txn.is_paid = form.get("is_paid") == "on" or form.get("is_paid") == "true"
 
+    _adjust_sinking_fund_balance(db, old_sf_id, old_type, old_amount, reverse=True)
+    _adjust_sinking_fund_balance(db, txn.sinking_fund_id, txn.type, float(txn.amount))
     db.commit()
     db.refresh(txn)
 
@@ -430,6 +462,9 @@ async def transactions_delete(
     txn = db.query(Transaction).filter(Transaction.id == txn_id).first()
     if not txn:
         return HTMLResponse("Not found", status_code=404)
+    _adjust_sinking_fund_balance(
+        db, txn.sinking_fund_id, txn.type, float(txn.amount), reverse=True
+    )
     db.delete(txn)
     db.commit()
     return HTMLResponse("")
@@ -485,6 +520,9 @@ async def api_create_transaction(request: Request, db: Session = Depends(get_db)
         is_paid=data.is_paid,
     )
     db.add(txn)
+    _adjust_sinking_fund_balance(
+        db, data.sinking_fund_id, data.type.value, float(data.amount)
+    )
     db.commit()
     db.refresh(txn)
 
@@ -523,12 +561,18 @@ async def api_update_transaction(
             return JSONResponse({"detail": errors}, status_code=422)
         return JSONResponse({"detail": str(exc)}, status_code=422)
 
+    old_sf_id = txn.sinking_fund_id
+    old_type = txn.type
+    old_amount = float(txn.amount)
+
     for field, value in data.model_dump(exclude_unset=True).items():
         if field in ("type", "transaction_type") and value is not None:
             setattr(txn, field, value.value if hasattr(value, "value") else value)
         else:
             setattr(txn, field, value)
 
+    _adjust_sinking_fund_balance(db, old_sf_id, old_type, old_amount, reverse=True)
+    _adjust_sinking_fund_balance(db, txn.sinking_fund_id, txn.type, float(txn.amount))
     db.commit()
     db.refresh(txn)
 
@@ -543,6 +587,9 @@ async def api_delete_transaction(
     txn = db.query(Transaction).filter(Transaction.id == txn_id).first()
     if not txn:
         return JSONResponse({"detail": "Transaction not found"}, status_code=404)
+    _adjust_sinking_fund_balance(
+        db, txn.sinking_fund_id, txn.type, float(txn.amount), reverse=True
+    )
     db.delete(txn)
     db.commit()
     return JSONResponse({"detail": "Transaction deleted"}, status_code=200)
