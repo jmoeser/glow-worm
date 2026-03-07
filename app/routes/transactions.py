@@ -154,6 +154,7 @@ def _transaction_context(
         "next_year": next_year,
         "type_filter": type_filter or "",
         "category_filter": category_filter or "",
+        "today": datetime.now(BRISBANE).strftime("%Y-%m-%d"),
     }
 
 

@@ -167,88 +167,191 @@
 
     <div id="transactions-message" style="margin-bottom: 16px;"></div>
 
-    <!-- Add Transaction (collapsible) -->
+    <!-- Add Sinking Fund Transaction -->
     <details class="gw-details gw-section">
-        <summary>Add Transaction</summary>
+        <summary>Add Sinking Fund Transaction</summary>
         <form hx-post="/transactions" hx-target="#transactions-table-body" hx-swap="innerHTML"
-              hx-on::after-request="if(event.detail.successful) { this.reset(); document.getElementById('transactions-message').innerHTML = '<p class=\'gw-msg-success\'>Transaction added.</p>'; } else { document.getElementById('transactions-message').innerHTML = event.detail.xhr.responseText; }"
-              class="gw-grid-3" style="margin-top: 16px;">
+              hx-on::after-request="if(event.detail.successful) { this.closest('details').removeAttribute('open'); this.reset(); gwResetTypeToggle(this); document.getElementById('transactions-message').innerHTML = '<p class=\'gw-msg-success\'>Transaction added.</p>'; } else { document.getElementById('transactions-message').innerHTML = event.detail.xhr.responseText; }"
+              style="margin-top: 16px;">
             <input type="hidden" name="month" value="{{ month }}">
             <input type="hidden" name="year" value="{{ year }}">
-            <div>
-                <label class="gw-label">Date</label>
-                <input type="date" name="date" required class="gw-input">
-            </div>
-            <div>
-                <label class="gw-label">Description</label>
-                <input type="text" name="description" class="gw-input" placeholder="Optional description">
-            </div>
-            <div>
-                <label class="gw-label">Amount</label>
-                <input type="number" name="amount" step="0.01" min="0.01" required class="gw-input" placeholder="0.00">
-            </div>
-            <div>
-                <label class="gw-label">Category</label>
-                <select name="category_id" required class="gw-select">
-                    <option value="">Select category</option>
-                    {% for cat in categories %}
-                    <option value="{{ cat.id }}">{{ cat.name }}</option>
-                    {% endfor %}
-                </select>
-            </div>
-            <div>
-                <label class="gw-label">Type</label>
-                <select name="type" required class="gw-select">
-                    <option value="expense">Expense</option>
-                    <option value="income">Income</option>
-                </select>
-            </div>
-            <div>
-                <label class="gw-label">Transaction Type</label>
-                <select name="transaction_type" class="gw-select">
-                    {% for val, label in transaction_type_labels.items() %}
-                    <option value="{{ val }}">{{ label }}</option>
-                    {% endfor %}
-                </select>
-            </div>
-            <div>
-                <label class="gw-label">Sinking Fund</label>
-                <select name="sinking_fund_id" class="gw-select">
-                    <option value="">None</option>
-                    {% for sf in sinking_funds %}
-                    <option value="{{ sf.id }}">{{ sf.name }}</option>
-                    {% endfor %}
-                </select>
-            </div>
-            <div>
-                <label class="gw-label">Recurring Bill</label>
-                <select name="recurring_bill_id" class="gw-select">
-                    <option value="">None</option>
-                    {% for rb in recurring_bills %}
-                    <option value="{{ rb.id }}">{{ rb.name }}</option>
-                    {% endfor %}
-                </select>
-            </div>
-            <div>
-                <label class="gw-label">Budget</label>
-                <select name="budget_id" class="gw-select">
-                    <option value="">None</option>
-                    {% for b in budgets %}
-                    <option value="{{ b.id }}">{{ b.category.name }}</option>
-                    {% endfor %}
-                </select>
-            </div>
-            <div style="display: flex; align-items: flex-end;">
-                <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
-                    <input type="checkbox" name="is_paid" checked>
-                    <span style="font-size: 0.875rem; color: var(--text-secondary);">Paid</span>
-                </label>
-            </div>
-            <div style="grid-column: 1 / -1;">
-                <button type="submit" class="gw-btn gw-btn-primary">Add Transaction</button>
+            <div class="gw-grid-3">
+                <div>
+                    <label class="gw-label">Date</label>
+                    <input type="date" name="date" required class="gw-input" value="{{ today }}">
+                </div>
+                <div>
+                    <label class="gw-label">Description</label>
+                    <input type="text" name="description" class="gw-input" placeholder="Optional description">
+                </div>
+                <div>
+                    <label class="gw-label">Amount</label>
+                    <div style="position: relative;">
+                        <span style="position: absolute; left: 10px; top: 50%; transform: translateY(-50%); color: var(--text-tertiary); pointer-events: none; font-size: 0.9rem;">$</span>
+                        <input type="number" name="amount" step="0.01" min="0.01" required class="gw-input" placeholder="0.00" style="padding-left: 22px;">
+                    </div>
+                </div>
+                <div>
+                    <label class="gw-label">Sinking Fund</label>
+                    <select name="sinking_fund_id" required class="gw-select">
+                        <option value="">Select fund</option>
+                        {% for sf in sinking_funds %}
+                        <option value="{{ sf.id }}">{{ sf.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div>
+                    <label class="gw-label">Category</label>
+                    <select name="category_id" required class="gw-select">
+                        <option value="">Select category</option>
+                        {% for cat in categories %}
+                        <option value="{{ cat.id }}">{{ cat.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div>
+                    <label class="gw-label">Classification</label>
+                    <select name="transaction_type" class="gw-select">
+                        <option value="regular" selected>Regular</option>
+                        <option value="contribution">Contribution</option>
+                        <option value="withdrawal">Withdrawal</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="gw-label">Income or Expense</label>
+                    <div style="display: flex; border: 1px solid var(--border); border-radius: 6px; overflow: hidden;">
+                        <label style="flex: 1; text-align: center; cursor: pointer;">
+                            <input type="radio" name="type" value="expense" required style="display: none;" checked
+                                   onchange="gwUpdateTypeToggle(this)">
+                            <span class="gw-type-expense" style="display: block; padding: 8px 12px; font-size: 0.875rem; font-weight: 500; background: var(--negative-bg, #fee2e2); color: var(--negative);">Expense</span>
+                        </label>
+                        <label style="flex: 1; text-align: center; cursor: pointer; border-left: 1px solid var(--border);">
+                            <input type="radio" name="type" value="income" required style="display: none;"
+                                   onchange="gwUpdateTypeToggle(this)">
+                            <span class="gw-type-income" style="display: block; padding: 8px 12px; font-size: 0.875rem; font-weight: 500; color: var(--text-secondary);">Income</span>
+                        </label>
+                    </div>
+                </div>
+                <div style="display: flex; align-items: flex-end; padding-bottom: 2px;">
+                    <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                        <input type="checkbox" name="is_paid" checked style="width: 16px; height: 16px; cursor: pointer;">
+                        <span style="font-size: 0.875rem; color: var(--text-secondary);">Mark as Paid</span>
+                    </label>
+                </div>
+                <div style="display: flex; align-items: flex-end;">
+                    <button type="submit" class="gw-btn gw-btn-primary">Add Transaction</button>
+                </div>
             </div>
         </form>
     </details>
+
+    <!-- Add Budget Transaction -->
+    <details class="gw-details gw-section">
+        <summary>Add Budget Transaction</summary>
+        <form hx-post="/transactions" hx-target="#transactions-table-body" hx-swap="innerHTML"
+              hx-on::after-request="if(event.detail.successful) { this.closest('details').removeAttribute('open'); this.reset(); gwResetTypeToggle(this); document.getElementById('transactions-message').innerHTML = '<p class=\'gw-msg-success\'>Transaction added.</p>'; } else { document.getElementById('transactions-message').innerHTML = event.detail.xhr.responseText; }"
+              style="margin-top: 16px;">
+            <input type="hidden" name="month" value="{{ month }}">
+            <input type="hidden" name="year" value="{{ year }}">
+            <div class="gw-grid-3">
+                <div>
+                    <label class="gw-label">Date</label>
+                    <input type="date" name="date" required class="gw-input" value="{{ today }}">
+                </div>
+                <div>
+                    <label class="gw-label">Description</label>
+                    <input type="text" name="description" class="gw-input" placeholder="Optional description">
+                </div>
+                <div>
+                    <label class="gw-label">Amount</label>
+                    <div style="position: relative;">
+                        <span style="position: absolute; left: 10px; top: 50%; transform: translateY(-50%); color: var(--text-tertiary); pointer-events: none; font-size: 0.9rem;">$</span>
+                        <input type="number" name="amount" step="0.01" min="0.01" required class="gw-input" placeholder="0.00" style="padding-left: 22px;">
+                    </div>
+                </div>
+                <div>
+                    <label class="gw-label">Budget</label>
+                    <select name="budget_id" required class="gw-select">
+                        <option value="">Select budget</option>
+                        {% for b in budgets %}
+                        <option value="{{ b.id }}">{{ b.category.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div>
+                    <label class="gw-label">Category</label>
+                    <select name="category_id" required class="gw-select">
+                        <option value="">Select category</option>
+                        {% for cat in categories %}
+                        <option value="{{ cat.id }}">{{ cat.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div>
+                    <label class="gw-label">Classification</label>
+                    <select name="transaction_type" class="gw-select">
+                        <option value="budget_expense" selected>Budget Expense</option>
+                        <option value="budget_transfer">Budget Transfer</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="gw-label">Income or Expense</label>
+                    <div style="display: flex; border: 1px solid var(--border); border-radius: 6px; overflow: hidden;">
+                        <label style="flex: 1; text-align: center; cursor: pointer;">
+                            <input type="radio" name="type" value="expense" required style="display: none;" checked
+                                   onchange="gwUpdateTypeToggle(this)">
+                            <span class="gw-type-expense" style="display: block; padding: 8px 12px; font-size: 0.875rem; font-weight: 500; background: var(--negative-bg, #fee2e2); color: var(--negative);">Expense</span>
+                        </label>
+                        <label style="flex: 1; text-align: center; cursor: pointer; border-left: 1px solid var(--border);">
+                            <input type="radio" name="type" value="income" required style="display: none;"
+                                   onchange="gwUpdateTypeToggle(this)">
+                            <span class="gw-type-income" style="display: block; padding: 8px 12px; font-size: 0.875rem; font-weight: 500; color: var(--text-secondary);">Income</span>
+                        </label>
+                    </div>
+                </div>
+                <div style="display: flex; align-items: flex-end; padding-bottom: 2px;">
+                    <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                        <input type="checkbox" name="is_paid" checked style="width: 16px; height: 16px; cursor: pointer;">
+                        <span style="font-size: 0.875rem; color: var(--text-secondary);">Mark as Paid</span>
+                    </label>
+                </div>
+                <div style="display: flex; align-items: flex-end;">
+                    <button type="submit" class="gw-btn gw-btn-primary">Add Transaction</button>
+                </div>
+            </div>
+        </form>
+    </details>
+
+    <script>
+    function gwUpdateTypeToggle(input) {
+        var form = input.closest('form');
+        var expenseSpan = form.querySelector('.gw-type-expense');
+        var incomeSpan = form.querySelector('.gw-type-income');
+        if (input.value === 'expense') {
+            expenseSpan.style.background = 'var(--negative-bg, #fee2e2)';
+            expenseSpan.style.color = 'var(--negative)';
+            incomeSpan.style.background = '';
+            incomeSpan.style.color = 'var(--text-secondary)';
+        } else {
+            incomeSpan.style.background = 'var(--positive-bg, #dcfce7)';
+            incomeSpan.style.color = 'var(--positive)';
+            expenseSpan.style.background = '';
+            expenseSpan.style.color = 'var(--text-secondary)';
+        }
+    }
+    function gwResetTypeToggle(form) {
+        var expenseSpan = form.querySelector('.gw-type-expense');
+        var incomeSpan = form.querySelector('.gw-type-income');
+        if (expenseSpan) {
+            expenseSpan.style.background = 'var(--negative-bg, #fee2e2)';
+            expenseSpan.style.color = 'var(--negative)';
+        }
+        if (incomeSpan) {
+            incomeSpan.style.background = '';
+            incomeSpan.style.color = 'var(--text-secondary)';
+        }
+    }
+    </script>
 
     <!-- Summary bar -->
     <div class="gw-summary-bar gw-section">
