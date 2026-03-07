@@ -1,10 +1,7 @@
 from datetime import datetime
 
-import pytz
-
+from app.config import TIMEZONE as BRISBANE
 from app.models import Category, MonthlyUnallocatedIncome, Transaction
-
-BRISBANE = pytz.timezone("Australia/Brisbane")
 
 
 def _current_month_year():

@@ -10,6 +10,7 @@ from typing import Any
 
 from fastmcp import FastMCP
 
+from app.config import TIMEZONE
 from app.database import SessionLocal
 from app.middleware import get_current_user_context
 from app.models import Category, RecurringBill, Transaction
@@ -68,10 +69,8 @@ def list_transactions(
     import calendar
     from datetime import datetime
 
-    import pytz
-
     if month is None or year is None:
-        now = datetime.now(pytz.timezone("Australia/Brisbane"))
+        now = datetime.now(TIMEZONE)
         month = month or now.month
         year = year or now.year
 

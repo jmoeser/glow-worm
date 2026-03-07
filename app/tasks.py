@@ -5,9 +5,9 @@ import logging
 from datetime import date, datetime, timedelta
 from decimal import Decimal
 
-import pytz
 from sqlalchemy.orm import Session
 
+from app.config import TIMEZONE
 from app.database import SessionLocal
 from app.models import (
     Budget,
@@ -30,8 +30,8 @@ FREQUENCY_ANNUAL_MULTIPLIER = {
 
 
 def _today() -> date:
-    """Return today's date in Australia/Brisbane timezone."""
-    return datetime.now(pytz.timezone("Australia/Brisbane")).date()
+    """Return today's date in the configured timezone."""
+    return datetime.now(TIMEZONE).date()
 
 
 def advance_due_date(current: date, frequency: str) -> date:

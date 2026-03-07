@@ -203,9 +203,9 @@ def sample_transactions(db_session, sample_category, sample_income_category):
 def sample_budgets(db_session, sample_budget_categories):
     from datetime import datetime
 
-    import pytz
+    from app.config import TIMEZONE
 
-    now = datetime.now(pytz.timezone("Australia/Brisbane"))
+    now = datetime.now(TIMEZONE)
     month, year = now.month, now.year
 
     budgets = [

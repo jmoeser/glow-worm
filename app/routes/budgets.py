@@ -2,8 +2,9 @@ import calendar
 from datetime import datetime
 from decimal import Decimal, InvalidOperation
 
-import pytz
 from fastapi import APIRouter, Depends, Request
+
+from app.config import TIMEZONE
 from fastapi.responses import HTMLResponse, JSONResponse
 from pydantic import ValidationError
 from sqlalchemy.orm import Session, joinedload
@@ -16,7 +17,7 @@ from app.templating import templates
 
 router = APIRouter()
 
-BRISBANE = pytz.timezone("Australia/Brisbane")
+BRISBANE = TIMEZONE
 
 
 def _current_month_year() -> tuple[int, int]:

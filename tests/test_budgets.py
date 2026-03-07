@@ -1,12 +1,11 @@
 from datetime import datetime
 
-import pytz
-
+from app.config import TIMEZONE
 from app.models import Budget
 
 
 def _current_month_year():
-    now = datetime.now(pytz.timezone("Australia/Brisbane"))
+    now = datetime.now(TIMEZONE)
     return now.month, now.year
 
 
