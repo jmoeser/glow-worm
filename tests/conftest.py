@@ -1,11 +1,19 @@
 import os
+from unittest.mock import patch
 
+import bcrypt as _bcrypt
 import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
+from sqlalchemy.pool import StaticPool
+
+# Use minimal bcrypt rounds in tests — the default (12) costs ~0.4s per
+# hash/verify, which dominates per-test setup when authed_client is used.
+_orig_gensalt = _bcrypt.gensalt
+_bcrypt.gensalt = lambda rounds=12, prefix=b"2b": _orig_gensalt(rounds=4, prefix=prefix)
 
 # Override environment before any app imports
-os.environ["DATABASE_URL"] = "sqlite:///./test-glow-worm.db"
+os.environ["DATABASE_URL"] = "sqlite:///:memory:"
 os.environ["SECRET_KEY"] = "test-secret-key-do-not-use-in-production-1234567890"
 os.environ["SECURE_COOKIES"] = "false"
 
@@ -14,18 +22,67 @@ from app.auth import hash_password  # noqa: E402
 from app.database import Base, get_db  # noqa: E402
 from app.main import app  # noqa: E402
 from app.models import Budget, Category, RecurringBill, SinkingFund, Transaction, User  # noqa: E402
+import app.middleware as _app_middleware  # noqa: E402
+import app.mcp_server as _app_mcp  # noqa: E402
+import app.tasks as _app_tasks  # noqa: E402
 
-TEST_DATABASE_URL = "sqlite:///./test-glow-worm.db"
-
-engine = create_engine(TEST_DATABASE_URL, connect_args={"check_same_thread": False})
+# Single in-memory SQLite engine shared across all tests.
+# StaticPool ensures one connection is always reused, keeping the in-memory
+# database alive and visible to all sessions (middleware, MCP, tasks, routes).
+engine = create_engine(
+    "sqlite:///:memory:",
+    connect_args={"check_same_thread": False},
+    poolclass=StaticPool,
+)
 TestingSessionLocal = sessionmaker(bind=engine, autocommit=False, autoflush=False)
 
+# Redirect all direct SessionLocal references to our test engine.
+# These modules use `from app.database import SessionLocal` (local reference),
+# so patching the module attribute here is required.
+_app_middleware.SessionLocal = TestingSessionLocal
+_app_mcp.SessionLocal = TestingSessionLocal
+_app_tasks.SessionLocal = TestingSessionLocal
 
-@pytest.fixture(autouse=True)
-def setup_database():
+
+@pytest.fixture(scope="session", autouse=True)
+def setup_schema():
+    """Create the database schema once for the entire test session."""
     Base.metadata.create_all(bind=engine)
     yield
     Base.metadata.drop_all(bind=engine)
+
+
+@pytest.fixture(scope="session", autouse=True)
+def disable_scheduler():
+    """Prevent APScheduler from starting/stopping during tests.
+
+    Without this, every TestClient context-manager entry/exit triggers the
+    app lifespan which starts and stops a BackgroundScheduler thread pool —
+    the dominant cost per test (~0.4s each).
+    """
+    with (
+        patch("app.scheduler.start_scheduler"),
+        patch("app.scheduler.stop_scheduler"),
+    ):
+        yield
+
+
+@pytest.fixture(scope="session")
+def _app_client(setup_schema, disable_scheduler):
+    """Session-scoped TestClient: the app (and scheduler) starts once."""
+    from starlette.testclient import TestClient
+
+    with TestClient(app) as c:
+        yield c
+
+
+@pytest.fixture(autouse=True)
+def setup_database(setup_schema):
+    """Delete all rows after each test to ensure isolation between tests."""
+    yield
+    with engine.begin() as conn:
+        for table in reversed(Base.metadata.sorted_tables):
+            conn.execute(table.delete())
 
 
 @pytest.fixture
@@ -39,7 +96,7 @@ def db_session():
 
 
 @pytest.fixture
-def client(db_session):
+def client(db_session, _app_client):
     def override_get_db():
         try:
             yield db_session
@@ -47,12 +104,8 @@ def client(db_session):
             pass
 
     app.dependency_overrides[get_db] = override_get_db
-
-    from starlette.testclient import TestClient
-
-    with TestClient(app) as c:
-        yield c
-
+    _app_client.cookies.clear()
+    yield _app_client
     app.dependency_overrides.clear()
 
 
