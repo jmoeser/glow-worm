@@ -1,4 +1,5 @@
 from app.models import Transaction
+from app.routes.transactions import PAGE_SIZE
 
 
 class TestTransactionsPageGet:
@@ -60,6 +61,73 @@ class TestTransactionsPageGet:
         response = client.get("/transactions", follow_redirects=False)
         assert response.status_code == 303
         assert response.headers["location"] == "/login"
+
+    def test_pagination_shows_only_page_size_rows(
+        self, authed_client, db_session, sample_category
+    ):
+        """When there are more transactions than PAGE_SIZE, only one page is shown."""
+        txns = [
+            Transaction(
+                date="2026-03-01",
+                description=f"Txn {i}",
+                amount=1.00,
+                category_id=sample_category.id,
+                type="expense",
+                transaction_type="regular",
+            )
+            for i in range(PAGE_SIZE + 5)
+        ]
+        db_session.add_all(txns)
+        db_session.commit()
+
+        response = authed_client.get("/transactions?month=3&year=2026&page=1")
+        assert response.status_code == 200
+        assert "Page 1 of 2" in response.text
+        assert f"{PAGE_SIZE + 5} transactions" in response.text
+
+    def test_pagination_page2_shows_remaining_rows(
+        self, authed_client, db_session, sample_category
+    ):
+        txns = [
+            Transaction(
+                date="2026-03-01",
+                description=f"Txn {i:03d}",
+                amount=1.00,
+                category_id=sample_category.id,
+                type="expense",
+                transaction_type="regular",
+            )
+            for i in range(PAGE_SIZE + 3)
+        ]
+        db_session.add_all(txns)
+        db_session.commit()
+
+        response = authed_client.get("/transactions?month=3&year=2026&page=2")
+        assert response.status_code == 200
+        assert "Page 2 of 2" in response.text
+
+    def test_summary_totals_span_all_pages(
+        self, authed_client, db_session, sample_category
+    ):
+        """Summary totals should reflect the full month, not just the current page."""
+        txns = [
+            Transaction(
+                date="2026-03-01",
+                description=f"Txn {i}",
+                amount=10.00,
+                category_id=sample_category.id,
+                type="expense",
+                transaction_type="regular",
+            )
+            for i in range(PAGE_SIZE + 1)
+        ]
+        db_session.add_all(txns)
+        db_session.commit()
+
+        total = (PAGE_SIZE + 1) * 10
+        response = authed_client.get("/transactions?month=3&year=2026&page=1")
+        assert response.status_code == 200
+        assert f"{total:,.2f}" in response.text or f"{total:.2f}" in response.text
 
 
 class TestTransactionsPagePost:

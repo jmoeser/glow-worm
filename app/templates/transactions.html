@@ -32,6 +32,16 @@
     </td>
 </tr>
 {% endfor %}
+{# OOB: update pagination controls after add #}
+<div id="pagination-controls" hx-swap-oob="true">
+{% if total_pages > 1 %}
+<div class="gw-pagination">
+    {% if page > 1 %}<a href="/transactions?month={{ month }}&year={{ year }}{% if type_filter %}&type_filter={{ type_filter }}{% endif %}{% if category_filter %}&category_id={{ category_filter }}{% endif %}&page={{ page - 1 }}">&larr; Prev</a>{% endif %}
+    <span>Page {{ page }} of {{ total_pages }} &middot; {{ total_count }} transactions</span>
+    {% if page < total_pages %}<a href="/transactions?month={{ month }}&year={{ year }}{% if type_filter %}&type_filter={{ type_filter }}{% endif %}{% if category_filter %}&category_id={{ category_filter }}{% endif %}&page={{ page + 1 }}">Next &rarr;</a>{% endif %}
+</div>
+{% endif %}
+</div>
 
 {% elif fragment == "transaction_row" %}
 {# --- Partial: single display row --- #}
@@ -139,6 +149,7 @@
         <span>{{ month_name }} {{ year }}</span>
         <a href="/transactions?month={{ next_month }}&year={{ next_year }}{% if type_filter %}&type_filter={{ type_filter }}{% endif %}{% if category_filter %}&category_id={{ category_filter }}{% endif %}">Next &rarr;</a>
     </div>
+    {# month nav resets to page 1 intentionally #}
 
     <!-- Filter bar -->
     <form method="get" action="/transactions" class="gw-filter-bar gw-section">
@@ -163,6 +174,7 @@
         </div>
         <button type="submit" class="gw-btn gw-btn-primary gw-btn-sm">Filter</button>
         <a href="/transactions?month={{ month }}&year={{ year }}" style="color: var(--text-tertiary); text-decoration: none; font-size: 0.85rem;">Clear</a>
+        {# filter resets to page 1 intentionally #}
     </form>
 
     <div id="transactions-message" style="margin-bottom: 16px;"></div>
@@ -421,6 +433,17 @@
                 </tbody>
             </table>
         </div>
+    </div>
+
+    <!-- Pagination -->
+    <div id="pagination-controls" style="margin-top: 12px;">
+    {% if total_pages > 1 %}
+    <div class="gw-pagination">
+        {% if page > 1 %}<a href="/transactions?month={{ month }}&year={{ year }}{% if type_filter %}&type_filter={{ type_filter }}{% endif %}{% if category_filter %}&category_id={{ category_filter }}{% endif %}&page={{ page - 1 }}">&larr; Prev</a>{% endif %}
+        <span>Page {{ page }} of {{ total_pages }} &middot; {{ total_count }} transactions</span>
+        {% if page < total_pages %}<a href="/transactions?month={{ month }}&year={{ year }}{% if type_filter %}&type_filter={{ type_filter }}{% endif %}{% if category_filter %}&category_id={{ category_filter }}{% endif %}&page={{ page + 1 }}">Next &rarr;</a>{% endif %}
+    </div>
+    {% endif %}
     </div>
 </div>
 {% endblock %}

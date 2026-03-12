@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends, Request
 from app.config import TIMEZONE
 from fastapi.responses import HTMLResponse, JSONResponse
 from pydantic import ValidationError
+from sqlalchemy import func
 from sqlalchemy.orm import Session, joinedload
 
 from app.database import get_db
@@ -18,6 +19,7 @@ from app.templating import templates
 router = APIRouter()
 
 BRISBANE = TIMEZONE
+PAGE_SIZE = 50
 
 TRANSACTION_TYPE_LABELS = {
     "regular": "Regular",
@@ -35,34 +37,96 @@ def _current_month_year() -> tuple[int, int]:
     return now.month, now.year
 
 
+def _base_transaction_query(
+    db: Session,
+    month: int,
+    year: int,
+    type_filter: str | None = None,
+    category_filter: int | None = None,
+):
+    start = f"{year:04d}-{month:02d}-01"
+    last_day = calendar.monthrange(year, month)[1]
+    end = f"{year:04d}-{month:02d}-{last_day:02d}"
+
+    query = db.query(Transaction).filter(
+        Transaction.date >= start, Transaction.date <= end
+    )
+    if type_filter:
+        query = query.filter(Transaction.type == type_filter)
+    if category_filter:
+        query = query.filter(Transaction.category_id == category_filter)
+    return query
+
+
 def _transactions_for_month(
     db: Session,
     month: int,
     year: int,
     type_filter: str | None = None,
     category_filter: int | None = None,
-) -> list[Transaction]:
-    start = f"{year:04d}-{month:02d}-01"
-    last_day = calendar.monthrange(year, month)[1]
-    end = f"{year:04d}-{month:02d}-{last_day:02d}"
+    page: int = 1,
+    per_page: int = PAGE_SIZE,
+) -> tuple[list[Transaction], int]:
+    base = _base_transaction_query(db, month, year, type_filter, category_filter)
+    total = base.count()
+    items = (
+        base.options(
+            joinedload(Transaction.category),
+            joinedload(Transaction.sinking_fund),
+            joinedload(Transaction.recurring_bill),
+            joinedload(Transaction.budget),
+        )
+        .order_by(Transaction.date.desc(), Transaction.id.desc())
+        .offset((page - 1) * per_page)
+        .limit(per_page)
+        .all()
+    )
+    return items, total
 
-    query = (
-        db.query(Transaction)
+
+def _all_transactions_for_month(
+    db: Session,
+    month: int,
+    year: int,
+    type_filter: str | None = None,
+    category_filter: int | None = None,
+) -> list[Transaction]:
+    """Return all transactions for the month without pagination (for API use)."""
+    return (
+        _base_transaction_query(db, month, year, type_filter, category_filter)
         .options(
             joinedload(Transaction.category),
             joinedload(Transaction.sinking_fund),
             joinedload(Transaction.recurring_bill),
             joinedload(Transaction.budget),
         )
-        .filter(Transaction.date >= start, Transaction.date <= end)
+        .order_by(Transaction.date.desc(), Transaction.id.desc())
+        .all()
     )
 
-    if type_filter:
-        query = query.filter(Transaction.type == type_filter)
-    if category_filter:
-        query = query.filter(Transaction.category_id == category_filter)
 
-    return query.order_by(Transaction.date.desc(), Transaction.id.desc()).all()
+def _month_totals(
+    db: Session,
+    month: int,
+    year: int,
+    type_filter: str | None = None,
+    category_filter: int | None = None,
+) -> tuple[Decimal, Decimal]:
+    """Return (total_income, total_expenses) for the full month (ignoring pagination)."""
+    base = _base_transaction_query(db, month, year, type_filter, category_filter)
+    rows = (
+        base.with_entities(Transaction.type, func.sum(Transaction.amount))
+        .group_by(Transaction.type)
+        .all()
+    )
+    income = Decimal("0")
+    expenses = Decimal("0")
+    for txn_type, total in rows:
+        if txn_type == "income":
+            income = Decimal(str(total or 0))
+        elif txn_type == "expense":
+            expenses = Decimal(str(total or 0))
+    return income.quantize(Decimal("0.01")), expenses.quantize(Decimal("0.01"))
 
 
 def _all_categories(db: Session) -> list[Category]:
@@ -107,24 +171,22 @@ def _transaction_context(
     year: int,
     type_filter: str | None = None,
     category_filter: int | None = None,
+    page: int = 1,
 ) -> dict:
-    transactions = _transactions_for_month(
-        db, month, year, type_filter, category_filter
+    transactions, total_count = _transactions_for_month(
+        db, month, year, type_filter, category_filter, page=page
     )
     categories = _all_categories(db)
     sinking_funds = _active_sinking_funds(db)
     recurring_bills = _active_recurring_bills(db)
     budgets = _budgets_for_month_dropdown(db, month, year)
 
-    total_income = sum(
-        (Decimal(str(t.amount)) for t in transactions if t.type == "income"),
-        Decimal("0"),
-    ).quantize(Decimal("0.01"))
-    total_expenses = sum(
-        (Decimal(str(t.amount)) for t in transactions if t.type == "expense"),
-        Decimal("0"),
-    ).quantize(Decimal("0.01"))
+    total_income, total_expenses = _month_totals(
+        db, month, year, type_filter, category_filter
+    )
     net = (total_income - total_expenses).quantize(Decimal("0.01"))
+
+    total_pages = max(1, (total_count + PAGE_SIZE - 1) // PAGE_SIZE)
 
     if month == 1:
         prev_month, prev_year = 12, year - 1
@@ -156,6 +218,9 @@ def _transaction_context(
         "type_filter": type_filter or "",
         "category_filter": category_filter or "",
         "today": datetime.now(BRISBANE).strftime("%Y-%m-%d"),
+        "page": page,
+        "total_pages": total_pages,
+        "total_count": total_count,
     }
 
 
@@ -200,8 +265,9 @@ def _render_table_body(
     year: int,
     type_filter=None,
     category_filter=None,
+    page: int = 1,
 ) -> str:
-    ctx = _transaction_context(db, month, year, type_filter, category_filter)
+    ctx = _transaction_context(db, month, year, type_filter, category_filter, page=page)
     return bytes(
         templates.TemplateResponse(
             request,
@@ -264,12 +330,15 @@ async def transactions_page(
     year: int | None = None,
     type_filter: str | None = None,
     category_id: int | None = None,
+    page: int = 1,
     db: Session = Depends(get_db),
 ):
     user = get_current_user(request)
     if month is None or year is None:
         month, year = _current_month_year()
-    ctx = _transaction_context(db, month, year, type_filter, category_id)
+    if page < 1:
+        page = 1
+    ctx = _transaction_context(db, month, year, type_filter, category_id, page=page)
     return templates.TemplateResponse(
         request,
         "transactions.html",
@@ -488,7 +557,9 @@ async def api_list_transactions(
 ):
     if month is None or year is None:
         month, year = _current_month_year()
-    transactions = _transactions_for_month(db, month, year, type_filter, category_id)
+    transactions = _all_transactions_for_month(
+        db, month, year, type_filter, category_id
+    )
     return [
         TransactionResponse.model_validate(t).model_dump(mode="json")
         for t in transactions
