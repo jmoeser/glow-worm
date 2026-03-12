@@ -275,11 +275,19 @@ async def sinking_fund_detail(
     )
 
     income = sum(
-        (Decimal(str(t.amount)) for t in transactions if t.type == "income"),
+        (
+            Decimal(str(t.amount))
+            for t in transactions
+            if t.type in ("income", "transfer")
+        ),
         Decimal("0"),
     )
     expenses = sum(
-        (Decimal(str(t.amount)) for t in transactions if t.type != "income"),
+        (
+            Decimal(str(t.amount))
+            for t in transactions
+            if t.type not in ("income", "transfer")
+        ),
         Decimal("0"),
     )
     net = (income - expenses).quantize(Decimal("0.01"))

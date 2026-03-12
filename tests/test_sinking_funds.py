@@ -658,6 +658,28 @@ class TestSinkingFundDetail:
         assert "150.00" in response.text
         assert "350.00" in response.text  # net
 
+    def test_income_allocation_shows_as_positive(
+        self, authed_client, db_session, sample_sinking_funds, sample_category
+    ):
+        fund = sample_sinking_funds[0]
+        db_session.add(
+            Transaction(
+                date="2026-03-01",
+                description="Income allocation to Bills fund",
+                amount=300.00,
+                category_id=sample_category.id,
+                type="transfer",
+                transaction_type="income_allocation",
+                sinking_fund_id=fund.id,
+            )
+        )
+        db_session.commit()
+
+        response = authed_client.get(f"/sinking-funds/{fund.id}?month=3&year=2026")
+        assert response.status_code == 200
+        # Should appear with + sign and green colour, not red
+        assert "+$300.00" in response.text
+
     def test_fund_names_link_to_detail(self, authed_client, sample_sinking_funds):
         fund = sample_sinking_funds[0]
         response = authed_client.get("/sinking-funds")

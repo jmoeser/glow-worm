@@ -64,8 +64,8 @@
                     <tr>
                         <td class="gw-text-muted" style="white-space: nowrap;">{{ txn.date }}</td>
                         <td class="gw-text-muted">{{ txn.description or "" }}</td>
-                        <td class="text-right" style="font-weight: 600; color: {% if txn.type == 'income' %}var(--positive){% else %}var(--negative){% endif %}; white-space: nowrap;">
-                            {% if txn.type == 'income' %}+{% else %}-{% endif %}${{ txn.amount|money }}
+                        <td class="text-right" style="font-weight: 600; color: {% if txn.type in ('income', 'transfer') %}var(--positive){% else %}var(--negative){% endif %}; white-space: nowrap;">
+                            {% if txn.type in ('income', 'transfer') %}+{% else %}-{% endif %}${{ txn.amount|money }}
                         </td>
                         <td>
                             {% if txn.category %}
