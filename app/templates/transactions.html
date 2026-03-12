@@ -4,8 +4,8 @@
 <tr id="txn-row-{{ txn.id }}">
     <td class="gw-text-muted" style="white-space: nowrap;">{{ txn.date }}</td>
     <td class="gw-text-muted">{{ txn.description or "" }}</td>
-    <td class="text-right" style="font-weight: 600; color: {% if txn.type in ('income', 'transfer') %}var(--positive){% else %}var(--negative){% endif %};">
-        {% if txn.type in ('income', 'transfer') %}+{% else %}-{% endif %}${{ txn.amount|money }}
+    <td class="text-right" style="font-weight: 600; color: {% if txn.type == 'income' %}var(--positive){% elif txn.type == 'transfer' %}var(--text-tertiary){% else %}var(--negative){% endif %};">
+        {% if txn.type == 'income' %}+{% elif txn.type == 'transfer' %}{% else %}-{% endif %}${{ txn.amount|money }}
     </td>
     <td>
         <span class="gw-dot" style="background-color: {{ txn.category.color }}"></span>{{ txn.category.name }}
@@ -48,8 +48,8 @@
 <tr id="txn-row-{{ txn.id }}">
     <td class="gw-text-muted" style="white-space: nowrap;">{{ txn.date }}</td>
     <td class="gw-text-muted">{{ txn.description or "" }}</td>
-    <td class="text-right" style="font-weight: 600; color: {% if txn.type in ('income', 'transfer') %}var(--positive){% else %}var(--negative){% endif %};">
-        {% if txn.type in ('income', 'transfer') %}+{% else %}-{% endif %}${{ txn.amount|money }}
+    <td class="text-right" style="font-weight: 600; color: {% if txn.type == 'income' %}var(--positive){% elif txn.type == 'transfer' %}var(--text-tertiary){% else %}var(--negative){% endif %};">
+        {% if txn.type == 'income' %}+{% elif txn.type == 'transfer' %}{% else %}-{% endif %}${{ txn.amount|money }}
     </td>
     <td>
         <span class="gw-dot" style="background-color: {{ txn.category.color }}"></span>{{ txn.category.name }}
@@ -402,8 +402,8 @@
                     <tr id="txn-row-{{ txn.id }}">
                         <td class="gw-text-muted" style="white-space: nowrap;">{{ txn.date }}</td>
                         <td class="gw-text-muted">{{ txn.description or "" }}</td>
-                        <td class="text-right" style="font-weight: 600; color: {% if txn.type in ('income', 'transfer') %}var(--positive){% else %}var(--negative){% endif %};">
-                            {% if txn.type in ('income', 'transfer') %}+{% else %}-{% endif %}${{ txn.amount|money }}
+                        <td class="text-right" style="font-weight: 600; color: {% if txn.type == 'income' %}var(--positive){% elif txn.type == 'transfer' %}var(--text-tertiary){% else %}var(--negative){% endif %};">
+                            {% if txn.type == 'income' %}+{% elif txn.type == 'transfer' %}{% else %}-{% endif %}${{ txn.amount|money }}
                         </td>
                         <td>
                             <span class="gw-dot" style="background-color: {{ txn.category.color }}"></span>{{ txn.category.name }}

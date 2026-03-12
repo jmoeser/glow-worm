@@ -170,7 +170,7 @@
                     <tr>
                         <td style="white-space: nowrap;">{{ txn.date }}</td>
                         <td>{{ txn.description or "\u2014" }}</td>
-                        <td class="text-right" style="font-weight: 600; color: {% if txn.type == 'income' %}var(--positive){% else %}var(--negative){% endif %};">
+                        <td class="text-right" style="font-weight: 600; color: {% if txn.type == 'income' %}var(--positive){% elif txn.type == 'transfer' %}var(--text-tertiary){% else %}var(--negative){% endif %};">
                             ${{ txn.amount|money }}
                         </td>
                         <td>
