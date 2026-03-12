@@ -130,10 +130,10 @@
     <ul class="gw-list-divider">
         {% for fund in sinking_funds %}
         <li>
-            <div style="display: flex; align-items: center; gap: 10px;">
+            <a href="/sinking-funds/{{ fund.id }}" style="display: flex; align-items: center; gap: 10px; text-decoration: none; color: inherit;">
                 <span class="gw-dot" style="background-color: {{ fund.color }}"></span>
                 <span>{{ fund.name }}</span>
-            </div>
+            </a>
             <span style="font-family: var(--font-display); font-weight: 600;">
                 ${{ fund.current_balance|money }}
             </span>
