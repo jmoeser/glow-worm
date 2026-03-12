@@ -229,6 +229,18 @@ async def bills_create(request: Request, db: Session = Depends(get_db)):
     if bill_type not in ("fixed", "variable"):
         bill_type = "fixed"
 
+    foreign_amount_raw = form.get("foreign_amount")
+    foreign_currency_raw = (
+        str(form.get("foreign_currency") or "").strip().upper() or None
+    )
+    foreign_amount = None
+    if foreign_amount_raw:
+        try:
+            fa = Decimal(str(foreign_amount_raw))
+            foreign_amount = fa if fa > 0 else None
+        except InvalidOperation, TypeError:
+            pass
+
     bill = RecurringBill(
         name=name,
         amount=amount,
@@ -238,6 +250,8 @@ async def bills_create(request: Request, db: Session = Depends(get_db)):
         category_id=category_id,
         next_due_date=next_due_date,
         bill_type=bill_type,
+        foreign_amount=foreign_amount,
+        foreign_currency=foreign_currency_raw if foreign_amount else None,
     )
     db.add(bill)
     db.commit()
@@ -346,6 +360,18 @@ async def bills_update(request: Request, bill_id: int, db: Session = Depends(get
     if bill_type in ("fixed", "variable"):
         bill.bill_type = str(bill_type)
 
+    foreign_amount_raw = form.get("foreign_amount")
+    foreign_currency_raw = (
+        str(form.get("foreign_currency") or "").strip().upper() or None
+    )
+    if foreign_amount_raw is not None:
+        try:
+            fa = Decimal(str(foreign_amount_raw))
+            bill.foreign_amount = float(fa) if fa > 0 else None
+        except InvalidOperation, TypeError:
+            bill.foreign_amount = None
+        bill.foreign_currency = foreign_currency_raw if bill.foreign_amount else None
+
     db.commit()
     db.refresh(bill)
 
@@ -400,6 +426,8 @@ async def api_create_bill(request: Request, db: Session = Depends(get_db)):
         is_active=data.is_active,
         next_due_date=data.next_due_date,
         bill_type=data.bill_type.value,
+        foreign_amount=data.foreign_amount,
+        foreign_currency=data.foreign_currency,
     )
     db.add(bill)
     db.commit()

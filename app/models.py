@@ -83,6 +83,8 @@ class RecurringBill(Base):
     is_active: Mapped[bool] = mapped_column(default=True)
     bill_type: Mapped[str] = mapped_column(String(10), nullable=False, default="fixed")
     next_due_date: Mapped[str] = mapped_column(String(10), nullable=False)
+    foreign_amount: Mapped[float | None] = mapped_column(Numeric(12, 2), nullable=True)
+    foreign_currency: Mapped[str | None] = mapped_column(String(3), nullable=True)
     created_at: Mapped[datetime] = mapped_column(default=_utcnow)
     updated_at: Mapped[datetime] = mapped_column(default=_utcnow, onupdate=_utcnow)
 

@@ -217,6 +217,8 @@ class RecurringBillCreate(BaseModel):
     is_active: bool = True
     next_due_date: str = Field(..., pattern=r"^\d{4}-\d{2}-\d{2}$")
     bill_type: BillType = BillType.fixed
+    foreign_amount: Decimal | None = Field(None, gt=0)
+    foreign_currency: str | None = Field(None, min_length=3, max_length=3)
 
 
 class RecurringBillUpdate(BaseModel):
@@ -228,6 +230,8 @@ class RecurringBillUpdate(BaseModel):
     is_active: bool | None = None
     next_due_date: str | None = Field(None, pattern=r"^\d{4}-\d{2}-\d{2}$")
     bill_type: BillType | None = None
+    foreign_amount: Decimal | None = Field(None, gt=0)
+    foreign_currency: str | None = Field(None, min_length=3, max_length=3)
 
 
 class RecurringBillResponse(BaseModel):
@@ -244,6 +248,8 @@ class RecurringBillResponse(BaseModel):
     is_active: bool
     bill_type: str
     next_due_date: str
+    foreign_amount: Decimal | None = None
+    foreign_currency: str | None = None
     created_at: datetime
     updated_at: datetime
 
