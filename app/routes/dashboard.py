@@ -17,11 +17,9 @@ from app.templating import templates
 
 router = APIRouter()
 
-BRISBANE = TIMEZONE
-
 
 def _current_month_year() -> tuple[int, int]:
-    now = datetime.now(BRISBANE)
+    now = datetime.now(TIMEZONE)
     return now.month, now.year
 
 
@@ -109,7 +107,7 @@ def _dashboard_data(db: Session, month: int, year: int) -> dict:
     ).quantize(Decimal("0.01"))
 
     # Daily remaining: budget remaining / days left in month
-    now = datetime.now(BRISBANE)
+    now = datetime.now(TIMEZONE)
     if year == now.year and month == now.month:
         days_remaining = last_day - now.day + 1  # including today
     elif year < now.year or (year == now.year and month < now.month):
@@ -160,7 +158,7 @@ async def dashboard_page(
     if month is None or year is None:
         month, year = _current_month_year()
     data = _dashboard_data(db, month, year)
-    now_date = datetime.now(BRISBANE).strftime("%Y-%m-%d")
+    now_date = datetime.now(TIMEZONE).strftime("%Y-%m-%d")
     return templates.TemplateResponse(
         request,
         "dashboard.html",

@@ -17,11 +17,9 @@ from app.templating import templates
 
 router = APIRouter()
 
-BRISBANE = TIMEZONE
-
 
 def _current_month_year() -> tuple[int, int]:
-    now = datetime.now(BRISBANE)
+    now = datetime.now(TIMEZONE)
     return now.month, now.year
 
 

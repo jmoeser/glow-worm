@@ -18,7 +18,6 @@ from app.templating import templates
 
 router = APIRouter()
 
-BRISBANE = TIMEZONE
 PAGE_SIZE = 50
 
 TRANSACTION_TYPE_LABELS = {
@@ -33,7 +32,7 @@ TRANSACTION_TYPE_LABELS = {
 
 
 def _current_month_year() -> tuple[int, int]:
-    now = datetime.now(BRISBANE)
+    now = datetime.now(TIMEZONE)
     return now.month, now.year
 
 
@@ -217,7 +216,7 @@ def _transaction_context(
         "next_year": next_year,
         "type_filter": type_filter or "",
         "category_filter": category_filter or "",
-        "today": datetime.now(BRISBANE).strftime("%Y-%m-%d"),
+        "today": datetime.now(TIMEZONE).strftime("%Y-%m-%d"),
         "page": page,
         "total_pages": total_pages,
         "total_count": total_count,

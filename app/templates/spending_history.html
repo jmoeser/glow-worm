@@ -1,0 +1,92 @@
+{% extends "base.html" %}
+{% block title %}Spending History — Glow Worm{% endblock %}
+{% block content %}
+<h1 class="gw-page-header">Spending History</h1>
+
+<div class="gw-section">
+    <div class="gw-month-nav">
+        <a href="/spending-history?year={{ prev_year }}">&larr; {{ prev_year }}</a>
+        <span>{{ year }}</span>
+        <a href="/spending-history?year={{ next_year }}">{{ next_year }} &rarr;</a>
+    </div>
+</div>
+
+<div class="gw-section gw-overflow-x">
+    {% if not categories %}
+    <div class="gw-card" style="text-align: center; color: var(--text-tertiary); padding: 40px;">
+        No expense categories found.
+    </div>
+    {% else %}
+    <div class="gw-table-wrap" style="overflow: visible;">
+        <table style="min-width: max-content; width: 100%;">
+            <thead>
+                <tr>
+                    <th style="position: sticky; left: 0; background: var(--surface-2); z-index: 2; min-width: 90px;">Month</th>
+                    {% for cat in categories %}
+                    <th class="text-right" style="min-width: 110px; white-space: nowrap;">
+                        <span class="gw-dot" style="background-color: {{ cat.color }}"></span>{{ cat.name }}
+                    </th>
+                    {% endfor %}
+                    <th class="text-right" style="min-width: 110px; white-space: nowrap; border-left: 1px solid var(--border-mid);">Total</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for m in range(1, 13) %}
+                {% set row_total = row_totals[m] %}
+                <tr>
+                    <td style="position: sticky; left: 0; background: var(--surface-1); z-index: 1; font-weight: 500; color: var(--text-primary);">
+                        {{ month_names[m - 1] }}
+                    </td>
+                    {% for cat in categories %}
+                    {% set amount = matrix[m][cat.id] if m in matrix and cat.id in matrix[m] else 0 %}
+                    <td class="text-right">
+                        {% if amount %}
+                        <a href="/transactions?year={{ year }}&month={{ m }}&category_id={{ cat.id }}"
+                           style="color: var(--text-secondary); text-decoration: none; transition: color 0.15s;"
+                           onmouseover="this.style.color='var(--text-glow)'" onmouseout="this.style.color='var(--text-secondary)'">
+                            ${{ amount|money }}
+                        </a>
+                        {% else %}
+                        <span style="color: var(--text-tertiary);">–</span>
+                        {% endif %}
+                    </td>
+                    {% endfor %}
+                    <td class="text-right" style="border-left: 1px solid var(--border-dim); font-weight: 600; color: var(--text-primary);">
+                        {% if row_total %}
+                        <a href="/transactions?year={{ year }}&month={{ m }}"
+                           style="color: var(--text-primary); text-decoration: none; transition: color 0.15s;"
+                           onmouseover="this.style.color='var(--text-glow)'" onmouseout="this.style.color='var(--text-primary)'">
+                            ${{ row_total|money }}
+                        </a>
+                        {% else %}
+                        <span style="color: var(--text-tertiary);">–</span>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+            <tfoot>
+                <tr style="background: var(--surface-2); border-top: 1px solid var(--border-mid);">
+                    <td style="position: sticky; left: 0; background: var(--surface-2); z-index: 1; font-weight: 600; color: var(--text-secondary); font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; padding: 12px 16px;">
+                        Total
+                    </td>
+                    {% for cat in categories %}
+                    {% set col_total = col_totals[cat.id] if cat.id in col_totals else 0 %}
+                    <td class="text-right" style="font-weight: 600; color: var(--text-primary);">
+                        {% if col_total %}
+                        ${{ col_total|money }}
+                        {% else %}
+                        <span style="color: var(--text-tertiary);">–</span>
+                        {% endif %}
+                    </td>
+                    {% endfor %}
+                    <td class="text-right" style="border-left: 1px solid var(--border-mid); font-weight: 700; color: var(--text-glow);">
+                        ${{ grand_total|money }}
+                    </td>
+                </tr>
+            </tfoot>
+        </table>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}
