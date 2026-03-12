@@ -3,7 +3,7 @@
 {% for fund in funds %}
 <tr id="fund-row-{{ fund.id }}">
     <td>
-        <span class="gw-dot" style="background-color: {{ fund.color }}"></span>{{ fund.name }}
+        <span class="gw-dot" style="background-color: {{ fund.color }}"></span><a href="/sinking-funds/{{ fund.id }}" style="color: inherit; text-decoration: none;" onmouseover="this.style.color='var(--text-glow)'" onmouseout="this.style.color='inherit'">{{ fund.name }}</a>
     </td>
     <td class="gw-text-muted">{{ fund.description or "" }}</td>
     <td class="text-right">${{ fund.current_balance|money }}</td>
@@ -23,7 +23,7 @@
 {# --- Partial: single display row --- #}
 <tr id="fund-row-{{ fund.id }}">
     <td>
-        <span class="gw-dot" style="background-color: {{ fund.color }}"></span>{{ fund.name }}
+        <span class="gw-dot" style="background-color: {{ fund.color }}"></span><a href="/sinking-funds/{{ fund.id }}" style="color: inherit; text-decoration: none;" onmouseover="this.style.color='var(--text-glow)'" onmouseout="this.style.color='inherit'">{{ fund.name }}</a>
     </td>
     <td class="gw-text-muted">{{ fund.description or "" }}</td>
     <td class="text-right">${{ fund.current_balance|money }}</td>
@@ -143,7 +143,7 @@
                     {% for fund in funds %}
                     <tr id="fund-row-{{ fund.id }}">
                         <td>
-                            <span class="gw-dot" style="background-color: {{ fund.color }}"></span>{{ fund.name }}
+                            <span class="gw-dot" style="background-color: {{ fund.color }}"></span><a href="/sinking-funds/{{ fund.id }}" style="color: inherit; text-decoration: none;" onmouseover="this.style.color='var(--text-glow)'" onmouseout="this.style.color='inherit'">{{ fund.name }}</a>
                         </td>
                         <td class="gw-text-muted">{{ fund.description or "" }}</td>
                         <td class="text-right">${{ fund.current_balance|money }}</td>

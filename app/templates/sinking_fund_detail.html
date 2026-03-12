@@ -1,0 +1,92 @@
+{% extends "base.html" %}
+{% block title %}{{ fund.name }} — Glow Worm{% endblock %}
+{% block content %}
+<div style="max-width: 1100px;">
+
+    <!-- Header -->
+    <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 8px;">
+        <a href="/sinking-funds" class="gw-text-muted" style="text-decoration: none; font-size: 0.9rem;">&larr; Sinking Funds</a>
+    </div>
+    <h2 class="gw-page-header" style="display: flex; align-items: center; gap: 10px;">
+        <span class="gw-dot" style="background-color: {{ fund.color }}; width: 14px; height: 14px; flex-shrink: 0;"></span>
+        {{ fund.name }}
+    </h2>
+    {% if fund.description %}
+    <p class="gw-text-muted" style="margin-top: -8px; margin-bottom: 16px;">{{ fund.description }}</p>
+    {% endif %}
+
+    <!-- Month navigation -->
+    <div class="gw-month-nav gw-section">
+        <a href="/sinking-funds/{{ fund.id }}?month={{ prev_month }}&year={{ prev_year }}">&larr; Previous</a>
+        <span>{{ month_name }} {{ year }}</span>
+        <a href="/sinking-funds/{{ fund.id }}?month={{ next_month }}&year={{ next_year }}">Next &rarr;</a>
+    </div>
+
+    <!-- Summary bar -->
+    <div class="gw-summary-bar gw-section">
+        <div class="gw-summary-item">
+            <span class="gw-summary-label">Balance:</span>
+            <span class="gw-summary-value">${{ fund.current_balance|money }}</span>
+        </div>
+        <div class="gw-summary-item">
+            <span class="gw-summary-label">Income:</span>
+            <span class="gw-summary-value" style="color: var(--positive);">+${{ total_income|money }}</span>
+        </div>
+        <div class="gw-summary-item">
+            <span class="gw-summary-label">Expenses:</span>
+            <span class="gw-summary-value" style="color: var(--negative);">-${{ total_expenses|money }}</span>
+        </div>
+        <div class="gw-summary-item">
+            <span class="gw-summary-label">Net:</span>
+            <span class="gw-summary-value" style="color: {% if net >= 0 %}var(--positive){% else %}var(--negative){% endif %};">
+                {% if net >= 0 %}+{% endif %}${{ net|money }}
+            </span>
+        </div>
+    </div>
+
+    <!-- Transactions table -->
+    <div class="gw-table-wrap gw-section">
+        <div class="gw-overflow-x">
+            {% if transactions %}
+            <table>
+                <thead>
+                    <tr>
+                        <th style="white-space: nowrap;">Date</th>
+                        <th>Description</th>
+                        <th class="text-right">Amount</th>
+                        <th>Category</th>
+                        <th>Type</th>
+                        <th>Bill</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for txn in transactions %}
+                    <tr>
+                        <td class="gw-text-muted" style="white-space: nowrap;">{{ txn.date }}</td>
+                        <td class="gw-text-muted">{{ txn.description or "" }}</td>
+                        <td class="text-right" style="font-weight: 600; color: {% if txn.type == 'income' %}var(--positive){% else %}var(--negative){% endif %}; white-space: nowrap;">
+                            {% if txn.type == 'income' %}+{% else %}-{% endif %}${{ txn.amount|money }}
+                        </td>
+                        <td>
+                            {% if txn.category %}
+                            <span class="gw-dot" style="background-color: {{ txn.category.color }}"></span>{{ txn.category.name }}
+                            {% endif %}
+                        </td>
+                        <td class="gw-text-muted">{{ txn.transaction_type }}</td>
+                        <td class="gw-text-muted">
+                            {% if txn.recurring_bill %}{{ txn.recurring_bill.name }}{% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            {% else %}
+            <div class="gw-card" style="text-align: center; color: var(--text-tertiary); padding: 40px;">
+                No transactions for {{ month_name }} {{ year }}.
+            </div>
+            {% endif %}
+        </div>
+    </div>
+
+</div>
+{% endblock %}

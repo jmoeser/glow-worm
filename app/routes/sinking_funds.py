@@ -1,15 +1,17 @@
+import calendar
 import re
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from decimal import Decimal, InvalidOperation
 
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 from pydantic import ValidationError
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
+from app.config import TIMEZONE
 from app.database import get_db
 from app.middleware import get_current_user
-from app.models import RecurringBill, SinkingFund
+from app.models import RecurringBill, SinkingFund, Transaction
 from app.schemas import SinkingFundCreate, SinkingFundResponse, SinkingFundUpdate
 from app.templating import templates
 
@@ -232,6 +234,85 @@ async def sinking_funds_delete(
     fund.is_deleted = True
     db.commit()
     return HTMLResponse("")
+
+
+@router.get("/sinking-funds/{fund_id}", response_class=HTMLResponse)
+async def sinking_fund_detail(
+    request: Request,
+    fund_id: int,
+    month: int | None = None,
+    year: int | None = None,
+    db: Session = Depends(get_db),
+):
+    user = get_current_user(request)
+    fund = db.query(SinkingFund).filter(SinkingFund.id == fund_id).first()
+    if not fund:
+        return HTMLResponse("Not found", status_code=404)
+
+    now = datetime.now(TIMEZONE)
+    if month is None:
+        month = now.month
+    if year is None:
+        year = now.year
+
+    last_day = calendar.monthrange(year, month)[1]
+    start = f"{year:04d}-{month:02d}-01"
+    end = f"{year:04d}-{month:02d}-{last_day:02d}"
+
+    transactions = (
+        db.query(Transaction)
+        .filter(
+            Transaction.sinking_fund_id == fund_id,
+            Transaction.date >= start,
+            Transaction.date <= end,
+        )
+        .options(
+            joinedload(Transaction.category),
+            joinedload(Transaction.recurring_bill),
+        )
+        .order_by(Transaction.date.desc(), Transaction.id.desc())
+        .all()
+    )
+
+    income = sum(
+        (Decimal(str(t.amount)) for t in transactions if t.type == "income"),
+        Decimal("0"),
+    )
+    expenses = sum(
+        (Decimal(str(t.amount)) for t in transactions if t.type != "income"),
+        Decimal("0"),
+    )
+    net = (income - expenses).quantize(Decimal("0.01"))
+
+    if month == 1:
+        prev_month, prev_year = 12, year - 1
+    else:
+        prev_month, prev_year = month - 1, year
+
+    if month == 12:
+        next_month, next_year = 1, year + 1
+    else:
+        next_month, next_year = month + 1, year
+
+    return templates.TemplateResponse(
+        request,
+        "sinking_fund_detail.html",
+        {
+            "username": user.username,
+            "fund": fund,
+            "transactions": transactions,
+            "month": month,
+            "year": year,
+            "month_name": calendar.month_name[month],
+            "prev_month": prev_month,
+            "prev_year": prev_year,
+            "next_month": next_month,
+            "next_year": next_year,
+            "total_income": income.quantize(Decimal("0.01")),
+            "total_expenses": expenses.quantize(Decimal("0.01")),
+            "net": net,
+        },
+    )
 
 
 # ---------------------------------------------------------------------------

@@ -1,4 +1,4 @@
-from app.models import SinkingFund
+from app.models import SinkingFund, Transaction
 
 
 class TestSinkingFundsPageGet:
@@ -527,3 +527,138 @@ class TestSystemFundProtection:
         response = authed_client.get(f"/api/sinking-funds/{fund.id}")
         assert response.status_code == 200
         assert response.json()["is_system"] is True
+
+
+class TestSinkingFundDetail:
+    def test_renders_detail_page(self, authed_client, sample_sinking_funds):
+        fund = sample_sinking_funds[0]
+        response = authed_client.get(f"/sinking-funds/{fund.id}")
+        assert response.status_code == 200
+        assert fund.name in response.text
+
+    def test_404_for_nonexistent_fund(self, authed_client):
+        response = authed_client.get("/sinking-funds/99999")
+        assert response.status_code == 404
+
+    def test_unauthenticated_redirects(self, client, sample_sinking_funds):
+        fund = sample_sinking_funds[0]
+        response = client.get(f"/sinking-funds/{fund.id}", follow_redirects=False)
+        assert response.status_code == 303
+        assert response.headers["location"] == "/login"
+
+    def test_shows_transactions_for_fund(
+        self, authed_client, db_session, sample_sinking_funds, sample_category
+    ):
+        fund = sample_sinking_funds[0]
+        txn = Transaction(
+            date="2026-03-10",
+            description="Test contribution",
+            amount=100.00,
+            category_id=sample_category.id,
+            type="income",
+            transaction_type="contribution",
+            sinking_fund_id=fund.id,
+        )
+        db_session.add(txn)
+        db_session.commit()
+
+        response = authed_client.get(f"/sinking-funds/{fund.id}?month=3&year=2026")
+        assert response.status_code == 200
+        assert "Test contribution" in response.text
+        assert "100.00" in response.text
+
+    def test_excludes_transactions_from_other_funds(
+        self, authed_client, db_session, sample_sinking_funds, sample_category
+    ):
+        fund1, fund2 = sample_sinking_funds
+        txn = Transaction(
+            date="2026-03-10",
+            description="Other fund transaction",
+            amount=50.00,
+            category_id=sample_category.id,
+            type="expense",
+            transaction_type="withdrawal",
+            sinking_fund_id=fund2.id,
+        )
+        db_session.add(txn)
+        db_session.commit()
+
+        response = authed_client.get(f"/sinking-funds/{fund1.id}?month=3&year=2026")
+        assert response.status_code == 200
+        assert "Other fund transaction" not in response.text
+
+    def test_excludes_transactions_outside_month(
+        self, authed_client, db_session, sample_sinking_funds, sample_category
+    ):
+        fund = sample_sinking_funds[0]
+        txn = Transaction(
+            date="2026-02-15",
+            description="Last month",
+            amount=200.00,
+            category_id=sample_category.id,
+            type="income",
+            transaction_type="contribution",
+            sinking_fund_id=fund.id,
+        )
+        db_session.add(txn)
+        db_session.commit()
+
+        response = authed_client.get(f"/sinking-funds/{fund.id}?month=3&year=2026")
+        assert response.status_code == 200
+        assert "Last month" not in response.text
+
+    def test_empty_state_message(self, authed_client, sample_sinking_funds):
+        fund = sample_sinking_funds[0]
+        response = authed_client.get(f"/sinking-funds/{fund.id}?month=3&year=2026")
+        assert response.status_code == 200
+        assert "No transactions" in response.text
+
+    def test_month_navigation_links(self, authed_client, sample_sinking_funds):
+        fund = sample_sinking_funds[0]
+        response = authed_client.get(f"/sinking-funds/{fund.id}?month=3&year=2026")
+        assert f"/sinking-funds/{fund.id}?month=2&year=2026" in response.text
+        assert f"/sinking-funds/{fund.id}?month=4&year=2026" in response.text
+
+    def test_month_navigation_wraps_year(self, authed_client, sample_sinking_funds):
+        fund = sample_sinking_funds[0]
+        response = authed_client.get(f"/sinking-funds/{fund.id}?month=1&year=2026")
+        assert f"/sinking-funds/{fund.id}?month=12&year=2025" in response.text
+
+    def test_summary_totals(
+        self, authed_client, db_session, sample_sinking_funds, sample_category
+    ):
+        fund = sample_sinking_funds[0]
+        db_session.add_all(
+            [
+                Transaction(
+                    date="2026-03-05",
+                    description="Contribution",
+                    amount=500.00,
+                    category_id=sample_category.id,
+                    type="income",
+                    transaction_type="contribution",
+                    sinking_fund_id=fund.id,
+                ),
+                Transaction(
+                    date="2026-03-20",
+                    description="Withdrawal",
+                    amount=150.00,
+                    category_id=sample_category.id,
+                    type="expense",
+                    transaction_type="withdrawal",
+                    sinking_fund_id=fund.id,
+                ),
+            ]
+        )
+        db_session.commit()
+
+        response = authed_client.get(f"/sinking-funds/{fund.id}?month=3&year=2026")
+        assert response.status_code == 200
+        assert "500.00" in response.text
+        assert "150.00" in response.text
+        assert "350.00" in response.text  # net
+
+    def test_fund_names_link_to_detail(self, authed_client, sample_sinking_funds):
+        fund = sample_sinking_funds[0]
+        response = authed_client.get("/sinking-funds")
+        assert f'href="/sinking-funds/{fund.id}"' in response.text
