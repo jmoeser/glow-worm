@@ -11,7 +11,14 @@ from sqlalchemy.orm import Session, joinedload
 
 from app.database import get_db
 from app.middleware import get_current_user
-from app.models import Budget, MonthlyUnallocatedIncome, SinkingFund, Transaction
+from app.models import (
+    Budget,
+    IncomeAllocation,
+    MonthlyUnallocatedIncome,
+    SinkingFund,
+    Transaction,
+)
+from app.tasks import _compute_bills_recommended
 from app.schemas import DashboardSummary, SinkingFundResponse, TransactionResponse
 from app.templating import templates
 
@@ -82,7 +89,8 @@ def _dashboard_data(db: Session, month: int, year: int) -> dict:
         .all()
     )
 
-    # Unallocated income
+    # Unallocated income — use recorded value if allocation has run, otherwise
+    # fall back to the configured remainder from IncomeAllocation settings.
     unallocated_row = (
         db.query(MonthlyUnallocatedIncome)
         .filter(
@@ -91,11 +99,41 @@ def _dashboard_data(db: Session, month: int, year: int) -> dict:
         )
         .first()
     )
-    unallocated_income = (
-        Decimal(str(unallocated_row.unallocated_amount)).quantize(Decimal("0.01"))
-        if unallocated_row
-        else Decimal("0.00")
-    )
+    if unallocated_row:
+        unallocated_income = Decimal(str(unallocated_row.unallocated_amount)).quantize(
+            Decimal("0.01")
+        )
+    else:
+        allocation = db.query(IncomeAllocation).first()
+        if allocation:
+            income_amount = Decimal(str(allocation.monthly_income_amount))
+            total_configured = Decimal(str(allocation.monthly_budget_allocation))
+            # Identify Bills fund to skip it from the regular fund loop
+            bills_fund_obj = (
+                db.query(SinkingFund)
+                .filter(SinkingFund.name == "Bills", SinkingFund.is_deleted == False)  # noqa: E712
+                .first()
+            )
+            bills_fund_id = bills_fund_obj.id if bills_fund_obj else None
+            for junction in allocation.sinking_fund_allocations:
+                if junction.sinking_fund_id == bills_fund_id:
+                    continue
+                total_configured += Decimal(str(junction.allocation_amount))
+            # Bills fund amount
+            if allocation.bills_fund_allocation_type == "fixed":
+                total_configured += Decimal(
+                    str(allocation.bills_fund_fixed_amount or 0)
+                )
+            else:
+                total_configured += _compute_bills_recommended(db)
+            # Recurring transfers
+            for transfer in allocation.recurring_transfers:
+                total_configured += Decimal(str(transfer.amount))
+            unallocated_income = (income_amount - total_configured).quantize(
+                Decimal("0.01")
+            )
+        else:
+            unallocated_income = Decimal("0.00")
 
     # Total net worth: sinking fund balances + unallocated income + budget remaining
     total_sinking_funds = sum(
