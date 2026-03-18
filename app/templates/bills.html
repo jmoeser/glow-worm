@@ -180,7 +180,12 @@
 }
 </style>
 <div style="max-width: 1100px;">
-    <h2 class="gw-page-header">Recurring Bills</h2>
+    <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0;">
+        <h2 class="gw-page-header" style="margin-bottom: 0;">Recurring Bills</h2>
+        {% if bills_fund_id %}
+        <a href="/sinking-funds/{{ bills_fund_id }}/forecast" class="gw-text-muted" style="font-size: 0.875rem; text-decoration: none;">View Forecast &rarr;</a>
+        {% endif %}
+    </div>
 
     <div id="bills-message" style="margin-bottom: 16px;"></div>
 

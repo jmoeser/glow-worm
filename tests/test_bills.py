@@ -42,6 +42,21 @@ class TestBillsPageGet:
         assert response.status_code == 303
         assert response.headers["location"] == "/login"
 
+    def test_shows_forecast_link_when_bills_fund_exists(
+        self, authed_client, db_session
+    ):
+        fund = SinkingFund(name="Bills", color="#FF0000", current_balance=0)
+        db_session.add(fund)
+        db_session.commit()
+        response = authed_client.get("/bills")
+        assert response.status_code == 200
+        assert f"/sinking-funds/{fund.id}/forecast" in response.text
+
+    def test_no_forecast_link_without_bills_fund(self, authed_client):
+        response = authed_client.get("/bills")
+        assert response.status_code == 200
+        assert "/forecast" not in response.text
+
 
 class TestBillsPagePost:
     def test_creates_new_bill(self, authed_client, db_session, sample_category):

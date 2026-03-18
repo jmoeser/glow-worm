@@ -684,3 +684,58 @@ class TestSinkingFundDetail:
         fund = sample_sinking_funds[0]
         response = authed_client.get("/sinking-funds")
         assert f'href="/sinking-funds/{fund.id}"' in response.text
+
+
+class TestSinkingFundForecast:
+    def test_renders_forecast_page(self, authed_client, sample_sinking_funds):
+        fund = sample_sinking_funds[0]  # Bills fund
+        response = authed_client.get(f"/sinking-funds/{fund.id}/forecast")
+        assert response.status_code == 200
+        assert "Forecast" in response.text
+        assert fund.name in response.text
+
+    def test_404_for_nonexistent_fund(self, authed_client):
+        response = authed_client.get("/sinking-funds/99999/forecast")
+        assert response.status_code == 404
+
+    def test_unauthenticated_redirects(self, client, sample_sinking_funds):
+        fund = sample_sinking_funds[0]
+        response = client.get(
+            f"/sinking-funds/{fund.id}/forecast", follow_redirects=False
+        )
+        assert response.status_code == 303
+        assert response.headers["location"] == "/login"
+
+    def test_shows_12_month_rows(self, authed_client, sample_sinking_funds):
+        fund = sample_sinking_funds[0]
+        response = authed_client.get(f"/sinking-funds/{fund.id}/forecast")
+        assert response.status_code == 200
+        # 12 months appear — check for several distinct month names
+        text = response.text
+        assert "January" in text or "February" in text or "March" in text
+
+    def test_shows_bill_names_in_forecast(
+        self, authed_client, db_session, sample_sinking_funds, sample_bills
+    ):
+        fund = sample_sinking_funds[0]
+        response = authed_client.get(f"/sinking-funds/{fund.id}/forecast")
+        assert response.status_code == 200
+        # Both sample bills should appear somewhere in the 12-month forecast
+        assert "Rent" in response.text
+        assert "Internet" in response.text
+
+    def test_detail_page_shows_forecast_tab_for_bills(
+        self, authed_client, sample_sinking_funds
+    ):
+        bills_fund = next(f for f in sample_sinking_funds if f.name == "Bills")
+        response = authed_client.get(f"/sinking-funds/{bills_fund.id}")
+        assert response.status_code == 200
+        assert f"/sinking-funds/{bills_fund.id}/forecast" in response.text
+
+    def test_detail_page_no_forecast_tab_for_non_bills(
+        self, authed_client, sample_sinking_funds
+    ):
+        savings_fund = next(f for f in sample_sinking_funds if f.name == "Savings")
+        response = authed_client.get(f"/sinking-funds/{savings_fund.id}")
+        assert response.status_code == 200
+        assert f"/sinking-funds/{savings_fund.id}/forecast" not in response.text

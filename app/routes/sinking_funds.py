@@ -12,6 +12,7 @@ from app.config import TIMEZONE
 from app.database import get_db
 from app.middleware import get_current_user
 from app.models import RecurringBill, SinkingFund, Transaction
+from app.tasks import generate_bills_forecast
 from app.schemas import SinkingFundCreate, SinkingFundResponse, SinkingFundUpdate
 from app.templating import templates
 
@@ -234,6 +235,30 @@ async def sinking_funds_delete(
     fund.is_deleted = True
     db.commit()
     return HTMLResponse("")
+
+
+@router.get("/sinking-funds/{fund_id}/forecast", response_class=HTMLResponse)
+async def sinking_fund_forecast(
+    request: Request,
+    fund_id: int,
+    db: Session = Depends(get_db),
+):
+    user = get_current_user(request)
+    fund = db.query(SinkingFund).filter(SinkingFund.id == fund_id).first()
+    if not fund:
+        return HTMLResponse("Not found", status_code=404)
+
+    forecast = generate_bills_forecast(db)
+
+    return templates.TemplateResponse(
+        request,
+        "sinking_fund_forecast.html",
+        {
+            "username": user.username,
+            "fund": fund,
+            "forecast": forecast,
+        },
+    )
 
 
 @router.get("/sinking-funds/{fund_id}", response_class=HTMLResponse)

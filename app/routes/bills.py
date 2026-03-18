@@ -65,12 +65,18 @@ def _bill_context(db: Session):
         (_compute_annual_cost(b.amount, b.frequency) for b in bills), Decimal("0")
     )
     total_monthly = (total_annual / 12).quantize(Decimal("0.01"))
+    bills_fund = (
+        db.query(SinkingFund)
+        .filter(SinkingFund.name == "Bills", SinkingFund.is_deleted == False)  # noqa: E712
+        .first()
+    )
     return {
         "bills": bills,
         "categories": categories,
         "frequency_labels": FREQUENCY_LABELS,
         "total_annual": total_annual.quantize(Decimal("0.01")),
         "total_monthly": total_monthly,
+        "bills_fund_id": bills_fund.id if bills_fund else None,
     }
 
 

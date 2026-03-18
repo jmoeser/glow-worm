@@ -1,0 +1,108 @@
+{% extends "base.html" %}
+{% block title %}{{ fund.name }} Forecast — Glow Worm{% endblock %}
+{% block content %}
+<div style="max-width: 1100px;">
+
+    <!-- Header -->
+    <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 8px;">
+        <a href="/sinking-funds" class="gw-text-muted" style="text-decoration: none; font-size: 0.9rem;">&larr; Sinking Funds</a>
+    </div>
+    <h2 class="gw-page-header" style="display: flex; align-items: center; gap: 10px;">
+        <span class="gw-dot" style="background-color: {{ fund.color }}; width: 14px; height: 14px; flex-shrink: 0;"></span>
+        {{ fund.name }}
+    </h2>
+    {% if fund.description %}
+    <p class="gw-text-muted" style="margin-top: -8px; margin-bottom: 16px;">{{ fund.description }}</p>
+    {% endif %}
+
+    <!-- Tab navigation -->
+    <div style="display: flex; gap: 4px; margin-bottom: 16px; border-bottom: 1px solid var(--border-dim);">
+        <a href="/sinking-funds/{{ fund.id }}" style="padding: 6px 14px; font-size: 0.875rem; color: var(--text-secondary); text-decoration: none;">Transactions</a>
+        <span style="padding: 6px 14px; font-size: 0.875rem; font-weight: 600; border-bottom: 2px solid var(--accent); color: var(--accent); cursor: default;">Forecast</span>
+    </div>
+
+    <!-- Current balance summary -->
+    <div class="gw-summary-bar gw-section">
+        <div class="gw-summary-item">
+            <span class="gw-summary-label">Current Balance:</span>
+            <span class="gw-summary-value">${{ fund.current_balance|money }}</span>
+        </div>
+        {% if forecast %}
+        <div class="gw-summary-item">
+            <span class="gw-summary-label">Monthly Contribution:</span>
+            <span class="gw-summary-value" style="color: var(--positive);">+${{ forecast[0].contribution|money }}</span>
+        </div>
+        <div class="gw-summary-item">
+            <span class="gw-summary-label">12-Month Low:</span>
+            {% set min_balance = forecast | map(attribute='closing_balance') | min %}
+            <span class="gw-summary-value" style="color: {% if min_balance < 0 %}var(--negative){% else %}var(--text-primary){% endif %};">
+                ${{ min_balance|money }}
+            </span>
+        </div>
+        {% endif %}
+    </div>
+
+    <!-- Forecast table -->
+    <div class="gw-table-wrap gw-section">
+        <div class="gw-overflow-x">
+            {% if forecast %}
+            <table>
+                <thead>
+                    <tr>
+                        <th>Month</th>
+                        <th class="text-right">Contribution</th>
+                        <th class="text-right">Bills Due</th>
+                        <th class="text-right">Closing Balance</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for row in forecast %}
+                    <tr>
+                        <td>
+                            {% if row.bills %}
+                            <details>
+                                <summary style="cursor: pointer; list-style: none; display: flex; align-items: center; gap: 8px;">
+                                    <span style="font-size: 0.6rem; color: var(--text-secondary);">&#9654;</span>
+                                    {{ row.month_name }} {{ row.year }}
+                                    <span style="font-size: 0.75rem; color: var(--text-secondary);">({{ row.bills|length }} bill{{ 's' if row.bills|length != 1 else '' }})</span>
+                                </summary>
+                                <div style="padding: 8px 0 4px 16px;">
+                                    {% for bill in row.bills %}
+                                    <div style="font-size: 0.8rem; color: var(--text-secondary); padding: 2px 0; display: flex; justify-content: space-between; max-width: 420px;">
+                                        <span>
+                                            {{ bill.name }}
+                                            {% if bill.bill_type == "variable" %}<em style="color: var(--text-tertiary);">(variable)</em>{% endif %}
+                                            {% if bill.foreign_currency %}<span style="color: var(--text-tertiary); font-size: 0.75rem;">{{ bill.foreign_amount|money }} {{ bill.foreign_currency }}</span>{% endif %}
+                                        </span>
+                                        <span style="font-weight: 500; color: var(--negative);">-${{ bill.amount|money }}</span>
+                                    </div>
+                                    {% endfor %}
+                                </div>
+                            </details>
+                            {% else %}
+                            <span class="gw-text-muted">{{ row.month_name }} {{ row.year }}</span>
+                            {% endif %}
+                        </td>
+                        <td class="text-right" style="color: {% if row.contribution > 0 %}var(--positive){% else %}var(--text-secondary){% endif %}; white-space: nowrap;">
+                            {% if row.contribution > 0 %}+{% endif %}${{ row.contribution|money }}
+                        </td>
+                        <td class="text-right" style="color: {% if row.total_out > 0 %}var(--negative){% else %}var(--text-secondary){% endif %}; white-space: nowrap;">
+                            {% if row.total_out > 0 %}-{% endif %}${{ row.total_out|money }}
+                        </td>
+                        <td class="text-right" style="font-weight: 600; white-space: nowrap; color: {% if row.closing_balance < 0 %}var(--negative){% else %}var(--text-primary){% endif %};">
+                            {% if row.closing_balance < 0 %}&minus;${{ (row.closing_balance * -1)|money }}{% else %}${{ row.closing_balance|money }}{% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            {% else %}
+            <div class="gw-card" style="text-align: center; color: var(--text-tertiary); padding: 40px;">
+                No forecast data available.
+            </div>
+            {% endif %}
+        </div>
+    </div>
+
+</div>
+{% endblock %}

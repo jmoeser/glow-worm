@@ -85,6 +85,114 @@ def _compute_bills_recommended(db: Session) -> Decimal:
     return (total_annual / 12).quantize(Decimal("0.01"))
 
 
+def generate_bills_forecast(db: Session, months: int = 12) -> list[dict]:
+    """Project Bills fund cash flow over the next N months.
+
+    Returns a list of month dicts (length == months) with keys:
+        month, year, month_name, bills, total_out, contribution, closing_balance
+    """
+    today = _today()
+
+    active_bills = (
+        db.query(RecurringBill)
+        .filter(RecurringBill.is_active == True)  # noqa: E712
+        .all()
+    )
+
+    bills_fund = (
+        db.query(SinkingFund)
+        .filter(SinkingFund.name == "Bills", SinkingFund.is_deleted == False)  # noqa: E712
+        .first()
+    )
+    running_balance = (
+        Decimal(str(bills_fund.current_balance)) if bills_fund else Decimal("0")
+    )
+
+    # Determine monthly contribution from income allocation config
+    allocation = db.query(IncomeAllocation).first()
+    if allocation:
+        if allocation.bills_fund_allocation_type == "fixed":
+            monthly_contribution = Decimal(str(allocation.bills_fund_fixed_amount or 0))
+        else:
+            monthly_contribution = _compute_bills_recommended(db)
+    else:
+        monthly_contribution = Decimal("0")
+
+    # Check if this month's contribution has already been deposited
+    month_start = f"{today.year}-{today.month:02d}-01"
+    month_end = f"{today.year}-{today.month:02d}-{calendar.monthrange(today.year, today.month)[1]:02d}"
+    already_contributed = False
+    if bills_fund:
+        already_contributed = (
+            db.query(Transaction)
+            .filter(
+                Transaction.transaction_type == "income_allocation",
+                Transaction.sinking_fund_id == bills_fund.id,
+                Transaction.date >= month_start,
+                Transaction.date <= month_end,
+            )
+            .first()
+        ) is not None
+
+    # Calculate the horizon end date
+    end_abs = today.month - 1 + months - 1
+    horizon_end = date(
+        today.year + end_abs // 12,
+        end_abs % 12 + 1,
+        calendar.monthrange(today.year + end_abs // 12, end_abs % 12 + 1)[1],
+    )
+
+    # Project each bill's payment dates forward into monthly buckets
+    monthly_bills: dict[tuple[int, int], list[dict]] = {}
+    for bill in active_bills:
+        current_due = date.fromisoformat(bill.next_due_date)
+        while current_due <= horizon_end:
+            ym = (current_due.year, current_due.month)
+            monthly_bills.setdefault(ym, []).append(
+                {
+                    "id": bill.id,
+                    "name": bill.name,
+                    "amount": Decimal(str(bill.amount)),
+                    "bill_type": bill.bill_type,
+                    "due_date": current_due,
+                    "foreign_amount": bill.foreign_amount,
+                    "foreign_currency": bill.foreign_currency,
+                }
+            )
+            current_due = advance_due_date(current_due, bill.frequency)
+
+    # Build forecast rows
+    result = []
+    for i in range(months):
+        abs_month = today.month - 1 + i
+        m = abs_month % 12 + 1
+        y = today.year + abs_month // 12
+
+        bills_this_month = monthly_bills.get((y, m), [])
+        total_out = sum((b["amount"] for b in bills_this_month), Decimal("0"))
+
+        # Skip contribution for current month if already processed
+        contribution = (
+            Decimal("0") if (i == 0 and already_contributed) else monthly_contribution
+        )
+
+        running_balance = running_balance + contribution - total_out
+
+        result.append(
+            {
+                "month": m,
+                "year": y,
+                "month_name": calendar.month_name[m],
+                "bills": bills_this_month,
+                "total_out": total_out.quantize(Decimal("0.01")),
+                "contribution": contribution.quantize(Decimal("0.01")),
+                "closing_balance": running_balance.quantize(Decimal("0.01")),
+            }
+        )
+
+    return result
+
+
 def process_income_allocation(db: Session | None = None) -> None:
     """Monthly task (1st): distribute income per IncomeAllocation config.
 

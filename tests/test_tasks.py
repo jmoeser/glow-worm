@@ -21,7 +21,12 @@ from app.models import (
     SinkingFund,
     Transaction,
 )
-from app.tasks import advance_due_date, process_due_bills, process_income_allocation
+from app.tasks import (
+    advance_due_date,
+    generate_bills_forecast,
+    process_due_bills,
+    process_income_allocation,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -510,3 +515,214 @@ class TestProcessDueBills:
         # next_due_date advanced from the original due date, not from today
         db_session.refresh(bills_setup["bill_due"])
         assert bills_setup["bill_due"].next_due_date == "2026-03-01"
+
+
+# ---------------------------------------------------------------------------
+# generate_bills_forecast
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def forecast_setup(db_session):
+    """Minimal setup for forecast tests: Bills fund + income allocation."""
+    expense_cat = Category(name="Bills", type="expense", color="#FF0000")
+    db_session.add(expense_cat)
+    db_session.flush()
+
+    bills_fund = SinkingFund(name="Bills", color="#FF0000", current_balance=1000)
+    db_session.add(bills_fund)
+    db_session.flush()
+
+    allocation = IncomeAllocation(
+        monthly_income_amount=5000,
+        monthly_budget_allocation=800,
+        bills_fund_allocation_type="fixed",
+        bills_fund_fixed_amount=600,
+    )
+    db_session.add(allocation)
+    db_session.commit()
+
+    return {
+        "expense_cat": expense_cat,
+        "bills_fund": bills_fund,
+        "allocation": allocation,
+    }
+
+
+class TestGenerateBillsForecast:
+    @patch("app.tasks._today")
+    def test_returns_12_months(self, mock_today, db_session, forecast_setup):
+        mock_today.return_value = date(2026, 3, 18)
+        result = generate_bills_forecast(db_session)
+        assert len(result) == 12
+
+    @patch("app.tasks._today")
+    def test_month_sequence(self, mock_today, db_session, forecast_setup):
+        mock_today.return_value = date(2026, 3, 18)
+        result = generate_bills_forecast(db_session)
+        assert result[0]["month"] == 3
+        assert result[0]["year"] == 2026
+        assert result[0]["month_name"] == "March"
+        assert result[9]["month"] == 12
+        assert result[9]["year"] == 2026
+        assert result[10]["month"] == 1
+        assert result[10]["year"] == 2027
+        assert result[11]["month"] == 2
+        assert result[11]["year"] == 2027
+
+    @patch("app.tasks._today")
+    def test_monthly_bill_appears_every_month(
+        self, mock_today, db_session, forecast_setup
+    ):
+        mock_today.return_value = date(2026, 3, 18)
+        bill = RecurringBill(
+            name="Electricity",
+            amount=120,
+            debtor_provider="Energy Co",
+            start_date="2026-01-01",
+            frequency="monthly",
+            category_id=forecast_setup["expense_cat"].id,
+            next_due_date="2026-03-25",
+        )
+        db_session.add(bill)
+        db_session.commit()
+
+        result = generate_bills_forecast(db_session)
+
+        for row in result:
+            assert len(row["bills"]) == 1, (
+                f"Expected bill in {row['month_name']} {row['year']}"
+            )
+            assert row["bills"][0]["name"] == "Electricity"
+            assert row["total_out"] == Decimal("120.00")
+
+    @patch("app.tasks._today")
+    def test_yearly_bill_appears_once(self, mock_today, db_session, forecast_setup):
+        mock_today.return_value = date(2026, 3, 18)
+        bill = RecurringBill(
+            name="Car Registration",
+            amount=800,
+            debtor_provider="RTA",
+            start_date="2026-01-01",
+            frequency="yearly",
+            category_id=forecast_setup["expense_cat"].id,
+            next_due_date="2026-06-01",
+        )
+        db_session.add(bill)
+        db_session.commit()
+
+        result = generate_bills_forecast(db_session)
+
+        months_with_bills = [r for r in result if r["bills"]]
+        assert len(months_with_bills) == 1
+        assert months_with_bills[0]["month"] == 6
+
+    @patch("app.tasks._today")
+    def test_closing_balance_calculation(self, mock_today, db_session, forecast_setup):
+        """Balance = previous closing + contribution - bills."""
+        mock_today.return_value = date(2026, 3, 18)
+        bill = RecurringBill(
+            name="Internet",
+            amount=100,
+            debtor_provider="ISP",
+            start_date="2026-01-01",
+            frequency="monthly",
+            category_id=forecast_setup["expense_cat"].id,
+            next_due_date="2026-03-25",
+        )
+        db_session.add(bill)
+        db_session.commit()
+
+        result = generate_bills_forecast(db_session)
+
+        # Month 0: 1000 + 600 - 100 = 1500
+        assert result[0]["closing_balance"] == Decimal("1500.00")
+        # Month 1: 1500 + 600 - 100 = 2000
+        assert result[1]["closing_balance"] == Decimal("2000.00")
+
+    @patch("app.tasks._today")
+    def test_no_bills_fund_defaults_zero_balance(self, mock_today, db_session):
+        """No Bills fund → starts from zero."""
+        mock_today.return_value = date(2026, 3, 18)
+        result = generate_bills_forecast(db_session)
+        assert result[0]["closing_balance"] == Decimal("0.00")
+
+    @patch("app.tasks._today")
+    def test_no_allocation_zero_contribution(
+        self, mock_today, db_session, forecast_setup
+    ):
+        db_session.delete(forecast_setup["allocation"])
+        db_session.commit()
+
+        mock_today.return_value = date(2026, 3, 18)
+        result = generate_bills_forecast(db_session)
+        for row in result:
+            assert row["contribution"] == Decimal("0.00")
+
+    @patch("app.tasks._today")
+    def test_contribution_skipped_if_already_processed(
+        self, mock_today, db_session, forecast_setup
+    ):
+        """If the bills fund allocation already ran this month, month 0 contribution is $0."""
+        mock_today.return_value = date(2026, 3, 18)
+        transfer_cat = Category(name="Transfer", type="transfer", color="#888888")
+        db_session.add(transfer_cat)
+        db_session.flush()
+
+        # Simulate this month's allocation already deposited
+        txn = Transaction(
+            date="2026-03-01",
+            description="Income allocation to Bills fund",
+            amount=600,
+            category_id=transfer_cat.id,
+            type="transfer",
+            transaction_type="income_allocation",
+            sinking_fund_id=forecast_setup["bills_fund"].id,
+        )
+        db_session.add(txn)
+        db_session.commit()
+
+        result = generate_bills_forecast(db_session)
+        assert result[0]["contribution"] == Decimal("0.00")
+        assert result[1]["contribution"] == Decimal("600.00")
+
+    @patch("app.tasks._today")
+    def test_inactive_bill_excluded(self, mock_today, db_session, forecast_setup):
+        mock_today.return_value = date(2026, 3, 18)
+        bill = RecurringBill(
+            name="Old Service",
+            amount=50,
+            debtor_provider="Old Co",
+            start_date="2026-01-01",
+            frequency="monthly",
+            category_id=forecast_setup["expense_cat"].id,
+            next_due_date="2026-03-25",
+            is_active=False,
+        )
+        db_session.add(bill)
+        db_session.commit()
+
+        result = generate_bills_forecast(db_session)
+        assert all(len(r["bills"]) == 0 for r in result)
+
+    @patch("app.tasks._today")
+    def test_recommended_allocation_type(self, mock_today, db_session, forecast_setup):
+        """Bills fund allocation type 'recommended' uses annual cost / 12."""
+        mock_today.return_value = date(2026, 3, 18)
+        forecast_setup["allocation"].bills_fund_allocation_type = "recommended"
+        forecast_setup["allocation"].bills_fund_fixed_amount = None
+        bill = RecurringBill(
+            name="Rent",
+            amount=1200,
+            debtor_provider="Landlord",
+            start_date="2026-01-01",
+            frequency="monthly",
+            category_id=forecast_setup["expense_cat"].id,
+            next_due_date="2026-03-25",
+        )
+        db_session.add(bill)
+        db_session.commit()
+
+        result = generate_bills_forecast(db_session)
+        # 1200/mo * 12 = 14400/yr / 12 = 1200/mo recommended
+        assert result[1]["contribution"] == Decimal("1200.00")
