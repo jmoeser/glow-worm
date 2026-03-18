@@ -163,12 +163,18 @@ async def income_save(request: Request, db: Session = Depends(get_db)):
                 '<p class="text-red-600 text-sm">Fixed amount is required when type is fixed.</p>'
             )
 
-    # Parse sinking fund allocations from fund_<id> keys
+    # Parse sinking fund allocations from fund_<id> keys (skip system funds — Bills is handled separately)
+    system_fund_ids = {
+        row.id
+        for row in db.query(SinkingFund.id).filter(SinkingFund.is_system == True)  # noqa: E712
+    }
     fund_allocations = []
     for key in form:
         if key.startswith("fund_"):
             try:
                 fund_id = int(key.removeprefix("fund_"))
+                if fund_id in system_fund_ids:
+                    continue
                 amount = Decimal(str(form[key]))
                 if amount > 0:
                     fund_allocations.append(

@@ -64,9 +64,9 @@
                 <!-- Sinking Fund Allocations -->
                 <fieldset class="gw-fieldset">
                     <legend>Sinking Fund Allocations</legend>
-                    {% if sinking_funds %}
+                    {% if sinking_funds | selectattr("is_system", "equalto", false) | list %}
                     <div style="display: flex; flex-direction: column; gap: 12px;">
-                        {% for fund in sinking_funds %}
+                        {% for fund in sinking_funds if not fund.is_system %}
                         <div style="display: flex; align-items: center; gap: 12px;">
                             <span class="gw-dot" style="background-color: {{ fund.color }}"></span>
                             <label for="fund_{{ fund.id }}" style="font-size: 0.875rem; color: var(--text-secondary); width: 120px;">{{ fund.name }}</label>
