@@ -1,16 +1,18 @@
 {% if fragment == "table_body" %}
 {# --- Partial: full table body rows + summary --- #}
+<span id="bills-monthly-cost" hx-swap-oob="true">${{ total_monthly|money }}</span>
+<span id="bills-annual-cost" hx-swap-oob="true">${{ total_annual|money }}</span>
 {% for bill in bills %}
 <tr id="bill-row-{{ bill.id }}">
-    <td>{{ bill.name }}</td>
-    <td class="gw-text-muted">{{ bill.debtor_provider }}</td>
+    <td data-sort-value="{{ bill.name }}">{{ bill.name }}</td>
+    <td class="gw-text-muted" data-sort-value="{{ bill.debtor_provider }}">{{ bill.debtor_provider }}</td>
     <td class="text-right" data-sort-value="{{ bill.amount }}">
         ${{ bill.amount|money }}
         {% if bill.foreign_amount and bill.foreign_currency %}
         <br><span class="gw-foreign-amount">{{ "%.2f"|format(bill.foreign_amount) }} {{ bill.foreign_currency }}</span>
         {% endif %}
     </td>
-    <td class="gw-text-muted">{{ frequency_labels.get(bill.frequency, bill.frequency) }}</td>
+    <td class="gw-text-muted" data-sort-value="{{ frequency_labels.get(bill.frequency, bill.frequency) }}">{{ frequency_labels.get(bill.frequency, bill.frequency) }}</td>
     <td>
         {% if bill.bill_type == "variable" %}
         <span class="gw-badge-variable">Variable</span>
@@ -36,15 +38,15 @@
 {% elif fragment == "bill_row" %}
 {# --- Partial: single display row --- #}
 <tr id="bill-row-{{ bill.id }}">
-    <td>{{ bill.name }}</td>
-    <td class="gw-text-muted">{{ bill.debtor_provider }}</td>
+    <td data-sort-value="{{ bill.name }}">{{ bill.name }}</td>
+    <td class="gw-text-muted" data-sort-value="{{ bill.debtor_provider }}">{{ bill.debtor_provider }}</td>
     <td class="text-right" data-sort-value="{{ bill.amount }}">
         ${{ bill.amount|money }}
         {% if bill.foreign_amount and bill.foreign_currency %}
         <br><span class="gw-foreign-amount">{{ "%.2f"|format(bill.foreign_amount) }} {{ bill.foreign_currency }}</span>
         {% endif %}
     </td>
-    <td class="gw-text-muted">{{ frequency_labels.get(bill.frequency, bill.frequency) }}</td>
+    <td class="gw-text-muted" data-sort-value="{{ frequency_labels.get(bill.frequency, bill.frequency) }}">{{ frequency_labels.get(bill.frequency, bill.frequency) }}</td>
     <td>
         {% if bill.bill_type == "variable" %}
         <span class="gw-badge-variable">Variable</span>
@@ -248,11 +250,11 @@
     <div class="gw-summary-bar gw-section">
         <div class="gw-summary-item">
             <span class="gw-summary-label">Monthly cost:</span>
-            <span class="gw-summary-value">${{ total_monthly|money }}</span>
+            <span class="gw-summary-value" id="bills-monthly-cost">${{ total_monthly|money }}</span>
         </div>
         <div class="gw-summary-item">
             <span class="gw-summary-label">Annual cost:</span>
-            <span class="gw-summary-value">${{ total_annual|money }}</span>
+            <span class="gw-summary-value" id="bills-annual-cost">${{ total_annual|money }}</span>
         </div>
     </div>
 
@@ -262,10 +264,10 @@
             <table>
                 <thead>
                     <tr>
-                        <th>Name</th>
-                        <th>Provider</th>
+                        <th class="gw-sortable" onclick="sortBills('name')">Name <span class="gw-sort-indicator" id="sort-indicator-name"></span></th>
+                        <th class="gw-sortable" onclick="sortBills('provider')">Provider <span class="gw-sort-indicator" id="sort-indicator-provider"></span></th>
                         <th class="text-right gw-sortable" onclick="sortBills('amount')">Amount <span class="gw-sort-indicator" id="sort-indicator-amount"></span></th>
-                        <th>Frequency</th>
+                        <th class="gw-sortable" onclick="sortBills('frequency')">Frequency <span class="gw-sort-indicator" id="sort-indicator-frequency"></span></th>
                         <th>Type</th>
                         <th class="gw-sortable" onclick="sortBills('next_due_date')">Next Due <span class="gw-sort-indicator" id="sort-indicator-next_due_date"></span></th>
                         <th>Actions</th>
@@ -274,15 +276,15 @@
                 <tbody id="bills-table-body">
                     {% for bill in bills %}
                     <tr id="bill-row-{{ bill.id }}">
-                        <td>{{ bill.name }}</td>
-                        <td class="gw-text-muted">{{ bill.debtor_provider }}</td>
+                        <td data-sort-value="{{ bill.name }}">{{ bill.name }}</td>
+                        <td class="gw-text-muted" data-sort-value="{{ bill.debtor_provider }}">{{ bill.debtor_provider }}</td>
                         <td class="text-right" data-sort-value="{{ bill.amount }}">
                             ${{ bill.amount|money }}
                             {% if bill.foreign_amount and bill.foreign_currency %}
                             <br><span class="gw-foreign-amount">{{ "%.2f"|format(bill.foreign_amount) }} {{ bill.foreign_currency }}</span>
                             {% endif %}
                         </td>
-                        <td class="gw-text-muted">{{ frequency_labels.get(bill.frequency, bill.frequency) }}</td>
+                        <td class="gw-text-muted" data-sort-value="{{ frequency_labels.get(bill.frequency, bill.frequency) }}">{{ frequency_labels.get(bill.frequency, bill.frequency) }}</td>
                         <td>
                             {% if bill.bill_type == "variable" %}
                             <span class="gw-badge-variable">Variable</span>
@@ -313,6 +315,8 @@
 (function() {
     var currentSort = { key: null, dir: 'asc' };
 
+    var colMap = { name: 0, provider: 1, amount: 2, frequency: 3, next_due_date: 5 };
+
     window.sortBills = function(key) {
         var tbody = document.getElementById('bills-table-body');
         var rows = Array.from(tbody.querySelectorAll('tr[id^="bill-row-"]'));
@@ -324,7 +328,7 @@
             currentSort.dir = 'asc';
         }
 
-        var colIndex = key === 'amount' ? 2 : 5;
+        var colIndex = colMap[key];
 
         rows.sort(function(a, b) {
             var aVal = a.children[colIndex].getAttribute('data-sort-value');
