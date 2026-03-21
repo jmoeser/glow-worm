@@ -739,3 +739,183 @@ class TestSinkingFundForecast:
         response = authed_client.get(f"/sinking-funds/{savings_fund.id}")
         assert response.status_code == 200
         assert f"/sinking-funds/{savings_fund.id}/forecast" not in response.text
+
+
+class TestSinkingFundHistory:
+    def test_renders_history_page(self, authed_client, sample_sinking_funds):
+        fund = sample_sinking_funds[0]
+        response = authed_client.get(f"/sinking-funds/{fund.id}/history")
+        assert response.status_code == 200
+        assert "History" in response.text
+        assert fund.name in response.text
+
+    def test_404_for_nonexistent_fund(self, authed_client):
+        response = authed_client.get("/sinking-funds/99999/history")
+        assert response.status_code == 404
+
+    def test_unauthenticated_redirects(self, client, sample_sinking_funds):
+        fund = sample_sinking_funds[0]
+        response = client.get(
+            f"/sinking-funds/{fund.id}/history", follow_redirects=False
+        )
+        assert response.status_code == 303
+        assert response.headers["location"] == "/login"
+
+    def test_shows_12_month_rows(self, authed_client, sample_sinking_funds):
+        fund = sample_sinking_funds[0]
+        response = authed_client.get(f"/sinking-funds/{fund.id}/history")
+        assert response.status_code == 200
+        # At least a few distinct month names should appear
+        text = response.text
+        months_found = sum(
+            1
+            for m in [
+                "January",
+                "February",
+                "March",
+                "April",
+                "May",
+                "June",
+                "July",
+                "August",
+                "September",
+                "October",
+                "November",
+                "December",
+            ]
+            if m in text
+        )
+        assert months_found >= 12
+
+    def test_aggregates_income_and_expenses(
+        self, authed_client, db_session, sample_sinking_funds, sample_category
+    ):
+        fund = sample_sinking_funds[0]
+        db_session.add_all(
+            [
+                Transaction(
+                    date="2026-03-05",
+                    description="March contribution",
+                    amount=500.00,
+                    category_id=sample_category.id,
+                    type="income",
+                    transaction_type="contribution",
+                    sinking_fund_id=fund.id,
+                ),
+                Transaction(
+                    date="2026-03-20",
+                    description="March withdrawal",
+                    amount=150.00,
+                    category_id=sample_category.id,
+                    type="expense",
+                    transaction_type="withdrawal",
+                    sinking_fund_id=fund.id,
+                ),
+                Transaction(
+                    date="2026-02-10",
+                    description="Feb contribution",
+                    amount=400.00,
+                    category_id=sample_category.id,
+                    type="income",
+                    transaction_type="contribution",
+                    sinking_fund_id=fund.id,
+                ),
+            ]
+        )
+        db_session.commit()
+
+        response = authed_client.get(f"/sinking-funds/{fund.id}/history")
+        assert response.status_code == 200
+        assert "500.00" in response.text
+        assert "150.00" in response.text
+        assert "400.00" in response.text
+
+    def test_closing_balance_reconstructed_from_current(
+        self, authed_client, db_session, sample_sinking_funds, sample_category
+    ):
+        fund = sample_sinking_funds[0]
+        fund.current_balance = 1000.00
+        db_session.add(
+            Transaction(
+                date="2026-03-01",
+                description="March contribution",
+                amount=300.00,
+                category_id=sample_category.id,
+                type="income",
+                transaction_type="contribution",
+                sinking_fund_id=fund.id,
+            )
+        )
+        db_session.commit()
+
+        response = authed_client.get(f"/sinking-funds/{fund.id}/history")
+        assert response.status_code == 200
+        # Current month closing balance = current_balance = 1000.00
+        assert "1,000.00" in response.text
+        # Previous month closing balance = 1000 - 300 = 700.00
+        assert "700.00" in response.text
+
+    def test_excludes_transactions_outside_12_months(
+        self, authed_client, db_session, sample_sinking_funds, sample_category
+    ):
+        fund = sample_sinking_funds[0]
+        # Transaction 2 years ago — should not appear
+        db_session.add(
+            Transaction(
+                date="2024-01-15",
+                description="Old transaction",
+                amount=999.00,
+                category_id=sample_category.id,
+                type="income",
+                transaction_type="contribution",
+                sinking_fund_id=fund.id,
+            )
+        )
+        db_session.commit()
+
+        response = authed_client.get(f"/sinking-funds/{fund.id}/history")
+        assert response.status_code == 200
+        assert "Old transaction" not in response.text
+
+    def test_empty_state_message(self, authed_client, sample_sinking_funds):
+        fund = sample_sinking_funds[0]
+        response = authed_client.get(f"/sinking-funds/{fund.id}/history")
+        # No transactions but page should render (shows months with zero values)
+        assert response.status_code == 200
+
+    def test_history_tab_on_all_funds(self, authed_client, sample_sinking_funds):
+        for fund in sample_sinking_funds:
+            response = authed_client.get(f"/sinking-funds/{fund.id}")
+            assert response.status_code == 200
+            assert f"/sinking-funds/{fund.id}/history" in response.text
+
+    def test_forecast_and_history_tabs_on_bills_fund(
+        self, authed_client, sample_sinking_funds
+    ):
+        bills_fund = next(f for f in sample_sinking_funds if f.name == "Bills")
+        response = authed_client.get(f"/sinking-funds/{bills_fund.id}")
+        assert response.status_code == 200
+        assert f"/sinking-funds/{bills_fund.id}/forecast" in response.text
+        assert f"/sinking-funds/{bills_fund.id}/history" in response.text
+
+    def test_month_links_point_to_detail_page(
+        self, authed_client, db_session, sample_sinking_funds, sample_category
+    ):
+        fund = sample_sinking_funds[0]
+        db_session.add(
+            Transaction(
+                date="2026-03-10",
+                description="Some transaction",
+                amount=100.00,
+                category_id=sample_category.id,
+                type="income",
+                transaction_type="contribution",
+                sinking_fund_id=fund.id,
+            )
+        )
+        db_session.commit()
+
+        response = authed_client.get(f"/sinking-funds/{fund.id}/history")
+        assert response.status_code == 200
+        # Expandable row for March 2026 should link to the detail page
+        assert f"/sinking-funds/{fund.id}?month=3&year=2026" in response.text

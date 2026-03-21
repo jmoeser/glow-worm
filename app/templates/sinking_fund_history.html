@@ -1,0 +1,122 @@
+{% extends "base.html" %}
+{% block title %}{{ fund.name }} History — Glow Worm{% endblock %}
+{% block content %}
+<div style="max-width: 1100px;">
+
+    <!-- Header -->
+    <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 8px;">
+        <a href="/sinking-funds" class="gw-text-muted" style="text-decoration: none; font-size: 0.9rem;">&larr; Sinking Funds</a>
+    </div>
+    <h2 class="gw-page-header" style="display: flex; align-items: center; gap: 10px;">
+        <span class="gw-dot" style="background-color: {{ fund.color }}; width: 14px; height: 14px; flex-shrink: 0;"></span>
+        {{ fund.name }}
+    </h2>
+    {% if fund.description %}
+    <p class="gw-text-muted" style="margin-top: -8px; margin-bottom: 16px;">{{ fund.description }}</p>
+    {% endif %}
+
+    <!-- Tab navigation -->
+    <div style="display: flex; gap: 4px; margin-bottom: 16px; border-bottom: 1px solid var(--border-dim);">
+        <a href="/sinking-funds/{{ fund.id }}" style="padding: 6px 14px; font-size: 0.875rem; color: var(--text-secondary); text-decoration: none;">Transactions</a>
+        {% if fund.name == "Bills" %}
+        <a href="/sinking-funds/{{ fund.id }}/forecast" style="padding: 6px 14px; font-size: 0.875rem; color: var(--text-secondary); text-decoration: none;">Forecast</a>
+        {% endif %}
+        <span style="padding: 6px 14px; font-size: 0.875rem; font-weight: 600; border-bottom: 2px solid var(--accent); color: var(--accent); cursor: default;">History</span>
+    </div>
+
+    <!-- Summary bar -->
+    <div class="gw-summary-bar gw-section">
+        <div class="gw-summary-item">
+            <span class="gw-summary-label">Current Balance:</span>
+            <span class="gw-summary-value">${{ fund.current_balance|money }}</span>
+        </div>
+        {% if history %}
+        {% set total_in_12 = history | map(attribute='total_in') | sum %}
+        {% set total_out_12 = history | map(attribute='total_out') | sum %}
+        <div class="gw-summary-item">
+            <span class="gw-summary-label">12-Month In:</span>
+            <span class="gw-summary-value" style="color: var(--positive);">+${{ total_in_12|money }}</span>
+        </div>
+        <div class="gw-summary-item">
+            <span class="gw-summary-label">12-Month Out:</span>
+            <span class="gw-summary-value" style="color: var(--negative);">-${{ total_out_12|money }}</span>
+        </div>
+        {% endif %}
+    </div>
+
+    <!-- History table -->
+    <div class="gw-table-wrap gw-section">
+        <div class="gw-overflow-x">
+            {% if history %}
+            <table>
+                <thead>
+                    <tr>
+                        <th>Month</th>
+                        <th class="text-right">Money In</th>
+                        <th class="text-right">Money Out</th>
+                        <th class="text-right">Net</th>
+                        <th class="text-right">Closing Balance</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for row in history %}
+                    <tr{% if row.is_current %} style="background-color: var(--bg-subtle);"{% endif %}>
+                        <td>
+                            {% if row.transactions %}
+                            <details>
+                                <summary style="cursor: pointer; list-style: none; display: flex; align-items: center; gap: 8px;">
+                                    <span style="font-size: 0.6rem; color: var(--text-secondary);">&#9654;</span>
+                                    <a href="/sinking-funds/{{ fund.id }}?month={{ row.month }}&year={{ row.year }}" style="color: var(--text-primary); text-decoration: none;">
+                                        {{ row.month_name }} {{ row.year }}
+                                    </a>
+                                    {% if row.is_current %}<span style="font-size: 0.7rem; color: var(--text-tertiary); font-style: italic;">current</span>{% endif %}
+                                    <span style="font-size: 0.75rem; color: var(--text-secondary);">({{ row.transactions|length }} txn{{ 's' if row.transactions|length != 1 else '' }})</span>
+                                </summary>
+                                <div style="padding: 8px 0 4px 16px;">
+                                    {% for txn in row.transactions %}
+                                    <div style="font-size: 0.8rem; color: var(--text-secondary); padding: 2px 0; display: flex; justify-content: space-between; max-width: 480px;">
+                                        <span style="display: flex; align-items: center; gap: 6px;">
+                                            <span style="color: var(--text-tertiary);">{{ txn.date }}</span>
+                                            {{ txn.description or txn.transaction_type }}
+                                            {% if txn.recurring_bill %}<em style="color: var(--text-tertiary);">({{ txn.recurring_bill.name }})</em>{% endif %}
+                                        </span>
+                                        <span style="font-weight: 500; white-space: nowrap; color: {% if txn.type == 'income' %}var(--positive){% elif txn.type == 'transfer' %}var(--text-tertiary){% else %}var(--negative){% endif %};">
+                                            {% if txn.type == 'income' %}+{% elif txn.type == 'transfer' %}{% else %}-{% endif %}${{ txn.amount|money }}
+                                        </span>
+                                    </div>
+                                    {% endfor %}
+                                </div>
+                            </details>
+                            {% else %}
+                            <span class="gw-text-muted">
+                                {{ row.month_name }} {{ row.year }}
+                                {% if row.is_current %}<span style="font-size: 0.7rem; color: var(--text-tertiary); font-style: italic;">current</span>{% endif %}
+                            </span>
+                            {% endif %}
+                        </td>
+                        <td class="text-right" style="color: {% if row.total_in > 0 %}var(--positive){% else %}var(--text-secondary){% endif %}; white-space: nowrap;">
+                            {% if row.total_in > 0 %}+{% endif %}${{ row.total_in|money }}
+                        </td>
+                        <td class="text-right" style="color: {% if row.total_out > 0 %}var(--negative){% else %}var(--text-secondary){% endif %}; white-space: nowrap;">
+                            {% if row.total_out > 0 %}-{% endif %}${{ row.total_out|money }}
+                        </td>
+                        <td class="text-right" style="white-space: nowrap; color: {% if row.net > 0 %}var(--positive){% elif row.net < 0 %}var(--negative){% else %}var(--text-secondary){% endif %};">
+                            {% if row.net > 0 %}+{% elif row.net < 0 %}&minus;{% endif %}${{ (row.net | abs)|money }}
+                        </td>
+                        <td class="text-right" style="font-weight: 600; white-space: nowrap; color: {% if row.closing_balance < 0 %}var(--negative){% else %}var(--text-primary){% endif %};">
+                            {% if row.closing_balance < 0 %}&minus;${{ (row.closing_balance * -1)|money }}{% else %}${{ row.closing_balance|money }}{% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            {% else %}
+            <div class="gw-card" style="text-align: center; color: var(--text-tertiary); padding: 40px;">
+                No transaction history found.
+            </div>
+            {% endif %}
+        </div>
+    </div>
+
+</div>
+{% endblock %}

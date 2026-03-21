@@ -1,5 +1,6 @@
 import calendar
 import re
+from collections import defaultdict
 from datetime import date, datetime, timedelta
 from decimal import Decimal, InvalidOperation
 
@@ -237,6 +238,108 @@ async def sinking_funds_delete(
     return HTMLResponse("")
 
 
+def _generate_fund_history(fund: SinkingFund, db: Session) -> list[dict]:
+    """Build a 12-month backwards-looking summary for a sinking fund.
+
+    Returns a list of dicts (most-recent month first), each with:
+      year, month, month_name, is_current, total_in, total_out, net,
+      closing_balance, transactions
+    """
+    today = date.today()
+
+    # Start month: 11 months before current → 12 months total including current
+    start_month = today.month - 11
+    start_year = today.year
+    if start_month <= 0:
+        start_month += 12
+        start_year -= 1
+
+    start_date = date(start_year, start_month, 1)
+
+    transactions = (
+        db.query(Transaction)
+        .filter(
+            Transaction.sinking_fund_id == fund.id,
+            Transaction.date >= start_date.isoformat(),
+            Transaction.date <= today.isoformat(),
+        )
+        .options(
+            joinedload(Transaction.category),
+            joinedload(Transaction.recurring_bill),
+        )
+        .order_by(Transaction.date.desc(), Transaction.id.desc())
+        .all()
+    )
+
+    # Group transactions by (year, month)
+    by_month: dict[tuple[int, int], list] = defaultdict(list)
+    for t in transactions:
+        parts = t.date.split("-")
+        by_month[(int(parts[0]), int(parts[1]))].append(t)
+
+    # Build ordered list of (year, month) tuples, oldest → newest
+    months: list[tuple[int, int]] = []
+    y, m = start_year, start_month
+    while (y, m) <= (today.year, today.month):
+        months.append((y, m))
+        if m == 12:
+            y, m = y + 1, 1
+        else:
+            m += 1
+
+    # Reconstruct closing balances by walking backwards from current_balance
+    closing_balances: dict[tuple[int, int], Decimal] = {}
+    running = Decimal(str(fund.current_balance))
+    for ym in reversed(months):
+        txns = by_month.get(ym, [])
+        month_in = sum(
+            (Decimal(str(t.amount)) for t in txns if t.type in ("income", "transfer")),
+            Decimal("0"),
+        )
+        month_out = sum(
+            (
+                Decimal(str(t.amount))
+                for t in txns
+                if t.type not in ("income", "transfer")
+            ),
+            Decimal("0"),
+        )
+        closing_balances[ym] = running.quantize(Decimal("0.01"))
+        running -= month_in - month_out
+
+    # Build result list, most-recent first
+    result = []
+    for ym in reversed(months):
+        y, m = ym
+        txns = by_month.get(ym, [])
+        month_in = sum(
+            (Decimal(str(t.amount)) for t in txns if t.type in ("income", "transfer")),
+            Decimal("0"),
+        ).quantize(Decimal("0.01"))
+        month_out = sum(
+            (
+                Decimal(str(t.amount))
+                for t in txns
+                if t.type not in ("income", "transfer")
+            ),
+            Decimal("0"),
+        ).quantize(Decimal("0.01"))
+        result.append(
+            {
+                "year": y,
+                "month": m,
+                "month_name": calendar.month_name[m],
+                "is_current": (y == today.year and m == today.month),
+                "total_in": month_in,
+                "total_out": month_out,
+                "net": (month_in - month_out).quantize(Decimal("0.01")),
+                "closing_balance": closing_balances[ym],
+                "transactions": txns,
+            }
+        )
+    return result
+
+
 @router.get("/sinking-funds/{fund_id}/forecast", response_class=HTMLResponse)
 async def sinking_fund_forecast(
     request: Request,
@@ -257,6 +360,30 @@ async def sinking_fund_forecast(
             "username": user.username,
             "fund": fund,
             "forecast": forecast,
+        },
+    )
+
+
+@router.get("/sinking-funds/{fund_id}/history", response_class=HTMLResponse)
+async def sinking_fund_history(
+    request: Request,
+    fund_id: int,
+    db: Session = Depends(get_db),
+):
+    user = get_current_user(request)
+    fund = db.query(SinkingFund).filter(SinkingFund.id == fund_id).first()
+    if not fund:
+        return HTMLResponse("Not found", status_code=404)
+
+    history = _generate_fund_history(fund, db)
+
+    return templates.TemplateResponse(
+        request,
+        "sinking_fund_history.html",
+        {
+            "username": user.username,
+            "fund": fund,
+            "history": history,
         },
     )
 

@@ -15,13 +15,14 @@
     <p class="gw-text-muted" style="margin-top: -8px; margin-bottom: 16px;">{{ fund.description }}</p>
     {% endif %}
 
-    {% if fund.name == "Bills" %}
     <!-- Tab navigation -->
     <div style="display: flex; gap: 4px; margin-bottom: 16px; border-bottom: 1px solid var(--border);">
         <span style="padding: 6px 14px; font-size: 0.875rem; font-weight: 600; border-bottom: 2px solid var(--accent); color: var(--accent); cursor: default;">Transactions</span>
+        {% if fund.name == "Bills" %}
         <a href="/sinking-funds/{{ fund.id }}/forecast" style="padding: 6px 14px; font-size: 0.875rem; color: var(--text-secondary); text-decoration: none;">Forecast</a>
+        {% endif %}
+        <a href="/sinking-funds/{{ fund.id }}/history" style="padding: 6px 14px; font-size: 0.875rem; color: var(--text-secondary); text-decoration: none;">History</a>
     </div>
-    {% endif %}
 
     <!-- Month navigation -->
     <div class="gw-month-nav gw-section">
