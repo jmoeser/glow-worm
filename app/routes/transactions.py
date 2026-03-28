@@ -164,6 +164,15 @@ def _budgets_for_month_dropdown(db: Session, month: int, year: int) -> list[Budg
     )
 
 
+def _transfer_category_id(db: Session) -> int | None:
+    cat = (
+        db.query(Category)
+        .filter(Category.type == "transfer", Category.is_deleted == False)  # noqa: E712
+        .first()
+    )
+    return cat.id if cat else None
+
+
 def _transaction_context(
     db: Session,
     month: int,
@@ -216,6 +225,7 @@ def _transaction_context(
         "next_year": next_year,
         "type_filter": type_filter or "",
         "category_filter": category_filter or "",
+        "transfer_category_id": _transfer_category_id(db),
         "today": datetime.now(TIMEZONE).strftime("%Y-%m-%d"),
         "page": page,
         "total_pages": total_pages,
