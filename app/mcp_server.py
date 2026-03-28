@@ -191,9 +191,10 @@ def create_transaction(
             "MCP [user=%s]: created transaction id=%d", _audit_username(), txn.id
         )
         return TransactionResponse.model_validate(txn).model_dump(mode="json")
-    except Exception as exc:
+    except Exception:
+        logger.exception("MCP [user=%s]: error creating transaction", _audit_username())
         db.rollback()
-        return f"Error creating transaction: {exc}"
+        return "Internal error creating transaction."
     finally:
         db.close()
 
@@ -278,9 +279,14 @@ def update_transaction(
             "MCP [user=%s]: updated transaction id=%d", _audit_username(), txn.id
         )
         return TransactionResponse.model_validate(txn).model_dump(mode="json")
-    except Exception as exc:
+    except Exception:
+        logger.exception(
+            "MCP [user=%s]: error updating transaction id=%d",
+            _audit_username(),
+            transaction_id,
+        )
         db.rollback()
-        return f"Error updating transaction: {exc}"
+        return "Internal error updating transaction."
     finally:
         db.close()
 
@@ -310,9 +316,14 @@ def delete_transaction(transaction_id: int) -> str:
             transaction_id,
         )
         return f"Transaction {transaction_id} deleted."
-    except Exception as exc:
+    except Exception:
+        logger.exception(
+            "MCP [user=%s]: error deleting transaction id=%d",
+            _audit_username(),
+            transaction_id,
+        )
         db.rollback()
-        return f"Error deleting transaction: {exc}"
+        return "Internal error deleting transaction."
     finally:
         db.close()
 
@@ -438,9 +449,10 @@ def create_bill(
             bill.name,
         )
         return RecurringBillResponse.model_validate(bill).model_dump(mode="json")
-    except Exception as exc:
+    except Exception:
+        logger.exception("MCP [user=%s]: error creating bill", _audit_username())
         db.rollback()
-        return f"Error creating bill: {exc}"
+        return "Internal error creating bill."
     finally:
         db.close()
 
@@ -511,9 +523,12 @@ def update_bill(
 
         logger.info("MCP [user=%s]: updated bill id=%d", _audit_username(), bill.id)
         return RecurringBillResponse.model_validate(bill).model_dump(mode="json")
-    except Exception as exc:
+    except Exception:
+        logger.exception(
+            "MCP [user=%s]: error updating bill id=%d", _audit_username(), bill_id
+        )
         db.rollback()
-        return f"Error updating bill: {exc}"
+        return "Internal error updating bill."
     finally:
         db.close()
 
@@ -542,8 +557,11 @@ def delete_bill(bill_id: int) -> str:
 
         logger.info("MCP [user=%s]: deactivated bill id=%d", _audit_username(), bill_id)
         return f"Bill {bill_id} ('{bill.name}') deactivated."
-    except Exception as exc:
+    except Exception:
+        logger.exception(
+            "MCP [user=%s]: error deactivating bill id=%d", _audit_username(), bill_id
+        )
         db.rollback()
-        return f"Error deactivating bill: {exc}"
+        return "Internal error deactivating bill."
     finally:
         db.close()

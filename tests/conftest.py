@@ -24,6 +24,7 @@ from app.main import app  # noqa: E402
 from app.models import Budget, Category, RecurringBill, SinkingFund, Transaction, User  # noqa: E402
 import app.middleware as _app_middleware  # noqa: E402
 import app.mcp_server as _app_mcp  # noqa: E402
+import app.routes.auth as _app_auth  # noqa: E402
 import app.tasks as _app_tasks  # noqa: E402
 
 # Single in-memory SQLite engine shared across all tests.
@@ -79,10 +80,12 @@ def _app_client(setup_schema, disable_scheduler):
 @pytest.fixture(autouse=True)
 def setup_database(setup_schema):
     """Delete all rows after each test to ensure isolation between tests."""
+    _app_auth._fail_times.clear()
     yield
     with engine.begin() as conn:
         for table in reversed(Base.metadata.sorted_tables):
             conn.execute(table.delete())
+    _app_auth._fail_times.clear()
 
 
 @pytest.fixture

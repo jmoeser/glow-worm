@@ -1,5 +1,4 @@
 import hashlib
-import hmac
 import secrets
 
 import bcrypt
@@ -28,9 +27,3 @@ def hash_api_key(key: str) -> str:
     practical attack vector. SHA-256 allows O(1) lookup by hash.
     """
     return hashlib.sha256(key.encode("utf-8")).hexdigest()
-
-
-def verify_api_key(plain_key: str, key_hash: str) -> bool:
-    """Verify an API key against its stored hash (constant-time)."""
-    computed = hashlib.sha256(plain_key.encode("utf-8")).hexdigest()
-    return hmac.compare_digest(computed, key_hash)

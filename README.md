@@ -251,6 +251,26 @@ glow dashboard --json | jq '{net_worth: .total_net_worth}'
 
 Deletion and mutation commands also return the API response body as JSON when `--json` is set.
 
+## Security
+
+### Login Rate Limiting
+
+The `/login` endpoint rate-limits by IP address to prevent brute-force attacks. After **5 failed attempts within a 5-minute window**, that IP is blocked for **15 minutes**. The counter resets on a successful login.
+
+Rate limiting state is held in memory and resets on server restart.
+
+**Reverse proxy requirement:** The rate limiter reads the client IP from the `X-Forwarded-For` header. This header must be set (and any client-supplied value overwritten) by a trusted reverse proxy — otherwise a client could spoof any IP and bypass the limit. Caddy sets this automatically on all `reverse_proxy` directives. If you are running without a reverse proxy, the limiter falls back to the direct connection IP.
+
+### Session Security
+
+- Sessions are signed with `SECRET_KEY` using `itsdangerous` and expire after 7 days.
+- Changing your password immediately invalidates all existing sessions via a `session_version` counter.
+- Set `SECURE_COOKIES=true` (the default) in production so session and CSRF cookies are only sent over HTTPS.
+
+### API Keys
+
+API keys are SHA-256 hashed before storage. The plaintext key is shown only once on creation. Keys are rate-limited to 1 new key per 24 hours and a maximum of 5 active keys per user.
+
 ## Development
 
 ### Running Tests

@@ -74,6 +74,7 @@ Hooks run automatically on `git commit`. Install with `uv run pre-commit install
 - When modifying Pydantic models or API responses, ensure all values are JSON-serializable. Specifically, convert Decimal objects to float before returning them in responses or error payloads.
 - FastMCP 2.x `@mcp.tool()` wraps functions into `FunctionTool` objects, not plain callables. Use `.fn` to access the underlying function for testing.
 - SQLite needs batch mode (`render_as_batch=True`) for ALTER TABLE operations in Alembic migrations.
+- **Exception syntax**: always use Python 3 tuple syntax — `except (ValueError, TypeError):`. Never use the Python 2 comma form `except ValueError, TypeError:` which is a `SyntaxError` in Python 3.
 
 ## CLI (`glow`)
 - Entry point: `glow = "app.cli.main:app"` (defined in `[project.scripts]`).
