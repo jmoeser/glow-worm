@@ -628,3 +628,148 @@ class TestBudgetTransferFundBalance:
         db_session.expire_all()
         db_session.refresh(budget)
         assert Decimal(str(budget.fund_balance)) == Decimal("0.00")
+
+
+class TestFundTransfer:
+    def test_creates_two_transactions(
+        self, authed_client, db_session, sample_sinking_funds, transfer_category
+    ):
+        from_fund, to_fund = sample_sinking_funds
+        response = authed_client.post(
+            "/transactions/fund-transfer",
+            data={
+                "date": "2026-01-15",
+                "description": "Move to savings",
+                "amount": "200.00",
+                "from_fund_id": str(from_fund.id),
+                "to_fund_id": str(to_fund.id),
+                "month": "1",
+                "year": "2026",
+            },
+            headers={"x-csrftoken": authed_client.csrf_token},
+        )
+        assert response.status_code == 200
+        txns = (
+            db_session.query(Transaction)
+            .filter(Transaction.description == "Move to savings")
+            .all()
+        )
+        assert len(txns) == 2
+
+    def test_adjusts_both_fund_balances(
+        self, authed_client, db_session, sample_sinking_funds, transfer_category
+    ):
+        from_fund, to_fund = sample_sinking_funds
+        from_fund.current_balance = 500.0
+        to_fund.current_balance = 100.0
+        db_session.commit()
+
+        authed_client.post(
+            "/transactions/fund-transfer",
+            data={
+                "date": "2026-01-15",
+                "amount": "200.00",
+                "from_fund_id": str(from_fund.id),
+                "to_fund_id": str(to_fund.id),
+                "month": "1",
+                "year": "2026",
+            },
+            headers={"x-csrftoken": authed_client.csrf_token},
+        )
+
+        db_session.expire_all()
+        db_session.refresh(from_fund)
+        db_session.refresh(to_fund)
+        assert Decimal(str(from_fund.current_balance)) == Decimal("300.00")
+        assert Decimal(str(to_fund.current_balance)) == Decimal("300.00")
+
+    def test_withdrawal_and_transfer_types(
+        self, authed_client, db_session, sample_sinking_funds, transfer_category
+    ):
+        from_fund, to_fund = sample_sinking_funds
+        authed_client.post(
+            "/transactions/fund-transfer",
+            data={
+                "date": "2026-01-15",
+                "amount": "50.00",
+                "from_fund_id": str(from_fund.id),
+                "to_fund_id": str(to_fund.id),
+                "month": "1",
+                "year": "2026",
+            },
+            headers={"x-csrftoken": authed_client.csrf_token},
+        )
+        txns = db_session.query(Transaction).all()
+        types = {t.type for t in txns}
+        assert "expense" in types
+        assert "transfer" in types
+
+    def test_error_on_same_fund(
+        self, authed_client, sample_sinking_funds, transfer_category
+    ):
+        fund = sample_sinking_funds[0]
+        response = authed_client.post(
+            "/transactions/fund-transfer",
+            data={
+                "date": "2026-01-15",
+                "amount": "50.00",
+                "from_fund_id": str(fund.id),
+                "to_fund_id": str(fund.id),
+                "month": "1",
+                "year": "2026",
+            },
+            headers={"x-csrftoken": authed_client.csrf_token},
+        )
+        assert response.status_code == 200
+        assert "same fund" in response.text.lower()
+
+    def test_error_on_missing_amount(
+        self, authed_client, sample_sinking_funds, transfer_category
+    ):
+        from_fund, to_fund = sample_sinking_funds
+        response = authed_client.post(
+            "/transactions/fund-transfer",
+            data={
+                "date": "2026-01-15",
+                "amount": "",
+                "from_fund_id": str(from_fund.id),
+                "to_fund_id": str(to_fund.id),
+                "month": "1",
+                "year": "2026",
+            },
+            headers={"x-csrftoken": authed_client.csrf_token},
+        )
+        assert response.status_code == 200
+        assert "invalid" in response.text.lower() or "required" in response.text.lower()
+
+    def test_403_without_csrf(self, authed_client, sample_sinking_funds):
+        from_fund, to_fund = sample_sinking_funds
+        response = authed_client.post(
+            "/transactions/fund-transfer",
+            data={
+                "date": "2026-01-15",
+                "amount": "50.00",
+                "from_fund_id": str(from_fund.id),
+                "to_fund_id": str(to_fund.id),
+            },
+        )
+        assert response.status_code == 403
+
+    def test_uses_transfer_category(
+        self, authed_client, db_session, sample_sinking_funds, transfer_category
+    ):
+        from_fund, to_fund = sample_sinking_funds
+        authed_client.post(
+            "/transactions/fund-transfer",
+            data={
+                "date": "2026-01-15",
+                "amount": "75.00",
+                "from_fund_id": str(from_fund.id),
+                "to_fund_id": str(to_fund.id),
+                "month": "1",
+                "year": "2026",
+            },
+            headers={"x-csrftoken": authed_client.csrf_token},
+        )
+        txns = db_session.query(Transaction).all()
+        assert all(t.category_id == transfer_category.id for t in txns)

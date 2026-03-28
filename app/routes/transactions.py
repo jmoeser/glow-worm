@@ -250,7 +250,11 @@ def _adjust_sinking_fund_balance(
     fund = db.query(SinkingFund).filter(SinkingFund.id == sinking_fund_id).first()
     if fund is None:
         return
-    delta = Decimal(str(amount)) if txn_type == "income" else -Decimal(str(amount))
+    delta = (
+        Decimal(str(amount))
+        if txn_type in ("income", "transfer")
+        else -Decimal(str(amount))
+    )
     if reverse:
         delta = -delta
     fund.current_balance = float(
@@ -453,6 +457,97 @@ async def transactions_create(request: Request, db: Session = Depends(get_db)):
     db.add(txn)
     _adjust_sinking_fund_balance(db, sinking_fund_id, txn_type, float(amount))
     _adjust_budget_fund_balance(db, budget_id, transaction_type, float(amount))
+    db.commit()
+
+    return HTMLResponse(_render_table_body(request, db, month, year))
+
+
+@router.post("/transactions/fund-transfer", response_class=HTMLResponse)
+async def fund_transfer(request: Request, db: Session = Depends(get_db)):
+    form = await request.form()
+
+    date = str(form.get("date") or "").strip()
+    raw_amount = str(form.get("amount") or "")
+    description = str(form.get("description") or "").strip() or None
+    raw_from = str(form.get("from_fund_id") or "")
+    raw_to = str(form.get("to_fund_id") or "")
+    raw_month = str(form.get("month") or "")
+    raw_year = str(form.get("year") or "")
+
+    if not date:
+        return HTMLResponse('<p class="text-red-600 text-sm">Date is required.</p>')
+
+    try:
+        amount = Decimal(raw_amount)
+    except InvalidOperation, TypeError:
+        return HTMLResponse('<p class="text-red-600 text-sm">Invalid amount.</p>')
+
+    if amount <= 0:
+        return HTMLResponse(
+            '<p class="text-red-600 text-sm">Amount must be greater than zero.</p>'
+        )
+
+    try:
+        from_fund_id = int(raw_from)
+        to_fund_id = int(raw_to)
+    except ValueError, TypeError:
+        return HTMLResponse(
+            '<p class="text-red-600 text-sm">Both funds are required.</p>'
+        )
+
+    if from_fund_id == to_fund_id:
+        return HTMLResponse(
+            '<p class="text-red-600 text-sm">Cannot transfer to the same fund.</p>'
+        )
+
+    from_fund = db.query(SinkingFund).filter(SinkingFund.id == from_fund_id).first()
+    to_fund = db.query(SinkingFund).filter(SinkingFund.id == to_fund_id).first()
+    if not from_fund or not to_fund:
+        return HTMLResponse('<p class="text-red-600 text-sm">Fund not found.</p>')
+
+    transfer_cat = (
+        db.query(Category)
+        .filter(Category.type == "transfer", Category.is_deleted == False)  # noqa: E712
+        .first()
+    )
+    if not transfer_cat:
+        return HTMLResponse(
+            '<p class="text-red-600 text-sm">No transfer category configured.</p>'
+        )
+
+    try:
+        month = int(raw_month)
+        year = int(raw_year)
+    except ValueError, TypeError:
+        month, year = _current_month_year()
+
+    desc_out = description or f"Transfer to {to_fund.name}"
+    desc_in = description or f"Transfer from {from_fund.name}"
+
+    withdrawal = Transaction(
+        date=date,
+        description=desc_out,
+        amount=float(amount),
+        category_id=transfer_cat.id,
+        type="expense",
+        transaction_type="withdrawal",
+        sinking_fund_id=from_fund_id,
+        is_paid=True,
+    )
+    contribution = Transaction(
+        date=date,
+        description=desc_in,
+        amount=float(amount),
+        category_id=transfer_cat.id,
+        type="transfer",
+        transaction_type="contribution",
+        sinking_fund_id=to_fund_id,
+        is_paid=True,
+    )
+    db.add(withdrawal)
+    db.add(contribution)
+    _adjust_sinking_fund_balance(db, from_fund_id, "expense", float(amount))
+    _adjust_sinking_fund_balance(db, to_fund_id, "transfer", float(amount))
     db.commit()
 
     return HTMLResponse(_render_table_body(request, db, month, year))

@@ -316,6 +316,55 @@
         </form>
     </details>
 
+    <!-- Transfer Between Funds -->
+    <details class="gw-details gw-section">
+        <summary>Transfer Between Funds</summary>
+        <form hx-post="/transactions/fund-transfer" hx-target="#transactions-table-body" hx-swap="innerHTML"
+              hx-on::after-request="if(event.detail.successful) { this.closest('details').removeAttribute('open'); this.reset(); document.getElementById('transactions-message').innerHTML = '<p class=\'gw-msg-success\'>Transfer recorded.</p>'; } else { document.getElementById('transactions-message').innerHTML = event.detail.xhr.responseText; }"
+              style="margin-top: 16px;">
+            <input type="hidden" name="month" value="{{ month }}">
+            <input type="hidden" name="year" value="{{ year }}">
+            <div class="gw-grid-3">
+                <div>
+                    <label class="gw-label">Date</label>
+                    <input type="date" name="date" required class="gw-input" value="{{ today }}">
+                </div>
+                <div>
+                    <label class="gw-label">Description</label>
+                    <input type="text" name="description" class="gw-input" placeholder="Optional description">
+                </div>
+                <div>
+                    <label class="gw-label">Amount</label>
+                    <div style="position: relative;">
+                        <span style="position: absolute; left: 10px; top: 50%; transform: translateY(-50%); color: var(--text-tertiary); pointer-events: none; font-size: 0.9rem;">$</span>
+                        <input type="number" name="amount" step="0.01" min="0.01" required class="gw-input" placeholder="0.00" style="padding-left: 22px;">
+                    </div>
+                </div>
+                <div>
+                    <label class="gw-label">From Fund</label>
+                    <select name="from_fund_id" required class="gw-select">
+                        <option value="">Select fund</option>
+                        {% for sf in sinking_funds %}
+                        <option value="{{ sf.id }}">{{ sf.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div>
+                    <label class="gw-label">To Fund</label>
+                    <select name="to_fund_id" required class="gw-select">
+                        <option value="">Select fund</option>
+                        {% for sf in sinking_funds %}
+                        <option value="{{ sf.id }}">{{ sf.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div style="display: flex; align-items: flex-end;">
+                    <button type="submit" class="gw-btn gw-btn-primary">Transfer</button>
+                </div>
+            </div>
+        </form>
+    </details>
+
     <script>
 function gwToggleSinkingFundType(select) {
         var typeInput = document.getElementById('sf-type-input');

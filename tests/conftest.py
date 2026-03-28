@@ -163,6 +163,15 @@ def sample_category(db_session):
 
 
 @pytest.fixture
+def transfer_category(db_session):
+    cat = Category(name="Transfer", type="transfer", color="#888888", is_system=True)
+    db_session.add(cat)
+    db_session.commit()
+    db_session.refresh(cat)
+    return cat
+
+
+@pytest.fixture
 def sample_bills(db_session, sample_category):
     bills = [
         RecurringBill(
