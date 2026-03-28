@@ -297,6 +297,7 @@ class IncomeAllocationCreate(BaseModel):
     bills_fund_fixed_amount: Decimal | None = Field(None, ge=0)
     sinking_fund_allocations: list[IncomeAllocationToSinkingFundCreate] = []
     recurring_transfers: list[IncomeAllocationRecurringTransferCreate] = []
+    overflow_sinking_fund_id: int | None = None
 
 
 class IncomeAllocationUpdate(BaseModel):
@@ -305,6 +306,7 @@ class IncomeAllocationUpdate(BaseModel):
     bills_fund_allocation_type: BillsAllocationMethod | None = None
     bills_fund_fixed_amount: Decimal | None = Field(None, ge=0)
     sinking_fund_allocations: list[IncomeAllocationToSinkingFundCreate] | None = None
+    overflow_sinking_fund_id: int | None = None
 
 
 class IncomeAllocationResponse(BaseModel):
@@ -317,6 +319,7 @@ class IncomeAllocationResponse(BaseModel):
     bills_fund_fixed_amount: Decimal | None = None
     sinking_fund_allocations: list[IncomeAllocationToSinkingFundResponse] = []
     recurring_transfers: list[IncomeAllocationRecurringTransferResponse] = []
+    overflow_sinking_fund_id: int | None = None
     created_at: datetime
     updated_at: datetime
 

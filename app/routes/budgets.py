@@ -67,7 +67,12 @@ def _budget_context(db: Session, month: int, year: int) -> dict:
     total_spent = sum(
         (Decimal(str(b.spent_amount)) for b in budgets), Decimal("0")
     ).quantize(Decimal("0.01"))
-    total_remaining = (total_allocated - total_spent).quantize(Decimal("0.01"))
+    total_fund_balance = sum(
+        (Decimal(str(b.fund_balance)) for b in budgets), Decimal("0")
+    ).quantize(Decimal("0.01"))
+    total_remaining = (total_allocated + total_fund_balance - total_spent).quantize(
+        Decimal("0.01")
+    )
 
     income_allocation = (
         db.query(IncomeAllocation).order_by(IncomeAllocation.id.desc()).first()

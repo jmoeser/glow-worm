@@ -31,6 +31,7 @@ def _upsert_allocation(
     bills_fund_fixed_amount: Decimal | None,
     fund_allocations: list[dict],
     recurring_transfers: list[IncomeAllocationRecurringTransferCreate] | None = None,
+    overflow_sinking_fund_id: int | None = None,
 ) -> tuple[IncomeAllocation, bool]:
     """Create or update the single IncomeAllocation row.
 
@@ -45,6 +46,7 @@ def _upsert_allocation(
             monthly_budget_allocation=monthly_budget_allocation,
             bills_fund_allocation_type=bills_fund_allocation_type,
             bills_fund_fixed_amount=bills_fund_fixed_amount,
+            overflow_sinking_fund_id=overflow_sinking_fund_id,
         )
         db.add(allocation)
         db.flush()
@@ -58,6 +60,7 @@ def _upsert_allocation(
             if bills_fund_fixed_amount is not None
             else None
         )
+        allocation.overflow_sinking_fund_id = overflow_sinking_fund_id
         # Delete existing junction rows
         db.query(IncomeAllocationToSinkingFund).filter(
             IncomeAllocationToSinkingFund.income_allocation_id == allocation.id
@@ -201,6 +204,14 @@ async def income_save(request: Request, db: Session = Depends(get_db)):
                     )
                 )
 
+    raw_overflow = form.get("overflow_sinking_fund_id")
+    overflow_sinking_fund_id: int | None = None
+    if raw_overflow:
+        try:
+            overflow_sinking_fund_id = int(str(raw_overflow))
+        except ValueError:
+            pass
+
     _upsert_allocation(
         db,
         monthly_income_amount,
@@ -209,6 +220,7 @@ async def income_save(request: Request, db: Session = Depends(get_db)):
         bills_fund_fixed_amount,
         fund_allocations,
         transfers,
+        overflow_sinking_fund_id,
     )
 
     return HTMLResponse(
@@ -258,6 +270,7 @@ async def api_post_income(request: Request, db: Session = Depends(get_db)):
         bills_fixed,
         fund_allocations,
         data.recurring_transfers,
+        data.overflow_sinking_fund_id,
     )
 
     response = IncomeAllocationResponse.model_validate(allocation)

@@ -1,4 +1,6 @@
-from app.models import Transaction
+from decimal import Decimal
+
+from app.models import Budget, Transaction
 from app.routes.transactions import PAGE_SIZE
 
 
@@ -524,3 +526,105 @@ class TestApiTransactionsDelete:
             headers={"x-csrftoken": authed_client.csrf_token},
         )
         assert response.status_code == 404
+
+
+class TestBudgetTransferFundBalance:
+    """budget_transfer transactions must update Budget.fund_balance."""
+
+    def _make_budget(self, db_session, category, amount=500):
+        budget = Budget(
+            category_id=category.id,
+            month=3,
+            year=2026,
+            allocated_amount=amount,
+            spent_amount=amount + 50,  # overspent
+            fund_balance=0,
+        )
+        db_session.add(budget)
+        db_session.commit()
+        db_session.refresh(budget)
+        return budget
+
+    def test_api_create_budget_transfer_increases_fund_balance(
+        self, authed_client, db_session, sample_category, sample_sinking_funds
+    ):
+        budget = self._make_budget(db_session, sample_category)
+        fund = sample_sinking_funds[1]  # Savings
+
+        response = authed_client.post(
+            "/api/transactions",
+            json={
+                "date": "2026-03-15",
+                "description": "Cover overspend",
+                "amount": "100.00",
+                "category_id": sample_category.id,
+                "type": "expense",
+                "transaction_type": "budget_transfer",
+                "sinking_fund_id": fund.id,
+                "budget_id": budget.id,
+            },
+            headers={"x-csrftoken": authed_client.csrf_token},
+        )
+        assert response.status_code == 201
+
+        db_session.expire_all()
+        db_session.refresh(budget)
+        assert Decimal(str(budget.fund_balance)) == Decimal("100.00")
+
+    def test_api_delete_budget_transfer_decreases_fund_balance(
+        self, authed_client, db_session, sample_category, sample_sinking_funds
+    ):
+        budget = self._make_budget(db_session, sample_category)
+        fund = sample_sinking_funds[1]
+
+        # Pre-set fund_balance as if a transfer was already applied
+        budget.fund_balance = 100
+        db_session.commit()
+
+        txn = Transaction(
+            date="2026-03-15",
+            description="Cover overspend",
+            amount=100,
+            category_id=sample_category.id,
+            type="expense",
+            transaction_type="budget_transfer",
+            sinking_fund_id=fund.id,
+            budget_id=budget.id,
+        )
+        db_session.add(txn)
+        db_session.commit()
+
+        response = authed_client.delete(
+            f"/api/transactions/{txn.id}",
+            headers={"x-csrftoken": authed_client.csrf_token},
+        )
+        assert response.status_code == 200
+
+        db_session.expire_all()
+        db_session.refresh(budget)
+        assert Decimal(str(budget.fund_balance)) == Decimal("0.00")
+
+    def test_non_budget_transfer_does_not_touch_fund_balance(
+        self, authed_client, db_session, sample_category, sample_sinking_funds
+    ):
+        budget = self._make_budget(db_session, sample_category)
+        fund = sample_sinking_funds[1]
+
+        response = authed_client.post(
+            "/api/transactions",
+            json={
+                "date": "2026-03-15",
+                "amount": "50.00",
+                "category_id": sample_category.id,
+                "type": "expense",
+                "transaction_type": "budget_expense",
+                "sinking_fund_id": fund.id,
+                "budget_id": budget.id,
+            },
+            headers={"x-csrftoken": authed_client.csrf_token},
+        )
+        assert response.status_code == 201
+
+        db_session.expire_all()
+        db_session.refresh(budget)
+        assert Decimal(str(budget.fund_balance)) == Decimal("0.00")

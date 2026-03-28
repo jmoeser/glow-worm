@@ -167,11 +167,19 @@ class IncomeAllocation(Base):
     created_at: Mapped[datetime] = mapped_column(default=_utcnow)
     updated_at: Mapped[datetime] = mapped_column(default=_utcnow, onupdate=_utcnow)
 
+    overflow_sinking_fund_id: Mapped[int | None] = mapped_column(
+        ForeignKey("sinking_funds.id"), nullable=True
+    )
+
     sinking_fund_allocations: Mapped[list["IncomeAllocationToSinkingFund"]] = (
         relationship(back_populates="income_allocation", cascade="all, delete-orphan")
     )
     recurring_transfers: Mapped[list["IncomeAllocationRecurringTransfer"]] = (
         relationship(back_populates="income_allocation", cascade="all, delete-orphan")
+    )
+    overflow_sinking_fund: Mapped["SinkingFund | None"] = relationship(
+        "SinkingFund",
+        foreign_keys="[IncomeAllocation.overflow_sinking_fund_id]",
     )
 
 

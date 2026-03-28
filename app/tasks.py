@@ -348,9 +348,55 @@ def process_income_allocation(db: Session | None = None) -> None:
             )
             total_allocated += transfer_amount
 
-        # 4. Ensure Budget rows exist for this month
+        # 3c. Sweep prior-month budget surplus to overflow sinking fund
         prev_month = month - 1 if month > 1 else 12
         prev_year = year if month > 1 else year - 1
+
+        overflow_fund = None
+        if allocation.overflow_sinking_fund_id:
+            overflow_fund = (
+                db.query(SinkingFund)
+                .filter(
+                    SinkingFund.id == allocation.overflow_sinking_fund_id,
+                    SinkingFund.is_deleted == False,  # noqa: E712
+                )
+                .first()
+            )
+
+        if overflow_fund:
+            prev_budgets = (
+                db.query(Budget)
+                .filter(Budget.month == prev_month, Budget.year == prev_year)
+                .all()
+            )
+            total_surplus = Decimal("0")
+            for pb in prev_budgets:
+                surplus = (
+                    Decimal(str(pb.allocated_amount))
+                    - Decimal(str(pb.spent_amount))
+                    + Decimal(str(pb.fund_balance))
+                )
+                if surplus > 0:
+                    total_surplus += surplus
+
+            if total_surplus > 0:
+                prev_month_name = calendar.month_name[prev_month]
+                db.add(
+                    Transaction(
+                        date=date_str,
+                        description=f"Budget surplus sweep \u2014 {prev_month_name} {prev_year}",
+                        amount=float(total_surplus),
+                        category_id=transfer_cat.id,
+                        type="transfer",
+                        transaction_type="contribution",
+                        sinking_fund_id=overflow_fund.id,
+                    )
+                )
+                overflow_fund.current_balance = float(
+                    Decimal(str(overflow_fund.current_balance)) + total_surplus
+                )
+
+        # 4. Ensure Budget rows exist for this month
 
         budget_cats = (
             db.query(Category)

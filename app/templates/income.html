@@ -110,6 +110,21 @@
                             class="gw-btn" style="margin-top: 10px; font-size: 0.8rem;">+ Add Transfer</button>
                 </fieldset>
 
+                <!-- Budget Surplus Overflow Fund -->
+                <div>
+                    <label for="overflow_sinking_fund_id" class="gw-label">Budget Surplus Overflow Fund</label>
+                    <p style="font-size: 0.8rem; color: var(--text-secondary); margin-bottom: 8px;">At month-end, any unspent budget surplus is swept into this fund. Leave blank to disable.</p>
+                    <select id="overflow_sinking_fund_id" name="overflow_sinking_fund_id" class="gw-select">
+                        <option value="">-- None (disabled) --</option>
+                        {% for fund in sinking_funds if not fund.is_system %}
+                        <option value="{{ fund.id }}"
+                            {{ 'selected' if allocation and allocation.overflow_sinking_fund_id == fund.id }}>
+                            {{ fund.name }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+
                 <!-- Remainder Display -->
                 <div id="remainder-display" class="gw-remainder gw-remainder--neutral">
                     Remainder: <span id="remainder-value">$0.00</span>

@@ -17,7 +17,7 @@ class TestBudgetsPageGet:
         assert "Category" in response.text
         assert "Allocated" in response.text
         assert "Spent" in response.text
-        assert "Remaining" in response.text
+        assert "Available" in response.text
         assert "Fund Balance" in response.text
 
     def test_lists_budgets_for_current_month(self, authed_client, sample_budgets):

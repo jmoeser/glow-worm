@@ -248,6 +248,32 @@ def _adjust_sinking_fund_balance(
     )
 
 
+def _adjust_budget_fund_balance(
+    db: Session,
+    budget_id: int | None,
+    transaction_type: str,
+    amount: float,
+    reverse: bool = False,
+) -> None:
+    """Adjust a budget's fund_balance for a budget_transfer transaction.
+
+    Only acts when transaction_type is 'budget_transfer' and budget_id is set.
+    A budget_transfer moves money from a sinking fund into the budget, so
+    fund_balance increases on creation and decreases on reversal.
+    """
+    if transaction_type != "budget_transfer" or budget_id is None:
+        return
+    budget = db.query(Budget).filter(Budget.id == budget_id).first()
+    if budget is None:
+        return
+    delta = Decimal(str(amount))
+    if reverse:
+        delta = -delta
+    budget.fund_balance = float(
+        Decimal(str(budget.fund_balance)).quantize(Decimal("0.01")) + delta
+    )
+
+
 def _parse_optional_int(value: str | None) -> int | None:
     if not value:
         return None
@@ -416,6 +442,7 @@ async def transactions_create(request: Request, db: Session = Depends(get_db)):
     )
     db.add(txn)
     _adjust_sinking_fund_balance(db, sinking_fund_id, txn_type, float(amount))
+    _adjust_budget_fund_balance(db, budget_id, transaction_type, float(amount))
     db.commit()
 
     return HTMLResponse(_render_table_body(request, db, month, year))
@@ -461,6 +488,8 @@ async def transactions_update(
 
     old_sf_id = txn.sinking_fund_id
     old_type = txn.type
+    old_txn_type = txn.transaction_type
+    old_budget_id = txn.budget_id
     old_amount = float(txn.amount)
 
     form = await request.form()
@@ -518,7 +547,13 @@ async def transactions_update(
         txn.is_paid = form.get("is_paid") == "on" or form.get("is_paid") == "true"
 
     _adjust_sinking_fund_balance(db, old_sf_id, old_type, old_amount, reverse=True)
+    _adjust_budget_fund_balance(
+        db, old_budget_id, old_txn_type, old_amount, reverse=True
+    )
     _adjust_sinking_fund_balance(db, txn.sinking_fund_id, txn.type, float(txn.amount))
+    _adjust_budget_fund_balance(
+        db, txn.budget_id, txn.transaction_type, float(txn.amount)
+    )
     db.commit()
     db.refresh(txn)
 
@@ -534,6 +569,9 @@ async def transactions_delete(
         return HTMLResponse("Not found", status_code=404)
     _adjust_sinking_fund_balance(
         db, txn.sinking_fund_id, txn.type, float(txn.amount), reverse=True
+    )
+    _adjust_budget_fund_balance(
+        db, txn.budget_id, txn.transaction_type, float(txn.amount), reverse=True
     )
     db.delete(txn)
     db.commit()
@@ -595,6 +633,9 @@ async def api_create_transaction(request: Request, db: Session = Depends(get_db)
     _adjust_sinking_fund_balance(
         db, data.sinking_fund_id, data.type.value, float(data.amount)
     )
+    _adjust_budget_fund_balance(
+        db, data.budget_id, data.transaction_type.value, float(data.amount)
+    )
     db.commit()
     db.refresh(txn)
 
@@ -635,6 +676,8 @@ async def api_update_transaction(
 
     old_sf_id = txn.sinking_fund_id
     old_type = txn.type
+    old_txn_type = txn.transaction_type
+    old_budget_id = txn.budget_id
     old_amount = float(txn.amount)
 
     for field, value in data.model_dump(exclude_unset=True).items():
@@ -644,7 +687,13 @@ async def api_update_transaction(
             setattr(txn, field, value)
 
     _adjust_sinking_fund_balance(db, old_sf_id, old_type, old_amount, reverse=True)
+    _adjust_budget_fund_balance(
+        db, old_budget_id, old_txn_type, old_amount, reverse=True
+    )
     _adjust_sinking_fund_balance(db, txn.sinking_fund_id, txn.type, float(txn.amount))
+    _adjust_budget_fund_balance(
+        db, txn.budget_id, txn.transaction_type, float(txn.amount)
+    )
     db.commit()
     db.refresh(txn)
 
@@ -661,6 +710,9 @@ async def api_delete_transaction(
         return JSONResponse({"detail": "Transaction not found"}, status_code=404)
     _adjust_sinking_fund_balance(
         db, txn.sinking_fund_id, txn.type, float(txn.amount), reverse=True
+    )
+    _adjust_budget_fund_balance(
+        db, txn.budget_id, txn.transaction_type, float(txn.amount), reverse=True
     )
     db.delete(txn)
     db.commit()

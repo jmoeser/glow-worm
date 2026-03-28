@@ -301,9 +301,18 @@
                 </div>
                 <div>
                     <label class="gw-label">Classification</label>
-                    <select name="transaction_type" class="gw-select">
+                    <select name="transaction_type" class="gw-select" onchange="gwToggleBudgetTransferFund(this)">
                         <option value="budget_expense" selected>Budget Expense</option>
-                        <option value="budget_transfer">Budget Transfer</option>
+                        <option value="budget_transfer">Budget Transfer (from fund)</option>
+                    </select>
+                </div>
+                <div id="budget-transfer-fund-row" class="hidden">
+                    <label class="gw-label">Source Fund</label>
+                    <select name="sinking_fund_id" class="gw-select" id="budget-transfer-fund-select">
+                        <option value="">Select fund</option>
+                        {% for sf in sinking_funds %}
+                        <option value="{{ sf.id }}">{{ sf.name }}</option>
+                        {% endfor %}
                     </select>
                 </div>
                 <div>
@@ -349,6 +358,18 @@
             incomeSpan.style.color = 'var(--positive)';
             expenseSpan.style.background = '';
             expenseSpan.style.color = 'var(--text-secondary)';
+        }
+    }
+    function gwToggleBudgetTransferFund(select) {
+        var row = document.getElementById('budget-transfer-fund-row');
+        var fundSelect = document.getElementById('budget-transfer-fund-select');
+        if (select.value === 'budget_transfer') {
+            row.classList.remove('hidden');
+            fundSelect.required = true;
+        } else {
+            row.classList.add('hidden');
+            fundSelect.required = false;
+            fundSelect.value = '';
         }
     }
     function gwResetTypeToggle(form) {
