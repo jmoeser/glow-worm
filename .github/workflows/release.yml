@@ -7,6 +7,7 @@ on:
 permissions:
   contents: write
   packages: write
+  id-token: write
 
 env:
   REGISTRY: ghcr.io
@@ -48,6 +49,9 @@ jobs:
             --title "${{ steps.version.outputs.tag }}" \
             --generate-notes
 
+      - name: Install Cosign
+        uses: sigstore/cosign-installer@v3
+
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
 
@@ -71,6 +75,7 @@ jobs:
             type=raw,value=latest
 
       - name: Build and push Docker image
+        id: build
         uses: docker/build-push-action@v6
         with:
           context: .
@@ -78,3 +83,8 @@ jobs:
           platforms: linux/amd64,linux/arm64
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+
+      - name: Sign container image
+        run: |
+          cosign sign --yes \
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ steps.build.outputs.digest }}
