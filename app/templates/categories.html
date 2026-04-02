@@ -10,6 +10,7 @@
         <span class="gw-badge {% if cat.type == 'income' %}gw-badge-income{% elif cat.type == 'transfer' %}gw-badge-transfer{% else %}gw-badge-expense{% endif %}">{{ cat.type }}</span>
     </td>
     <td>{{ "Yes" if cat.is_budget_category else "–" }}</td>
+    <td>{{ "Yes" if cat.exclude_from_monthly_cost else "–" }}</td>
     <td>
         <button hx-get="/categories/{{ cat.id }}/edit" hx-target="#cat-row-{{ cat.id }}" hx-swap="outerHTML"
                 class="gw-action-edit">Edit</button>
@@ -35,6 +36,7 @@
         <span class="gw-badge {% if cat.type == 'income' %}gw-badge-income{% elif cat.type == 'transfer' %}gw-badge-transfer{% else %}gw-badge-expense{% endif %}">{{ cat.type }}</span>
     </td>
     <td>{{ "Yes" if cat.is_budget_category else "–" }}</td>
+    <td>{{ "Yes" if cat.exclude_from_monthly_cost else "–" }}</td>
     <td>
         <button hx-get="/categories/{{ cat.id }}/edit" hx-target="#cat-row-{{ cat.id }}" hx-swap="outerHTML"
                 class="gw-action-edit">Edit</button>
@@ -69,6 +71,10 @@
     <td>
         <input type="checkbox" name="is_budget_category" value="on" form="edit-form-{{ cat.id }}"
                {% if cat.is_budget_category %}checked{% endif %}>
+    </td>
+    <td>
+        <input type="checkbox" name="exclude_from_monthly_cost" value="on" form="edit-form-{{ cat.id }}"
+               {% if cat.exclude_from_monthly_cost %}checked{% endif %}>
     </td>
     <td>
         <form id="edit-form-{{ cat.id }}" hx-post="/categories/{{ cat.id }}" hx-target="#cat-row-{{ cat.id }}" hx-swap="outerHTML" style="display: inline;">
@@ -117,6 +123,10 @@
                 <input type="checkbox" id="cat-budget" name="is_budget_category" value="on">
                 <label for="cat-budget" class="gw-label" style="margin: 0;">Budget Category</label>
             </div>
+            <div style="display: flex; align-items: center; gap: 8px; padding-top: 24px;">
+                <input type="checkbox" id="cat-exclude" name="exclude_from_monthly_cost" value="on">
+                <label for="cat-exclude" class="gw-label" style="margin: 0;" title="Hide this category from the Monthly Cost page">Skip Monthly Cost</label>
+            </div>
             <div style="grid-column: 1 / -1;">
                 <button type="submit" class="gw-btn gw-btn-primary">Add Category</button>
             </div>
@@ -144,6 +154,7 @@
                         <th>Name</th>
                         <th>Type</th>
                         <th>Budget Category</th>
+                        <th title="Exclude from the Monthly Cost page">Skip Monthly Cost</th>
                         <th>Actions</th>
                     </tr>
                 </thead>
@@ -158,6 +169,7 @@
                             <span class="gw-badge {% if cat.type == 'income' %}gw-badge-income{% elif cat.type == 'transfer' %}gw-badge-transfer{% else %}gw-badge-expense{% endif %}">{{ cat.type }}</span>
                         </td>
                         <td>{{ "Yes" if cat.is_budget_category else "–" }}</td>
+                        <td>{{ "Yes" if cat.exclude_from_monthly_cost else "–" }}</td>
                         <td>
                             <button hx-get="/categories/{{ cat.id }}/edit" hx-target="#cat-row-{{ cat.id }}" hx-swap="outerHTML"
                                     class="gw-action-edit">Edit</button>

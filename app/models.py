@@ -38,6 +38,7 @@ class Category(Base):
     is_budget_category: Mapped[bool] = mapped_column(default=False)
     is_deleted: Mapped[bool] = mapped_column(default=False)
     is_system: Mapped[bool] = mapped_column(default=False)
+    exclude_from_monthly_cost: Mapped[bool] = mapped_column(default=False)
 
     transactions: Mapped[list["Transaction"]] = relationship(back_populates="category")
     budgets: Mapped[list["Budget"]] = relationship(back_populates="category")

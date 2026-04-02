@@ -428,3 +428,78 @@ class TestSystemCategoryProtection:
         )
         assert cat is not None
         assert cat.type == "transfer"
+
+
+class TestExcludeFromMonthlyCost:
+    def test_create_with_exclude_flag_via_form(self, authed_client, db_session):
+        authed_client.post(
+            "/categories",
+            data={
+                "name": "Investments",
+                "type": "expense",
+                "color": "#8B5CF6",
+                "exclude_from_monthly_cost": "on",
+            },
+            headers={"x-csrftoken": authed_client.csrf_token},
+        )
+        cat = db_session.query(Category).filter(Category.name == "Investments").first()
+        assert cat is not None
+        assert cat.exclude_from_monthly_cost is True
+
+    def test_create_without_flag_defaults_false(self, authed_client, db_session):
+        authed_client.post(
+            "/categories",
+            data={"name": "Groceries", "type": "expense", "color": "#22C55E"},
+            headers={"x-csrftoken": authed_client.csrf_token},
+        )
+        cat = db_session.query(Category).filter(Category.name == "Groceries").first()
+        assert cat is not None
+        assert cat.exclude_from_monthly_cost is False
+
+    def test_update_sets_exclude_flag(
+        self, authed_client, db_session, sample_categories
+    ):
+        cat = sample_categories[0]
+        assert cat.exclude_from_monthly_cost is False
+        authed_client.post(
+            f"/categories/{cat.id}",
+            data={
+                "name": cat.name,
+                "type": cat.type,
+                "color": cat.color,
+                "exclude_from_monthly_cost": "on",
+            },
+            headers={"x-csrftoken": authed_client.csrf_token},
+        )
+        db_session.refresh(cat)
+        assert cat.exclude_from_monthly_cost is True
+
+    def test_update_clears_exclude_flag(self, authed_client, db_session):
+        cat = Category(
+            name="Broker",
+            type="expense",
+            color="#8B5CF6",
+            exclude_from_monthly_cost=True,
+        )
+        db_session.add(cat)
+        db_session.commit()
+        authed_client.post(
+            f"/categories/{cat.id}",
+            data={"name": cat.name, "type": cat.type, "color": cat.color},
+            headers={"x-csrftoken": authed_client.csrf_token},
+        )
+        db_session.refresh(cat)
+        assert cat.exclude_from_monthly_cost is False
+
+    def test_api_response_includes_flag(self, authed_client, db_session):
+        cat = Category(
+            name="Broker",
+            type="expense",
+            color="#8B5CF6",
+            exclude_from_monthly_cost=True,
+        )
+        db_session.add(cat)
+        db_session.commit()
+        response = authed_client.get(f"/api/categories/{cat.id}")
+        assert response.status_code == 200
+        assert response.json()["exclude_from_monthly_cost"] is True

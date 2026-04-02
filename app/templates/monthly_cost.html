@@ -1,0 +1,87 @@
+{% extends "base.html" %}
+{% block title %}Monthly Cost — Glow Worm{% endblock %}
+{% block content %}
+<h1 class="gw-page-header">Monthly Cost</h1>
+
+{% if not rows %}
+<div class="gw-section">
+    <div class="gw-card" style="text-align: center; color: var(--text-tertiary); padding: 40px;">
+        No expense transactions recorded yet. Start logging expenses to see your true monthly cost.
+    </div>
+</div>
+{% else %}
+
+<div class="gw-section">
+    <div style="display: flex; gap: 16px; flex-wrap: wrap; align-items: stretch;">
+        <div class="gw-card" style="flex: 1; min-width: 180px;">
+            <div class="gw-stat-label">True Monthly Cost</div>
+            <div class="gw-stat" style="font-size: 2rem; color: var(--text-glow);">${{ grand_monthly_avg|money }}</div>
+        </div>
+        <div class="gw-card" style="flex: 1; min-width: 180px;">
+            <div class="gw-stat-label">All-time Total Spent</div>
+            <div class="gw-stat" style="font-size: 1.5rem;">${{ grand_total|money }}</div>
+        </div>
+        <div class="gw-card" style="flex: 1; min-width: 180px;">
+            <div class="gw-stat-label">Data Range</div>
+            <div class="gw-stat" style="font-size: 1.1rem;">{{ first_date_display }}</div>
+            <div style="font-size: 0.8rem; color: var(--text-tertiary); margin-top: 4px;">{{ months_elapsed }} month{{ 's' if months_elapsed != 1 else '' }} of data</div>
+        </div>
+    </div>
+</div>
+
+<div class="gw-section">
+    <div class="gw-table-wrap">
+        <table>
+            <thead>
+                <tr>
+                    <th>Category</th>
+                    <th class="text-right">Avg / month</th>
+                    <th class="text-right">All-time total</th>
+                    <th style="min-width: 140px;">Share</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in rows %}
+                <tr>
+                    <td>
+                        <span class="gw-dot" style="background-color: {{ row.category.color }}"></span>
+                        {{ row.category.name }}
+                        {% if row.category.is_deleted %}
+                        <span style="font-size: 0.75rem; color: var(--text-tertiary); margin-left: 4px;">(deleted)</span>
+                        {% endif %}
+                    </td>
+                    <td class="text-right" style="font-weight: 600; color: var(--text-primary);">
+                        ${{ row.monthly_avg|money }}
+                    </td>
+                    <td class="text-right" style="color: var(--text-secondary);">
+                        ${{ row.total_spent|money }}
+                    </td>
+                    <td>
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <div style="flex: 1; height: 6px; background: var(--surface-3); border-radius: 3px; overflow: hidden;">
+                                <div style="width: {{ row.pct_of_total }}%; height: 100%; background-color: {{ row.category.color }}; border-radius: 3px;"></div>
+                            </div>
+                            <span style="font-size: 0.8rem; color: var(--text-tertiary); min-width: 38px; text-align: right;">{{ row.pct_of_total }}%</span>
+                        </div>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+            <tfoot>
+                <tr style="background: var(--surface-2); border-top: 1px solid var(--border-mid);">
+                    <td style="font-weight: 600; color: var(--text-secondary); font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em;">Total</td>
+                    <td class="text-right" style="font-weight: 700; color: var(--text-glow);">${{ grand_monthly_avg|money }}</td>
+                    <td class="text-right" style="font-weight: 600; color: var(--text-primary);">${{ grand_total|money }}</td>
+                    <td></td>
+                </tr>
+            </tfoot>
+        </table>
+    </div>
+    <p style="margin-top: 12px; font-size: 0.8rem; color: var(--text-tertiary);">
+        Averages include all regular expenses, budget expenses, and sinking fund withdrawals since {{ first_date_display }}.
+        Internal transfers and income allocation are excluded.
+    </p>
+</div>
+
+{% endif %}
+{% endblock %}

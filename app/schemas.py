@@ -74,6 +74,7 @@ class CategoryCreate(BaseModel):
     type: CategoryType
     color: str = Field(..., pattern=r"^#[0-9a-fA-F]{6}$")
     is_budget_category: bool = False
+    exclude_from_monthly_cost: bool = False
 
 
 class CategoryUpdate(BaseModel):
@@ -81,6 +82,7 @@ class CategoryUpdate(BaseModel):
     type: CategoryType | None = None
     color: str | None = Field(None, pattern=r"^#[0-9a-fA-F]{6}$")
     is_budget_category: bool | None = None
+    exclude_from_monthly_cost: bool | None = None
 
 
 class CategoryResponse(BaseModel):
@@ -93,6 +95,7 @@ class CategoryResponse(BaseModel):
     is_budget_category: bool
     is_deleted: bool
     is_system: bool
+    exclude_from_monthly_cost: bool
 
 
 # --- Transaction Schemas ---

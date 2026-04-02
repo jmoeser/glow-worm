@@ -99,4 +99,4 @@ After any feature addition or significant change, update:
 
 ## API Routes
 - Keep `/api/` prefix for JSON-returning routes.
-- 36 API endpoints across: `/api/keys`, `/api/bills`, `/api/users`, `/api/dashboard`, `/api/budgets`, `/api/categories`, `/api/transactions`, `/api/sinking-funds`, `/api/income`.
+- 37 API endpoints across: `/api/keys`, `/api/bills`, `/api/users`, `/api/dashboard`, `/api/budgets`, `/api/categories`, `/api/transactions`, `/api/sinking-funds`, `/api/income`, `/api/monthly-cost`.

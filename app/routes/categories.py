@@ -80,6 +80,12 @@ async def categories_create(request: Request, db: Session = Depends(get_db)):
     cat_type = str(form.get("type") or "").strip()
     color = str(form.get("color") or "").strip()
     is_budget_category = form.get("is_budget_category") in ("on", "true", "1", True)
+    exclude_from_monthly_cost = form.get("exclude_from_monthly_cost") in (
+        "on",
+        "true",
+        "1",
+        True,
+    )
 
     if not name:
         return HTMLResponse('<p class="text-red-600 text-sm">Name is required.</p>')
@@ -99,6 +105,7 @@ async def categories_create(request: Request, db: Session = Depends(get_db)):
         type=cat_type,
         color=color,
         is_budget_category=is_budget_category,
+        exclude_from_monthly_cost=exclude_from_monthly_cost,
     )
     db.add(category)
     db.commit()
@@ -130,6 +137,12 @@ async def categories_update(
     cat_type = str(form.get("type") or "").strip()
     color = str(form.get("color") or "").strip()
     is_budget_category = form.get("is_budget_category") in ("on", "true", "1", True)
+    exclude_from_monthly_cost = form.get("exclude_from_monthly_cost") in (
+        "on",
+        "true",
+        "1",
+        True,
+    )
 
     if name:
         category.name = name
@@ -138,6 +151,7 @@ async def categories_update(
     if color and _COLOR_RE.match(color):
         category.color = color
     category.is_budget_category = is_budget_category
+    category.exclude_from_monthly_cost = exclude_from_monthly_cost
 
     db.commit()
     db.refresh(category)
