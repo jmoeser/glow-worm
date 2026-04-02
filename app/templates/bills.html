@@ -1,7 +1,5 @@
 {% if fragment == "table_body" %}
-{# --- Partial: full table body rows + summary --- #}
-<span id="bills-monthly-cost" hx-swap-oob="true">${{ total_monthly|money }}</span>
-<span id="bills-annual-cost" hx-swap-oob="true">${{ total_annual|money }}</span>
+{# --- Partial: full table body rows --- #}
 {% for bill in bills %}
 <tr id="bill-row-{{ bill.id }}">
     <td data-sort-value="{{ bill.name }}">{{ bill.name }}</td>
@@ -190,11 +188,11 @@
     <div id="bills-message" style="margin-bottom: 16px;"></div>
 
     <!-- Add New Bill (collapsible) -->
-    <details class="gw-details gw-section">
+    <details class="gw-details gw-section gw-add-form">
         <summary>Add New Bill</summary>
         <form hx-post="/bills" hx-target="#bills-table-body" hx-swap="innerHTML"
-              hx-on::after-request="if(event.detail.successful) { this.reset(); document.getElementById('bills-message').innerHTML = '<p class=\'gw-msg-success\'>Bill added.</p>'; } else { document.getElementById('bills-message').innerHTML = event.detail.xhr.responseText; }"
-              class="gw-grid-2" style="margin-top: 16px;">
+              hx-on::after-request="if(!event.detail.successful){ document.getElementById('bills-message').innerHTML=event.detail.xhr.responseText; }"
+              autocomplete="off" class="gw-grid-2" style="margin-top: 16px;">
             <div>
                 <label for="bill-name" class="gw-label">Name</label>
                 <input type="text" id="bill-name" name="name" required
@@ -356,6 +354,24 @@
         }
     };
 })();
+document.body.addEventListener('gwBillSuccess', function(e) {
+    document.querySelectorAll('.gw-add-form[open]').forEach(function(details) {
+        var form = details.querySelector('form');
+        if (form) { form.reset(); }
+        details.removeAttribute('open');
+    });
+    var m = document.getElementById('bills-message');
+    if (m) {
+        m.innerHTML = '<p class="gw-msg-success">Bill added.</p>';
+        m.scrollIntoView({behavior: 'smooth', block: 'nearest'});
+    }
+    if (e.detail) {
+        var monthly = document.getElementById('bills-monthly-cost');
+        var annual = document.getElementById('bills-annual-cost');
+        if (monthly && e.detail.monthly) monthly.textContent = '$' + e.detail.monthly;
+        if (annual && e.detail.annual) annual.textContent = '$' + e.detail.annual;
+    }
+});
 </script>
 {% endblock %}
 {% endif %}

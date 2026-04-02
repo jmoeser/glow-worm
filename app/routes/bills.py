@@ -1,3 +1,4 @@
+import json
 from datetime import date
 from decimal import Decimal, InvalidOperation
 
@@ -80,8 +81,9 @@ def _bill_context(db: Session):
     }
 
 
-def _render_table_body(request: Request, db: Session) -> str:
-    ctx = _bill_context(db)
+def _render_table_body(request: Request, db: Session, ctx: dict | None = None) -> str:
+    if ctx is None:
+        ctx = _bill_context(db)
     return bytes(
         templates.TemplateResponse(
             request,
@@ -262,7 +264,17 @@ async def bills_create(request: Request, db: Session = Depends(get_db)):
     db.add(bill)
     db.commit()
 
-    return HTMLResponse(_render_table_body(request, db))
+    ctx = _bill_context(db)
+    response = HTMLResponse(_render_table_body(request, db, ctx))
+    response.headers["HX-Trigger-After-Swap"] = json.dumps(
+        {
+            "gwBillSuccess": {
+                "monthly": str(ctx["total_monthly"]),
+                "annual": str(ctx["total_annual"]),
+            }
+        }
+    )
+    return response
 
 
 @router.get("/bills/{bill_id}", response_class=HTMLResponse)

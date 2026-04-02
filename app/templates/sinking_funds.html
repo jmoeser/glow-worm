@@ -82,11 +82,11 @@
     {% endif %}
 
     <!-- Add New Fund (collapsible) -->
-    <details class="gw-details gw-section">
+    <details class="gw-details gw-section gw-add-form">
         <summary>Add New Fund</summary>
         <form hx-post="/sinking-funds" hx-target="#funds-table-body" hx-swap="innerHTML"
-              hx-on::after-request="if(event.detail.successful) { this.reset(); document.getElementById('funds-message').innerHTML = '<p class=\'gw-msg-success\'>Fund added.</p>'; } else { document.getElementById('funds-message').innerHTML = event.detail.xhr.responseText; }"
-              class="gw-grid-2" style="margin-top: 16px;">
+              hx-on::after-request="if(!event.detail.successful){ document.getElementById('funds-message').innerHTML=event.detail.xhr.responseText; }"
+              autocomplete="off" class="gw-grid-2" style="margin-top: 16px;">
             <div>
                 <label for="fund-name" class="gw-label">Name</label>
                 <input type="text" id="fund-name" name="name" required
@@ -163,5 +163,19 @@
         </div>
     </div>
 </div>
+<script>
+    document.body.addEventListener('gwFundSuccess', function() {
+        document.querySelectorAll('.gw-add-form[open]').forEach(function(details) {
+            var form = details.querySelector('form');
+            if (form) { form.reset(); }
+            details.removeAttribute('open');
+        });
+        var m = document.getElementById('funds-message');
+        if (m) {
+            m.innerHTML = '<p class="gw-msg-success">Fund added.</p>';
+            m.scrollIntoView({behavior: 'smooth', block: 'nearest'});
+        }
+    });
+</script>
 {% endblock %}
 {% endif %}

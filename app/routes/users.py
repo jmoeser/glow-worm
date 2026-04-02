@@ -100,7 +100,9 @@ async def users_create(request: Request, db: Session = Depends(get_db)):
     db.add(user)
     db.commit()
 
-    return HTMLResponse(_render_table_body(request, db))
+    response = HTMLResponse(_render_table_body(request, db))
+    response.headers["HX-Trigger-After-Swap"] = "gwUserSuccess"
+    return response
 
 
 @router.get("/users/{user_id}/edit", response_class=HTMLResponse)

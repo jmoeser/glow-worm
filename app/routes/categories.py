@@ -110,7 +110,9 @@ async def categories_create(request: Request, db: Session = Depends(get_db)):
     db.add(category)
     db.commit()
 
-    return HTMLResponse(_render_table_body(request, db))
+    response = HTMLResponse(_render_table_body(request, db))
+    response.headers["HX-Trigger-After-Swap"] = "gwCategorySuccess"
+    return response
 
 
 @router.get("/categories/{cat_id}/edit", response_class=HTMLResponse)

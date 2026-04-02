@@ -69,11 +69,11 @@
     <div id="users-message" style="margin-bottom: 16px;"></div>
 
     <!-- Add New User (collapsible) -->
-    <details class="gw-details gw-section">
+    <details class="gw-details gw-section gw-add-form">
         <summary>Add New User</summary>
         <form hx-post="/users" hx-target="#users-table-body" hx-swap="innerHTML"
-              hx-on::after-request="if(event.detail.successful) { this.reset(); document.getElementById('users-message').innerHTML = '<p class=\'gw-msg-success\'>User added.</p>'; } else { document.getElementById('users-message').innerHTML = event.detail.xhr.responseText; }"
-              class="gw-grid-2" style="margin-top: 16px;">
+              hx-on::after-request="if(!event.detail.successful){ document.getElementById('users-message').innerHTML=event.detail.xhr.responseText; }"
+              autocomplete="off" class="gw-grid-2" style="margin-top: 16px;">
             <div>
                 <label for="new-username" class="gw-label">Username</label>
                 <input type="text" id="new-username" name="username" required
@@ -129,5 +129,19 @@
         </div>
     </div>
 </div>
+<script>
+    document.body.addEventListener('gwUserSuccess', function() {
+        document.querySelectorAll('.gw-add-form[open]').forEach(function(details) {
+            var form = details.querySelector('form');
+            if (form) { form.reset(); }
+            details.removeAttribute('open');
+        });
+        var m = document.getElementById('users-message');
+        if (m) {
+            m.innerHTML = '<p class="gw-msg-success">User added.</p>';
+            m.scrollIntoView({behavior: 'smooth', block: 'nearest'});
+        }
+    });
+</script>
 {% endblock %}
 {% endif %}

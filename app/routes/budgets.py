@@ -245,10 +245,12 @@ async def budgets_create(request: Request, db: Session = Depends(get_db)):
     db.add(budget)
     db.commit()
 
-    return HTMLResponse(
+    response = HTMLResponse(
         _render_table_body(request, db, month, year)
         + _render_summary_bar(request, db, month, year)
     )
+    response.headers["HX-Trigger-After-Swap"] = "gwBudgetSuccess"
+    return response
 
 
 @router.get("/budgets/{budget_id}/edit", response_class=HTMLResponse)

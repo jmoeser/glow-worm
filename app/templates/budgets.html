@@ -135,11 +135,11 @@
     <div id="budgets-message" style="margin-bottom: 16px;"></div>
 
     <!-- Add Budget Category (collapsible) -->
-    <details class="gw-details gw-section">
+    <details class="gw-details gw-section gw-add-form">
         <summary>Add Budget Category</summary>
         <form hx-post="/budgets" hx-target="#budgets-table-body" hx-swap="innerHTML"
-              hx-on::after-request="if(event.detail.successful) { this.reset(); document.getElementById('budgets-message').innerHTML = '<p class=\'gw-msg-success\'>Budget added.</p>'; } else { document.getElementById('budgets-message').innerHTML = event.detail.xhr.responseText; }"
-              class="gw-grid-2" style="margin-top: 16px;">
+              hx-on::after-request="if(!event.detail.successful){ document.getElementById('budgets-message').innerHTML=event.detail.xhr.responseText; }"
+              autocomplete="off" class="gw-grid-2" style="margin-top: 16px;">
             <input type="hidden" name="month" value="{{ month }}">
             <input type="hidden" name="year" value="{{ year }}">
             <div>
@@ -249,6 +249,18 @@ function moveBudgetTooltip(e) {
 function hideBudgetTooltip() {
     document.getElementById('budget-bar-tooltip').style.display = 'none';
 }
+document.body.addEventListener('gwBudgetSuccess', function() {
+    document.querySelectorAll('.gw-add-form[open]').forEach(function(details) {
+        var form = details.querySelector('form');
+        if (form) { form.reset(); }
+        details.removeAttribute('open');
+    });
+    var m = document.getElementById('budgets-message');
+    if (m) {
+        m.innerHTML = '<p class="gw-msg-success">Budget added.</p>';
+        m.scrollIntoView({behavior: 'smooth', block: 'nearest'});
+    }
+});
 </script>
 {% endblock %}
 {% endif %}

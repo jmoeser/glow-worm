@@ -94,11 +94,13 @@ async def api_keys_create(request: Request, db: Session = Depends(get_db)):
     )
 
     keys = _all_keys(db, user.id)
-    return templates.TemplateResponse(
+    response = templates.TemplateResponse(
         request,
         "api_keys.html",
         {"keys": keys, "plain_key": plain_key, "fragment": "key_created"},
     )
+    response.headers["HX-Trigger-After-Swap"] = "gwApiKeySuccess"
+    return response
 
 
 @router.delete("/api-keys/{key_id}", response_class=HTMLResponse)

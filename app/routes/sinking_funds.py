@@ -180,7 +180,9 @@ async def sinking_funds_create(request: Request, db: Session = Depends(get_db)):
     db.add(fund)
     db.commit()
 
-    return HTMLResponse(_render_table_body(request, db))
+    response = HTMLResponse(_render_table_body(request, db))
+    response.headers["HX-Trigger-After-Swap"] = "gwFundSuccess"
+    return response
 
 
 @router.get("/sinking-funds/{fund_id}/edit", response_class=HTMLResponse)

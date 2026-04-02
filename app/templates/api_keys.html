@@ -89,11 +89,11 @@
     <div id="api-keys-message" style="margin-bottom: 16px;"></div>
 
     <!-- Create New Key (collapsible) -->
-    <details class="gw-details gw-section">
+    <details class="gw-details gw-section gw-add-form">
         <summary>Create New Key</summary>
         <form hx-post="/api-keys" hx-target="#api-keys-table-body" hx-swap="innerHTML"
-              hx-on::after-request="if(event.detail.successful) { this.reset(); var msg = document.querySelector('#api-keys-table-body #api-keys-message'); if(msg) { document.getElementById('api-keys-message').replaceWith(msg); } } else { document.getElementById('api-keys-message').innerHTML = event.detail.xhr.responseText; }"
-              class="gw-grid-2" style="margin-top: 16px;">
+              hx-on::after-request="if(!event.detail.successful){ document.getElementById('api-keys-message').innerHTML=event.detail.xhr.responseText; }"
+              autocomplete="off" class="gw-grid-2" style="margin-top: 16px;">
             <div>
                 <label for="new-key-name" class="gw-label">Name</label>
                 <input type="text" id="new-key-name" name="name"
@@ -145,5 +145,16 @@
         </div>
     </div>
 </div>
+<script>
+    document.body.addEventListener('gwApiKeySuccess', function() {
+        document.querySelectorAll('.gw-add-form[open]').forEach(function(details) {
+            var form = details.querySelector('form');
+            if (form) { form.reset(); }
+            details.removeAttribute('open');
+        });
+        var msg = document.querySelector('#api-keys-table-body #api-keys-message');
+        if (msg) { document.getElementById('api-keys-message').replaceWith(msg); }
+    });
+</script>
 {% endblock %}
 {% endif %}
