@@ -459,7 +459,9 @@ async def transactions_create(request: Request, db: Session = Depends(get_db)):
     _adjust_budget_fund_balance(db, budget_id, transaction_type, float(amount))
     db.commit()
 
-    return HTMLResponse(_render_table_body(request, db, month, year))
+    response = HTMLResponse(_render_table_body(request, db, month, year))
+    response.headers["HX-Trigger-After-Swap"] = "gwTransactionSuccess"
+    return response
 
 
 @router.post("/transactions/fund-transfer", response_class=HTMLResponse)
@@ -550,7 +552,9 @@ async def fund_transfer(request: Request, db: Session = Depends(get_db)):
     _adjust_sinking_fund_balance(db, to_fund_id, "transfer", float(amount))
     db.commit()
 
-    return HTMLResponse(_render_table_body(request, db, month, year))
+    response = HTMLResponse(_render_table_body(request, db, month, year))
+    response.headers["HX-Trigger-After-Swap"] = "gwTransferSuccess"
+    return response
 
 
 @router.get("/transactions/{txn_id}/edit", response_class=HTMLResponse)

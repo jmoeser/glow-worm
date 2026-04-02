@@ -180,11 +180,11 @@
     <div id="transactions-message" style="margin-bottom: 16px;"></div>
 
     <!-- Add Sinking Fund Transaction -->
-    <details class="gw-details gw-section">
+    <details class="gw-details gw-section gw-add-form">
         <summary>Add Sinking Fund Transaction</summary>
         <form hx-post="/transactions" hx-target="#transactions-table-body" hx-swap="innerHTML"
-              hx-on::after-request="if(event.detail.successful) { this.closest('details').removeAttribute('open'); this.reset(); gwResetTypeToggle(this); document.getElementById('transactions-message').innerHTML = '<p class=\'gw-msg-success\'>Transaction added.</p>'; } else { document.getElementById('transactions-message').innerHTML = event.detail.xhr.responseText; }"
-              style="margin-top: 16px;">
+              hx-on::after-request="if(!event.detail.successful){ document.getElementById('transactions-message').innerHTML=event.detail.xhr.responseText; }"
+              autocomplete="off" style="margin-top: 16px;">
             <input type="hidden" name="month" value="{{ month }}">
             <input type="hidden" name="year" value="{{ year }}">
             <div class="gw-grid-3">
@@ -243,11 +243,11 @@
     </details>
 
     <!-- Add Budget Transaction -->
-    <details class="gw-details gw-section">
+    <details class="gw-details gw-section gw-add-form">
         <summary>Add Budget Transaction</summary>
         <form hx-post="/transactions" hx-target="#transactions-table-body" hx-swap="innerHTML"
-              hx-on::after-request="if(event.detail.successful) { this.closest('details').removeAttribute('open'); this.reset(); gwResetTypeToggle(this); document.getElementById('transactions-message').innerHTML = '<p class=\'gw-msg-success\'>Transaction added.</p>'; } else { document.getElementById('transactions-message').innerHTML = event.detail.xhr.responseText; }"
-              style="margin-top: 16px;">
+              hx-on::after-request="if(!event.detail.successful){ document.getElementById('transactions-message').innerHTML=event.detail.xhr.responseText; }"
+              autocomplete="off" style="margin-top: 16px;">
             <input type="hidden" name="month" value="{{ month }}">
             <input type="hidden" name="year" value="{{ year }}">
             <div class="gw-grid-3">
@@ -317,11 +317,11 @@
     </details>
 
     <!-- Transfer Between Funds -->
-    <details class="gw-details gw-section">
+    <details class="gw-details gw-section gw-add-form">
         <summary>Transfer Between Funds</summary>
         <form hx-post="/transactions/fund-transfer" hx-target="#transactions-table-body" hx-swap="innerHTML"
-              hx-on::after-request="if(event.detail.successful) { this.closest('details').removeAttribute('open'); this.reset(); document.getElementById('transactions-message').innerHTML = '<p class=\'gw-msg-success\'>Transfer recorded.</p>'; } else { document.getElementById('transactions-message').innerHTML = event.detail.xhr.responseText; }"
-              style="margin-top: 16px;">
+              hx-on::after-request="if(!event.detail.successful){ document.getElementById('transactions-message').innerHTML=event.detail.xhr.responseText; }"
+              autocomplete="off" style="margin-top: 16px;">
             <input type="hidden" name="month" value="{{ month }}">
             <input type="hidden" name="year" value="{{ year }}">
             <div class="gw-grid-3">
@@ -396,6 +396,20 @@ function gwToggleSinkingFundType(select) {
             sfTypeInput.value = 'income';
         }
     }
+    function gwHandleFormSuccess(msg) {
+        document.querySelectorAll('.gw-add-form[open]').forEach(function(details) {
+            var form = details.querySelector('form');
+            if (form) { form.reset(); gwResetTypeToggle(form); }
+            details.removeAttribute('open');
+        });
+        var m = document.getElementById('transactions-message');
+        if (m) {
+            m.innerHTML = '<p class="gw-msg-success">' + msg + '</p>';
+            m.scrollIntoView({behavior: 'smooth', block: 'nearest'});
+        }
+    }
+    document.body.addEventListener('gwTransactionSuccess', function() { gwHandleFormSuccess('Transaction added.'); });
+    document.body.addEventListener('gwTransferSuccess', function() { gwHandleFormSuccess('Transfer recorded.'); });
     </script>
 
     <!-- Summary bar -->
