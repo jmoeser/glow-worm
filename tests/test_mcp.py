@@ -22,18 +22,17 @@ from app.mcp_server import (
     update_transaction,
 )
 
-# FastMCP wraps decorated functions into FunctionTool objects.
-# Access the underlying callable via .fn for direct testing.
-_list_transactions = list_transactions.fn
-_get_transaction = get_transaction.fn
-_create_transaction = create_transaction.fn
-_update_transaction = update_transaction.fn
-_delete_transaction = delete_transaction.fn
-_list_bills = list_bills.fn
-_get_bill = get_bill.fn
-_create_bill = create_bill.fn
-_update_bill = update_bill.fn
-_delete_bill = delete_bill.fn
+# FastMCP 3.x: decorated functions are returned as-is (directly callable).
+_list_transactions = list_transactions
+_get_transaction = get_transaction
+_create_transaction = create_transaction
+_update_transaction = update_transaction
+_delete_transaction = delete_transaction
+_list_bills = list_bills
+_get_bill = get_bill
+_create_bill = create_bill
+_update_bill = update_bill
+_delete_bill = delete_bill
 
 
 class TestTransactionTools:

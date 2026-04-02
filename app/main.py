@@ -5,6 +5,7 @@ from contextlib import asynccontextmanager
 from dotenv import load_dotenv
 from fastapi import FastAPI, Request
 from fastapi.staticfiles import StaticFiles
+from fastmcp.utilities.lifespan import combine_lifespans
 from starlette.middleware.cors import CORSMiddleware
 from starlette.middleware.sessions import SessionMiddleware
 from starlette_csrf import CSRFMiddleware
@@ -50,7 +51,14 @@ async def lifespan(app: FastAPI):
     stop_scheduler()
 
 
-app = FastAPI(title="Glow-worm", lifespan=lifespan)
+from app.mcp_server import mcp  # noqa: E402
+
+mcp_app = mcp.http_app(transport="sse")
+
+app = FastAPI(
+    title="Glow-worm",
+    lifespan=combine_lifespans(lifespan, mcp_app.lifespan),
+)
 
 
 @app.middleware("http")
@@ -126,7 +134,4 @@ app.include_router(users_router)
 app.include_router(api_keys_router)
 
 # Mount MCP server at /mcp using SSE transport
-from app.mcp_server import mcp  # noqa: E402
-
-mcp_app = mcp.http_app(transport="sse")
 app.mount("/mcp", mcp_app)

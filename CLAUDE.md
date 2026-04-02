@@ -72,7 +72,7 @@ Hooks run automatically on `git commit`. Install with `uv run pre-commit install
 
 ## Common Pitfalls
 - When modifying Pydantic models or API responses, ensure all values are JSON-serializable. Specifically, convert Decimal objects to float before returning them in responses or error payloads.
-- FastMCP 2.x `@mcp.tool()` wraps functions into `FunctionTool` objects, not plain callables. Use `.fn` to access the underlying function for testing.
+- FastMCP 3.x `@mcp.tool()` returns the original function directly (no `FunctionTool` wrapper). Functions are directly callable; no `.fn` accessor needed.
 - SQLite needs batch mode (`render_as_batch=True`) for ALTER TABLE operations in Alembic migrations.
 - **Exception syntax**: always use Python 3 tuple syntax — `except (ValueError, TypeError):`. Never use the Python 2 comma form `except ValueError, TypeError:` which is a `SyntaxError` in Python 3.
 
@@ -87,7 +87,7 @@ Hooks run automatically on `git commit`. Install with `uv run pre-commit install
 - Subcommands: `config` (set-url, set-key, show), `dashboard`, `tx` (list, add, delete), `bills` (list, pay, add, delete), `funds` (list, add, delete), `budgets` (list, add, delete), `categories` (list, add, delete).
 
 ## MCP Server
-- Full MCP server implemented with **FastMCP 2.x**, mounted at `/mcp` via SSE transport.
+- Full MCP server implemented with **FastMCP 3.x**, mounted at `/mcp` via SSE transport. `mcp_app.lifespan` is combined with the app lifespan via `combine_lifespans` (required in v3).
 - **10 tools** exposed: CRUD for transactions (`list_transactions`, `get_transaction`, `create_transaction`, `update_transaction`, `delete_transaction`) and recurring bills (`list_bills`, `get_bill`, `create_bill`, `update_bill`, `delete_bill`).
 - Uses `contextvars.ContextVar` to propagate the authenticated user from middleware to MCP tool handlers.
 - Authenticated via Bearer token (API keys), CSRF-exempt.
