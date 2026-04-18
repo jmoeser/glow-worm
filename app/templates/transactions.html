@@ -224,11 +224,11 @@
                 <div>
                     <label class="gw-label">Classification</label>
                     <select name="transaction_type" class="gw-select" onchange="gwToggleSinkingFundType(this)">
-                        <option value="contribution" selected>Contribution</option>
-                        <option value="withdrawal">Withdrawal</option>
+                        <option value="contribution">Contribution</option>
+                        <option value="withdrawal" selected>Withdrawal</option>
                     </select>
                 </div>
-                <input type="hidden" name="type" id="sf-type-input" value="income">
+                <input type="hidden" name="type" id="sf-type-input" value="expense">
                 <div style="display: flex; align-items: flex-end; padding-bottom: 2px;">
                     <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
                         <input type="checkbox" name="is_paid" checked style="width: 16px; height: 16px; cursor: pointer;">
