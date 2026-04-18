@@ -27,7 +27,7 @@ dependencies = [
 [project.optional-dependencies]
 dev = [
     "detect-secrets>=1.5",
-    "mypy>=1.19.1",
+    "mypy>=1.20.0",
     "pre-commit>=4.0",
     "pytest>=8.0",
     "pytest-cov>=5.0",
