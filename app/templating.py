@@ -1,3 +1,5 @@
+from importlib.metadata import version, PackageNotFoundError
+
 from fastapi.templating import Jinja2Templates
 
 templates = Jinja2Templates(directory="app/templates")
@@ -11,4 +13,10 @@ def _money_format(value) -> str:
         return "0.00"
 
 
+try:
+    _app_version = version("glow-worm")
+except PackageNotFoundError:
+    _app_version = "dev"
+
 templates.env.filters["money"] = _money_format
+templates.env.globals["app_version"] = _app_version

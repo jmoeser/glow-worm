@@ -41,6 +41,9 @@ jobs:
           echo "tag=$NEW_VERSION" >> "$GITHUB_OUTPUT"
           echo "version=${NEW_VERSION#v}" >> "$GITHUB_OUTPUT"
 
+      - name: Bump version in pyproject.toml
+        run: sed -i 's/^version = .*/version = "${{ steps.version.outputs.version }}"/' pyproject.toml
+
       - name: Create GitHub release
         env:
           GH_TOKEN: ${{ github.token }}

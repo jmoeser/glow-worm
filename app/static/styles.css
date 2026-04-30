@@ -249,6 +249,14 @@ h1, h2, h3, h4 {
     border-top: 1px solid var(--border-dim);
 }
 
+.gw-version {
+    font-size: 0.7rem;
+    color: var(--text-secondary);
+    opacity: 0.5;
+    padding: 0 2px 6px;
+    letter-spacing: 0.03em;
+}
+
 .gw-user-profile {
     display: flex;
     align-items: center;
