@@ -303,3 +303,78 @@ class TestBuildSpendingMatrix:
 
         _, _, _, grand_total = _build_spending_matrix(db_session, 2026, [cat])
         assert grand_total == Decimal("0.00")
+
+
+class TestNetMode:
+    def test_net_subtracts_contributions(self, db_session):
+        cat = Category(
+            name="Medical", type="expense", color="#EF4444", is_budget_category=False
+        )
+        db_session.add(cat)
+        db_session.commit()
+        db_session.add_all(
+            [
+                Transaction(
+                    date="2026-04-01",
+                    amount=90.00,
+                    category_id=cat.id,
+                    type="expense",
+                    transaction_type="regular",
+                ),
+                Transaction(
+                    date="2026-04-01",
+                    amount=42.50,
+                    category_id=cat.id,
+                    type="income",
+                    transaction_type="contribution",
+                ),
+            ]
+        )
+        db_session.commit()
+
+        _, _, col_totals, grand_total = _build_spending_matrix(
+            db_session, 2026, [cat], net=True
+        )
+        assert col_totals[cat.id] == Decimal("47.50")
+        assert grand_total == Decimal("47.50")
+
+    def test_gross_ignores_contributions(self, db_session):
+        cat = Category(
+            name="Medical", type="expense", color="#EF4444", is_budget_category=False
+        )
+        db_session.add(cat)
+        db_session.commit()
+        db_session.add_all(
+            [
+                Transaction(
+                    date="2026-04-01",
+                    amount=90.00,
+                    category_id=cat.id,
+                    type="expense",
+                    transaction_type="regular",
+                ),
+                Transaction(
+                    date="2026-04-01",
+                    amount=42.50,
+                    category_id=cat.id,
+                    type="income",
+                    transaction_type="contribution",
+                ),
+            ]
+        )
+        db_session.commit()
+
+        _, _, col_totals, grand_total = _build_spending_matrix(
+            db_session, 2026, [cat], net=False
+        )
+        assert col_totals[cat.id] == Decimal("90.00")
+        assert grand_total == Decimal("90.00")
+
+    def test_net_mode_page_renders(self, authed_client, db_session):
+        cat = Category(
+            name="Medical", type="expense", color="#EF4444", is_budget_category=False
+        )
+        db_session.add(cat)
+        db_session.commit()
+        response = authed_client.get("/spending-history?net=1")
+        assert response.status_code == 200

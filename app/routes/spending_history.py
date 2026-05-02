@@ -24,6 +24,7 @@ def _build_spending_matrix(
     db: Session,
     year: int,
     categories: list[Category],
+    net: bool = False,
 ) -> tuple[
     dict[int, dict[int, Decimal]],
     dict[int, Decimal],
@@ -53,6 +54,21 @@ def _build_spending_matrix(
         month_num = int(date[5:7])  # YYYY-MM-DD
         matrix[month_num][cat_id] += Decimal(str(amount or 0))
 
+    if net:
+        offsets = (
+            db.query(Transaction.date, Transaction.category_id, Transaction.amount)
+            .filter(
+                Transaction.transaction_type == "contribution",
+                Transaction.date >= f"{year:04d}-01-01",
+                Transaction.date <= f"{year:04d}-12-31",
+                Transaction.category_id.isnot(None),
+            )
+            .all()
+        )
+        for date, cat_id, amount in offsets:
+            month_num = int(date[5:7])
+            matrix[month_num][cat_id] -= Decimal(str(amount or 0))
+
     cat_ids = {c.id for c in categories}
     row_totals: dict[int, Decimal] = {}
     col_totals: dict[int, Decimal] = defaultdict(Decimal)
@@ -78,6 +94,7 @@ def _build_spending_matrix(
 async def spending_history_page(
     request: Request,
     year: int | None = None,
+    net: bool = False,
     db: Session = Depends(get_db),
 ):
     user = get_current_user(request)
@@ -95,7 +112,7 @@ async def spending_history_page(
     )
 
     matrix, row_totals, col_totals, grand_total = _build_spending_matrix(
-        db, year, categories
+        db, year, categories, net=net
     )
 
     return templates.TemplateResponse(
@@ -106,6 +123,7 @@ async def spending_history_page(
             "year": year,
             "prev_year": year - 1,
             "next_year": year + 1,
+            "net": net,
             "categories": categories,
             "matrix": matrix,
             "row_totals": row_totals,

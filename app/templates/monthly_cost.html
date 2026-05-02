@@ -1,7 +1,21 @@
 {% extends "base.html" %}
 {% block title %}Monthly Cost — Glow Worm{% endblock %}
 {% block content %}
-<h1 class="gw-page-header">Monthly Cost</h1>
+<div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; margin-bottom: 8px;">
+    <h1 class="gw-page-header" style="margin: 0;">Monthly Cost</h1>
+    <div style="display: flex; gap: 4px; background: var(--surface-2); border-radius: 6px; padding: 3px;">
+        <a href="/monthly-cost"
+           style="padding: 4px 12px; border-radius: 4px; font-size: 0.8rem; text-decoration: none; transition: background 0.15s;
+                  {% if not net %}background: var(--surface-3); color: var(--text-primary); font-weight: 600;{% else %}color: var(--text-tertiary);{% endif %}">
+            Gross
+        </a>
+        <a href="/monthly-cost?net=1"
+           style="padding: 4px 12px; border-radius: 4px; font-size: 0.8rem; text-decoration: none; transition: background 0.15s;
+                  {% if net %}background: var(--surface-3); color: var(--text-primary); font-weight: 600;{% else %}color: var(--text-tertiary);{% endif %}">
+            Net
+        </a>
+    </div>
+</div>
 
 {% if not rows %}
 <div class="gw-section">
@@ -78,8 +92,12 @@
         </table>
     </div>
     <p style="margin-top: 12px; font-size: 0.8rem; color: var(--text-tertiary);">
-        Averages include all regular expenses, budget expenses, and sinking fund withdrawals since {{ first_date_display }}.
-        Internal transfers and income allocation are excluded.
+        {% if net %}
+        Net view: contribution transactions (e.g. refunds) are subtracted from each category's total.
+        {% else %}
+        Gross view: raw expenses only. Switch to Net to subtract contributions such as Medicare refunds.
+        {% endif %}
+        Data since {{ first_date_display }}. Internal transfers and income allocation are excluded.
     </p>
 </div>
 

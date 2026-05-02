@@ -17,7 +17,9 @@ router = APIRouter()
 _INCLUDED_TYPES = ("regular", "budget_expense", "withdrawal")
 
 
-def _build_monthly_cost_data(db: Session, _today: datetime | None = None) -> dict:
+def _build_monthly_cost_data(
+    db: Session, _today: datetime | None = None, net: bool = False
+) -> dict:
     today = _today or datetime.now(TIMEZONE)
 
     excluded_cat_ids = (
@@ -44,6 +46,7 @@ def _build_monthly_cost_data(db: Session, _today: datetime | None = None) -> dic
             "months_elapsed": 0,
             "first_date": None,
             "first_date_display": None,
+            "net": net,
         }
 
     first_date = datetime.strptime(first_date_str, "%Y-%m-%d")
@@ -64,29 +67,53 @@ def _build_monthly_cost_data(db: Session, _today: datetime | None = None) -> dic
         .all()
     )
 
-    grand_total = sum(
-        (Decimal(str(r.total_spent or 0)) for r in rows_raw), Decimal("0")
-    )
-
-    rows = []
-    for row in rows_raw:
-        total = Decimal(str(row.total_spent or 0)).quantize(Decimal("0.01"))
-        monthly_avg = (total / months_elapsed).quantize(Decimal("0.01"))
-        pct = (
-            (total / grand_total * 100).quantize(Decimal("0.1"))
-            if grand_total
-            else Decimal("0.0")
+    offset_map: dict[int, Decimal] = {}
+    if net:
+        offset_rows = (
+            db.query(
+                Transaction.category_id,
+                func.sum(Transaction.amount).label("total_offset"),
+            )
+            .join(Category, Category.id == Transaction.category_id)
+            .filter(
+                Transaction.transaction_type == "contribution",
+                Category.exclude_from_monthly_cost == False,  # noqa: E712
+            )
+            .group_by(Transaction.category_id)
+            .all()
         )
+        offset_map = {
+            r.category_id: Decimal(str(r.total_offset or 0)) for r in offset_rows
+        }
+
+    grand_total = Decimal("0")
+    rows: list[dict] = []
+    for row in rows_raw:
+        total = Decimal(str(row.total_spent or 0))
+        if net:
+            total = total - offset_map.get(row.Category.id, Decimal("0"))
+        total = total.quantize(Decimal("0.01"))
+        grand_total += total
+        monthly_avg = (total / months_elapsed).quantize(Decimal("0.01"))
         rows.append(
             {
                 "category": row.Category,
                 "total_spent": total,
                 "monthly_avg": monthly_avg,
-                "pct_of_total": pct,
             }
         )
 
     grand_monthly_avg = (grand_total / months_elapsed).quantize(Decimal("0.01"))
+
+    for r in rows:
+        r_total = r["total_spent"]
+        r["pct_of_total"] = (
+            (r_total / grand_total * 100).quantize(Decimal("0.1"))
+            if grand_total
+            else Decimal("0.0")
+        )
+
+    rows.sort(key=lambda r: r["total_spent"], reverse=True)
 
     return {
         "rows": rows,
@@ -95,13 +122,16 @@ def _build_monthly_cost_data(db: Session, _today: datetime | None = None) -> dic
         "months_elapsed": months_elapsed,
         "first_date": first_date_str,
         "first_date_display": first_date.strftime("%B %Y"),
+        "net": net,
     }
 
 
 @router.get("/monthly-cost", response_class=HTMLResponse)
-async def monthly_cost_page(request: Request, db: Session = Depends(get_db)):
+async def monthly_cost_page(
+    request: Request, net: bool = False, db: Session = Depends(get_db)
+):
     user = get_current_user(request)
-    data = _build_monthly_cost_data(db)
+    data = _build_monthly_cost_data(db, net=net)
     return templates.TemplateResponse(
         request,
         "monthly_cost.html",

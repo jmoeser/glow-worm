@@ -307,3 +307,45 @@ class TestMonthlyCostApi:
         assert body["rows"] == []
         assert body["grand_total"] == 0.0
         assert body["months_elapsed"] == 0
+
+
+class TestNetMode:
+    def test_net_subtracts_contributions(self, db_session):
+        cat = _expense_cat(db_session, "Medical")
+        _txn(db_session, cat, "2026-01-01", 90.00)
+        # Medicare refund recorded as contribution
+        db_session.add(
+            Transaction(
+                date="2026-01-15",
+                amount=42.50,
+                category_id=cat.id,
+                type="income",
+                transaction_type="contribution",
+            )
+        )
+        db_session.commit()
+        data = _build_monthly_cost_data(db_session, _today=_TODAY, net=True)
+        assert data["rows"][0]["total_spent"] == Decimal("47.50")
+
+    def test_gross_ignores_contributions(self, db_session):
+        cat = _expense_cat(db_session, "Medical")
+        _txn(db_session, cat, "2026-01-01", 90.00)
+        db_session.add(
+            Transaction(
+                date="2026-01-15",
+                amount=42.50,
+                category_id=cat.id,
+                type="income",
+                transaction_type="contribution",
+            )
+        )
+        db_session.commit()
+        data = _build_monthly_cost_data(db_session, _today=_TODAY, net=False)
+        assert data["rows"][0]["total_spent"] == Decimal("90.00")
+
+    def test_net_page_renders(self, authed_client, db_session):
+        cat = _expense_cat(db_session)
+        _txn(db_session, cat, "2026-01-01", 50.00)
+        response = authed_client.get("/monthly-cost?net=1")
+        assert response.status_code == 200
+        assert "Net view" in response.text
