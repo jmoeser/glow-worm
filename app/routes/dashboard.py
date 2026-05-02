@@ -205,6 +205,70 @@ async def dashboard_page(
 
 
 # ---------------------------------------------------------------------------
+# Budget overdraft warning (HTMX fragment)
+# ---------------------------------------------------------------------------
+
+
+@router.get("/dashboard/budget-overdraft-warning", response_class=HTMLResponse)
+async def budget_overdraft_warning(
+    request: Request,
+    budget_id: str = "",
+    amount: str = "",
+    transaction_type: str = "budget_expense",
+    db: Session = Depends(get_db),
+):
+    get_current_user(request)
+    if transaction_type != "budget_expense":
+        return HTMLResponse("")
+    try:
+        bid = int(budget_id)
+        amt = Decimal(amount)
+    except ValueError, InvalidOperation:
+        return HTMLResponse("")
+    if amt <= 0:
+        return HTMLResponse("")
+
+    budget = db.query(Budget).filter(Budget.id == bid).first()
+    if not budget:
+        return HTMLResponse("")
+
+    remaining = (
+        Decimal(str(budget.allocated_amount))
+        - Decimal(str(budget.spent_amount))
+        + Decimal(str(budget.fund_balance))
+    )
+    if amt <= remaining:
+        return HTMLResponse("")
+
+    overdraft = (amt - remaining).quantize(Decimal("0.01"))
+
+    allocation = db.query(IncomeAllocation).first()
+    overflow_fund = None
+    if allocation and allocation.overflow_sinking_fund_id:
+        overflow_fund = (
+            db.query(SinkingFund)
+            .filter(SinkingFund.id == allocation.overflow_sinking_fund_id)
+            .first()
+        )
+
+    if overflow_fund:
+        msg = (
+            f"This will overdraw the budget by ${overdraft:,}. "
+            f"${overdraft:,} will be withdrawn from <strong>{overflow_fund.name}</strong> "
+            f"at end of month."
+        )
+    else:
+        msg = (
+            f"This will overdraw the budget by ${overdraft:,}. "
+            f"No overflow fund is configured &mdash; this shortfall won&rsquo;t be automatically reconciled."
+        )
+
+    return HTMLResponse(
+        f'<p class="text-yellow-400 text-sm" style="margin-top:6px;">&#9888; {msg}</p>'
+    )
+
+
+# ---------------------------------------------------------------------------
 # Quick expense
 # ---------------------------------------------------------------------------
 

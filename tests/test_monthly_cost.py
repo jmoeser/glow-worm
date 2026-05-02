@@ -52,11 +52,18 @@ class TestMonthlyCostPage:
         assert "Groceries" in response.text
 
     def test_shows_monthly_average(self, authed_client, db_session):
+        from datetime import datetime
+        from decimal import Decimal
+        from app.config import TIMEZONE
+
+        today = datetime.now(TIMEZONE)
+        # Transaction on Jan 1 of the current year → months_elapsed = today.month
         cat = _expense_cat(db_session)
-        # 1 transaction in Jan 2026, today is Apr 2026 → 4 months elapsed
-        _txn(db_session, cat, "2026-01-01", 400.00)
+        _txn(db_session, cat, f"{today.year}-01-01", 400.00)
+        months_elapsed = today.month
+        expected = (Decimal("400.00") / months_elapsed).quantize(Decimal("0.01"))
         response = authed_client.get("/monthly-cost")
-        assert "100.00" in response.text  # 400 / 4 months
+        assert str(expected) in response.text
 
 
 class TestBuildMonthlyCostData:

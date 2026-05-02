@@ -38,7 +38,9 @@ def _build_spending_matrix(
         db.query(Transaction.date, Transaction.category_id, Transaction.amount)
         .filter(
             Transaction.type == "expense",
-            Transaction.transaction_type.in_(["regular", "budget_expense"]),
+            Transaction.transaction_type.in_(
+                ["regular", "budget_expense", "withdrawal"]
+            ),
             Transaction.date >= f"{year:04d}-01-01",
             Transaction.date <= f"{year:04d}-12-31",
             Transaction.category_id.isnot(None),

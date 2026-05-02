@@ -95,7 +95,11 @@
         <input type="hidden" name="year" value="{{ year }}" />
         <div>
             <label for="qe-budget" class="gw-label">Budget</label>
-            <select id="qe-budget" name="budget_id" class="gw-select">
+            <select id="qe-budget" name="budget_id" class="gw-select"
+                    hx-get="/dashboard/budget-overdraft-warning"
+                    hx-trigger="change"
+                    hx-target="#qe-overdraft-warning"
+                    hx-include="#qe-budget,#qe-amount">
                 <option value="">Select budget</option>
                 {% for b in budgets %}
                 <option value="{{ b.id }}">
@@ -107,7 +111,11 @@
         <div>
             <label for="qe-amount" class="gw-label">Amount</label>
             <input id="qe-amount" type="number" name="amount" step="0.01" min="0.01"
-                   placeholder="0.00" class="gw-input" />
+                   placeholder="0.00" class="gw-input"
+                   hx-get="/dashboard/budget-overdraft-warning"
+                   hx-trigger="change"
+                   hx-target="#qe-overdraft-warning"
+                   hx-include="#qe-budget,#qe-amount" />
         </div>
         <div>
             <label for="qe-date" class="gw-label">Date</label>
@@ -119,6 +127,7 @@
             </button>
         </div>
     </form>
+    <div id="qe-overdraft-warning"></div>
     <div id="quick-expense-msg" style="margin-top: 8px;"></div>
 </div>
 {% endif %}

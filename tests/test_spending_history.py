@@ -116,7 +116,9 @@ class TestSpendingHistoryPage:
         assert "2,400.00" in response.text
         assert "5,000.00" not in response.text
 
-    def test_excludes_non_regular_budget_expense_types(self, authed_client, db_session):
+    def test_excludes_income_allocation_includes_withdrawal(
+        self, authed_client, db_session
+    ):
         cat = Category(
             name="Savings Transfer",
             type="expense",
@@ -125,7 +127,6 @@ class TestSpendingHistoryPage:
         )
         db_session.add(cat)
         db_session.commit()
-        # income_allocation and withdrawal should be excluded
         db_session.add_all(
             [
                 Transaction(
@@ -147,8 +148,8 @@ class TestSpendingHistoryPage:
         db_session.commit()
 
         response = authed_client.get("/spending-history?year=2026")
-        assert "300.00" not in response.text
-        assert "200.00" not in response.text
+        assert "300.00" not in response.text  # income_allocation excluded
+        assert "200.00" in response.text  # withdrawal included
 
     def test_links_cells_to_transactions_page(self, authed_client, db_session):
         cat = Category(

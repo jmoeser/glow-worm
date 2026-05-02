@@ -376,11 +376,10 @@ def process_income_allocation(db: Session | None = None) -> None:
                     - Decimal(str(pb.spent_amount))
                     + Decimal(str(pb.fund_balance))
                 )
-                if surplus > 0:
-                    total_surplus += surplus
+                total_surplus += surplus
 
+            prev_month_name = calendar.month_name[prev_month]
             if total_surplus > 0:
-                prev_month_name = calendar.month_name[prev_month]
                 db.add(
                     Transaction(
                         date=date_str,
@@ -394,6 +393,22 @@ def process_income_allocation(db: Session | None = None) -> None:
                 )
                 overflow_fund.current_balance = float(
                     Decimal(str(overflow_fund.current_balance)) + total_surplus
+                )
+            elif total_surplus < 0:
+                shortfall = abs(total_surplus)
+                db.add(
+                    Transaction(
+                        date=date_str,
+                        description=f"Budget shortfall \u2014 {prev_month_name} {prev_year}",
+                        amount=float(shortfall),
+                        category_id=transfer_cat.id,
+                        type="expense",
+                        transaction_type="withdrawal",
+                        sinking_fund_id=overflow_fund.id,
+                    )
+                )
+                overflow_fund.current_balance = float(
+                    Decimal(str(overflow_fund.current_balance)) - shortfall
                 )
 
         # 4. Ensure Budget rows exist for this month

@@ -511,8 +511,55 @@ class TestBudgetSurplusSweep:
         assert Decimal(str(overflow_fund.current_balance)) == Decimal("200")
 
     @patch("app.tasks._today")
-    def test_overspent_category_excluded(self, mock_today, db_session, income_setup):
-        """Overspent categories (negative surplus) are not included in the sweep."""
+    def test_overspent_category_triggers_shortfall_withdrawal(
+        self, mock_today, db_session, income_setup
+    ):
+        """A solely overspent category withdraws the shortfall from the overflow fund."""
+        mock_today.return_value = date(2026, 2, 1)
+
+        overflow_fund = SinkingFund(
+            name="Short Term Savings", color="#AABBCC", current_balance=200
+        )
+        db_session.add(overflow_fund)
+        db_session.flush()
+
+        allocation = income_setup["allocation"]
+        allocation.overflow_sinking_fund_id = overflow_fund.id
+
+        # allocated=200, spent=300 → total_surplus=-100 → withdraw 100
+        db_session.add(
+            Budget(
+                category_id=income_setup["budget_cat"].id,
+                month=1,
+                year=2026,
+                allocated_amount=200,
+                spent_amount=300,
+                fund_balance=0,
+            )
+        )
+        db_session.commit()
+
+        process_income_allocation(db=db_session)
+
+        db_session.refresh(overflow_fund)
+        assert Decimal(str(overflow_fund.current_balance)) == Decimal("100")
+
+        withdrawal_txns = (
+            db_session.query(Transaction)
+            .filter(
+                Transaction.transaction_type == "withdrawal",
+                Transaction.sinking_fund_id == overflow_fund.id,
+            )
+            .all()
+        )
+        assert len(withdrawal_txns) == 1
+        assert Decimal(str(withdrawal_txns[0].amount)) == Decimal("100")
+
+    @patch("app.tasks._today")
+    def test_overspent_category_offsets_positive_surplus(
+        self, mock_today, db_session, income_setup
+    ):
+        """Overspent categories reduce the swept amount rather than being ignored."""
         mock_today.return_value = date(2026, 2, 1)
 
         overflow_fund = SinkingFund(
@@ -524,16 +571,34 @@ class TestBudgetSurplusSweep:
         allocation = income_setup["allocation"]
         allocation.overflow_sinking_fund_id = overflow_fund.id
 
-        # Category overspent: allocated=200, spent=300 → surplus=-100 (excluded)
-        db_session.add(
-            Budget(
-                category_id=income_setup["budget_cat"].id,
-                month=1,
-                year=2026,
-                allocated_amount=200,
-                spent_amount=300,
-                fund_balance=0,
-            )
+        extra_cat = Category(
+            name="Dining", type="expense", color="#F59E0B", is_budget_category=True
+        )
+        db_session.add(extra_cat)
+        db_session.flush()
+
+        # Groceries: allocated=500, spent=400 → surplus=+100
+        # Dining: allocated=200, spent=300 → surplus=-100
+        # Net surplus = 0 → neither sweep nor withdrawal
+        db_session.add_all(
+            [
+                Budget(
+                    category_id=income_setup["budget_cat"].id,
+                    month=1,
+                    year=2026,
+                    allocated_amount=500,
+                    spent_amount=400,
+                    fund_balance=0,
+                ),
+                Budget(
+                    category_id=extra_cat.id,
+                    month=1,
+                    year=2026,
+                    allocated_amount=200,
+                    spent_amount=300,
+                    fund_balance=0,
+                ),
+            ]
         )
         db_session.commit()
 
@@ -551,6 +616,116 @@ class TestBudgetSurplusSweep:
             .all()
         )
         assert len(sweep_txns) == 0
+
+    @patch("app.tasks._today")
+    def test_mixed_categories_partial_offset(
+        self, mock_today, db_session, income_setup
+    ):
+        """Overspent categories partially reduce a net-positive surplus sweep."""
+        mock_today.return_value = date(2026, 2, 1)
+
+        overflow_fund = SinkingFund(
+            name="Short Term Savings", color="#AABBCC", current_balance=0
+        )
+        db_session.add(overflow_fund)
+        db_session.flush()
+
+        allocation = income_setup["allocation"]
+        allocation.overflow_sinking_fund_id = overflow_fund.id
+
+        extra_cat = Category(
+            name="Dining", type="expense", color="#F59E0B", is_budget_category=True
+        )
+        db_session.add(extra_cat)
+        db_session.flush()
+
+        # Groceries: allocated=500, spent=300 → surplus=+200
+        # Dining: allocated=200, spent=300 → surplus=-100
+        # Net surplus = 100 → sweep $100, not $200
+        db_session.add_all(
+            [
+                Budget(
+                    category_id=income_setup["budget_cat"].id,
+                    month=1,
+                    year=2026,
+                    allocated_amount=500,
+                    spent_amount=300,
+                    fund_balance=0,
+                ),
+                Budget(
+                    category_id=extra_cat.id,
+                    month=1,
+                    year=2026,
+                    allocated_amount=200,
+                    spent_amount=300,
+                    fund_balance=0,
+                ),
+            ]
+        )
+        db_session.commit()
+
+        process_income_allocation(db=db_session)
+
+        db_session.refresh(overflow_fund)
+        assert Decimal(str(overflow_fund.current_balance)) == Decimal("100")
+
+        sweep_txns = (
+            db_session.query(Transaction)
+            .filter(
+                Transaction.transaction_type == "contribution",
+                Transaction.sinking_fund_id == overflow_fund.id,
+            )
+            .all()
+        )
+        assert len(sweep_txns) == 1
+        assert Decimal(str(sweep_txns[0].amount)) == Decimal("100")
+
+    @patch("app.tasks._today")
+    def test_shortfall_withdrawn_from_overflow_fund(
+        self, mock_today, db_session, income_setup
+    ):
+        """Net overspend withdraws the shortfall from the overflow fund."""
+        mock_today.return_value = date(2026, 2, 1)
+
+        overflow_fund = SinkingFund(
+            name="Short Term Savings", color="#AABBCC", current_balance=500
+        )
+        db_session.add(overflow_fund)
+        db_session.flush()
+
+        allocation = income_setup["allocation"]
+        allocation.overflow_sinking_fund_id = overflow_fund.id
+
+        # allocated=200, spent=350 → total_surplus=-150
+        db_session.add(
+            Budget(
+                category_id=income_setup["budget_cat"].id,
+                month=1,
+                year=2026,
+                allocated_amount=200,
+                spent_amount=350,
+                fund_balance=0,
+            )
+        )
+        db_session.commit()
+
+        process_income_allocation(db=db_session)
+
+        db_session.refresh(overflow_fund)
+        assert Decimal(str(overflow_fund.current_balance)) == Decimal("350")
+
+        withdrawal_txns = (
+            db_session.query(Transaction)
+            .filter(
+                Transaction.transaction_type == "withdrawal",
+                Transaction.sinking_fund_id == overflow_fund.id,
+            )
+            .all()
+        )
+        assert len(withdrawal_txns) == 1
+        assert Decimal(str(withdrawal_txns[0].amount)) == Decimal("150")
+        assert withdrawal_txns[0].type == "expense"
+        assert "shortfall" in withdrawal_txns[0].description.lower()
 
     @patch("app.tasks._today")
     def test_no_sweep_when_overflow_fund_not_configured(

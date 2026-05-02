@@ -1,7 +1,14 @@
 from datetime import datetime
 
 from app.config import TIMEZONE as BRISBANE
-from app.models import Category, MonthlyUnallocatedIncome, Transaction
+from app.models import (
+    Budget,
+    Category,
+    IncomeAllocation,
+    MonthlyUnallocatedIncome,
+    SinkingFund,
+    Transaction,
+)
 
 
 def _current_month_year():
@@ -327,3 +334,85 @@ class TestApiDashboard:
         assert data["total_expenses"] == "0.00"
         assert data["net"] == "0.00"
         assert data["recent_transactions"] == []
+
+
+class TestBudgetOverdraftWarning:
+    def _budget(self, db_session, sample_budget_categories):
+        from datetime import datetime
+        from app.config import TIMEZONE
+
+        now = datetime.now(TIMEZONE)
+        b = Budget(
+            category_id=sample_budget_categories[0].id,
+            month=now.month,
+            year=now.year,
+            allocated_amount=500,
+            spent_amount=150,
+            fund_balance=0,
+        )
+        db_session.add(b)
+        db_session.commit()
+        db_session.refresh(b)
+        return b
+
+    def test_no_warning_within_budget(
+        self, authed_client, db_session, sample_budget_categories
+    ):
+        b = self._budget(db_session, sample_budget_categories)
+        resp = authed_client.get(
+            f"/dashboard/budget-overdraft-warning?budget_id={b.id}&amount=300"
+        )
+        assert resp.status_code == 200
+        assert resp.text == ""
+
+    def test_warning_with_overflow_fund(
+        self, authed_client, db_session, sample_budget_categories
+    ):
+        b = self._budget(db_session, sample_budget_categories)
+        fund = SinkingFund(
+            name="Short Term Savings", color="#AABBCC", current_balance=1000
+        )
+        db_session.add(fund)
+        db_session.flush()
+        alloc = IncomeAllocation(
+            monthly_income_amount=5000,
+            monthly_budget_allocation=1000,
+            overflow_sinking_fund_id=fund.id,
+        )
+        db_session.add(alloc)
+        db_session.commit()
+
+        # remaining = 500 - 150 = 350; amount=400 → overdraft=$50
+        resp = authed_client.get(
+            f"/dashboard/budget-overdraft-warning?budget_id={b.id}&amount=400"
+        )
+        assert resp.status_code == 200
+        assert "50" in resp.text
+        assert "Short Term Savings" in resp.text
+        assert "end of month" in resp.text
+
+    def test_warning_no_overflow_fund_configured(
+        self, authed_client, db_session, sample_budget_categories
+    ):
+        b = self._budget(db_session, sample_budget_categories)
+        resp = authed_client.get(
+            f"/dashboard/budget-overdraft-warning?budget_id={b.id}&amount=400"
+        )
+        assert resp.status_code == 200
+        assert "50" in resp.text
+        assert "No overflow fund" in resp.text
+
+    def test_no_warning_for_budget_transfer_type(
+        self, authed_client, db_session, sample_budget_categories
+    ):
+        b = self._budget(db_session, sample_budget_categories)
+        resp = authed_client.get(
+            f"/dashboard/budget-overdraft-warning?budget_id={b.id}&amount=400&transaction_type=budget_transfer"
+        )
+        assert resp.status_code == 200
+        assert resp.text == ""
+
+    def test_no_warning_missing_params(self, authed_client):
+        resp = authed_client.get("/dashboard/budget-overdraft-warning")
+        assert resp.status_code == 200
+        assert resp.text == ""

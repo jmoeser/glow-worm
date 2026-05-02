@@ -62,6 +62,12 @@ Middleware execution order (outermost to innermost): CORS (optional) → Session
 - **Recurring Transfers**: Defined on `IncomeAllocation` via the `IncomeAllocationRecurringTransfer` model. Each has a `description` and `amount`. During `process_income_allocation()`, one `expense`/`income_allocation` transaction is created per transfer (using the transfer category). The amount is deducted from `total_allocated`, reducing the unallocated remainder. No sinking fund balance is updated — the money leaves the household budget entirely. Configured via the `/income` page.
 - **Scheduler**: Use `APScheduler`. Handle Leap Years by defaulting to the last day of the month for invalid February dates (e.g., Feb 29th -> Feb 28th).
 - **Overspending**: Use `budget_transfer` type to move money from "Short Term Savings" sinking fund to a budget category's `fund_balance`.
+- **Month-end Budget Reconciliation**: During `process_income_allocation()`, the prior month's net budget surplus/shortfall is reconciled against the configured overflow sinking fund:
+    - **Net positive** (unspent money): creates a `contribution`/`transfer` transaction into the overflow fund and increments its balance.
+    - **Net negative** (overspend): creates a `withdrawal`/`expense` transaction from the overflow fund and decrements its balance (can go negative, reflecting reality).
+    - **Net zero**: no transaction created.
+    - The net surplus formula per budget row: `allocated_amount - spent_amount + fund_balance`. All rows are summed (including negatives) before deciding whether to contribute or withdraw.
+- **Budget Overdraft Warning**: `GET /dashboard/budget-overdraft-warning?budget_id=X&amount=Y&transaction_type=...` returns an HTMX HTML fragment. Returns empty for non-`budget_expense` types, valid inputs within budget, or missing params. Used by both the Quick Expense form (dashboard) and Add Budget Transaction form (transactions page) via `hx-trigger="change"`.
 
 ## Pre-commit Hooks
 Hooks run automatically on `git commit`. Install with `uv run pre-commit install` (already done). Run manually with `uv run pre-commit run --all-files`.

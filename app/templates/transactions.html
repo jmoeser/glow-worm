@@ -263,12 +263,20 @@
                     <label class="gw-label">Amount</label>
                     <div style="position: relative;">
                         <span style="position: absolute; left: 10px; top: 50%; transform: translateY(-50%); color: var(--text-tertiary); pointer-events: none; font-size: 0.9rem;">$</span>
-                        <input type="number" name="amount" step="0.01" min="0.01" required class="gw-input" placeholder="0.00" style="padding-left: 22px;">
+                        <input id="tx-amount" type="number" name="amount" step="0.01" min="0.01" required class="gw-input" placeholder="0.00" style="padding-left: 22px;"
+                               hx-get="/dashboard/budget-overdraft-warning"
+                               hx-trigger="change"
+                               hx-target="#tx-overdraft-warning"
+                               hx-include="#tx-budget-id,#tx-amount,#tx-txn-type">
                     </div>
                 </div>
                 <div>
                     <label class="gw-label">Budget</label>
-                    <select name="budget_id" required class="gw-select">
+                    <select id="tx-budget-id" name="budget_id" required class="gw-select"
+                            hx-get="/dashboard/budget-overdraft-warning"
+                            hx-trigger="change"
+                            hx-target="#tx-overdraft-warning"
+                            hx-include="#tx-budget-id,#tx-amount,#tx-txn-type">
                         <option value="">Select budget</option>
                         {% for b in budgets %}
                         <option value="{{ b.id }}">{{ b.category.name }}</option>
@@ -286,8 +294,12 @@
                 </div>
                 <div>
                     <label class="gw-label">Classification</label>
-                    <select name="transaction_type" class="gw-select"
+                    <select id="tx-txn-type" name="transaction_type" class="gw-select"
                             onchange="gwToggleBudgetTransferFund(this)"
+                            hx-get="/dashboard/budget-overdraft-warning"
+                            hx-trigger="change"
+                            hx-target="#tx-overdraft-warning"
+                            hx-include="#tx-budget-id,#tx-amount,#tx-txn-type"
                             data-transfer-category-id="{{ transfer_category_id or '' }}">
                         <option value="budget_expense" selected>Budget Expense</option>
                         <option value="budget_transfer">Budget Transfer (from fund)</option>
@@ -313,6 +325,7 @@
                     <button type="submit" class="gw-btn gw-btn-primary">Add Transaction</button>
                 </div>
             </div>
+            <div id="tx-overdraft-warning"></div>
         </form>
     </details>
 
