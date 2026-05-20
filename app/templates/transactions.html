@@ -35,10 +35,10 @@
 {# OOB: update pagination controls after add #}
 <div id="pagination-controls" hx-swap-oob="true">
 {% if total_pages > 1 %}
-<div class="gw-pagination">
-    {% if page > 1 %}<a href="/transactions?month={{ month }}&year={{ year }}{% if type_filter %}&type_filter={{ type_filter }}{% endif %}{% if category_filter %}&category_id={{ category_filter }}{% endif %}&page={{ page - 1 }}">&larr; Prev</a>{% endif %}
+<div class="gw-month-nav gw-section">
+    {% if page > 1 %}<a href="/transactions?month={{ month }}&year={{ year }}{% if type_filter %}&type_filter={{ type_filter }}{% endif %}{% if category_filter %}&category_id={{ category_filter }}{% endif %}&page={{ page - 1 }}">&larr; Prev</a>{% else %}<span></span>{% endif %}
     <span>Page {{ page }} of {{ total_pages }} &middot; {{ total_count }} transactions</span>
-    {% if page < total_pages %}<a href="/transactions?month={{ month }}&year={{ year }}{% if type_filter %}&type_filter={{ type_filter }}{% endif %}{% if category_filter %}&category_id={{ category_filter }}{% endif %}&page={{ page + 1 }}">Next &rarr;</a>{% endif %}
+    {% if page < total_pages %}<a href="/transactions?month={{ month }}&year={{ year }}{% if type_filter %}&type_filter={{ type_filter }}{% endif %}{% if category_filter %}&category_id={{ category_filter }}{% endif %}&page={{ page + 1 }}">Next &rarr;</a>{% else %}<span></span>{% endif %}
 </div>
 {% endif %}
 </div>
@@ -496,12 +496,12 @@ function gwToggleSinkingFundType(select) {
     </div>
 
     <!-- Pagination -->
-    <div id="pagination-controls" style="margin-top: 12px;">
+    <div id="pagination-controls">
     {% if total_pages > 1 %}
-    <div class="gw-pagination">
-        {% if page > 1 %}<a href="/transactions?month={{ month }}&year={{ year }}{% if type_filter %}&type_filter={{ type_filter }}{% endif %}{% if category_filter %}&category_id={{ category_filter }}{% endif %}&page={{ page - 1 }}">&larr; Prev</a>{% endif %}
+    <div class="gw-month-nav gw-section">
+        {% if page > 1 %}<a href="/transactions?month={{ month }}&year={{ year }}{% if type_filter %}&type_filter={{ type_filter }}{% endif %}{% if category_filter %}&category_id={{ category_filter }}{% endif %}&page={{ page - 1 }}">&larr; Prev</a>{% else %}<span></span>{% endif %}
         <span>Page {{ page }} of {{ total_pages }} &middot; {{ total_count }} transactions</span>
-        {% if page < total_pages %}<a href="/transactions?month={{ month }}&year={{ year }}{% if type_filter %}&type_filter={{ type_filter }}{% endif %}{% if category_filter %}&category_id={{ category_filter }}{% endif %}&page={{ page + 1 }}">Next &rarr;</a>{% endif %}
+        {% if page < total_pages %}<a href="/transactions?month={{ month }}&year={{ year }}{% if type_filter %}&type_filter={{ type_filter }}{% endif %}{% if category_filter %}&category_id={{ category_filter }}{% endif %}&page={{ page + 1 }}">Next &rarr;</a>{% else %}<span></span>{% endif %}
     </div>
     {% endif %}
     </div>
