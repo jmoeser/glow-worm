@@ -1,0 +1,168 @@
+{% extends "base.html" %}
+{% block title %}Secondary Income — Glow Worm{% endblock %}
+{% block content %}
+<div>
+    <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 4px;">
+        <a href="/income" class="gw-link" style="font-size: 0.875rem;">← Primary Income</a>
+    </div>
+    <h2 class="gw-page-header">Secondary Income</h2>
+    <p style="color: var(--text-secondary); font-size: 0.875rem; margin-bottom: 24px;">
+        Configure monthly dollar goals for each sinking fund. Goals are funded in priority order when income arrives. Any surplus goes to the overflow fund.
+    </p>
+
+    <div style="display: flex; gap: 24px; align-items: flex-start; flex-wrap: wrap;">
+
+        <!-- Left: Allocation config -->
+        <div class="gw-section" style="width: 460px; flex-shrink: 0;">
+            <h3 class="gw-section-header">Allocation Goals</h3>
+            <p style="color: var(--text-secondary); font-size: 0.875rem; margin-bottom: 16px;">
+                Set a monthly dollar goal per fund. Priority 1 is funded first — if income runs short, lower priorities may receive nothing that month.
+            </p>
+
+            <div id="secondary-income-message" style="margin-bottom: 12px;"></div>
+
+            <form hx-post="/income/secondary" hx-target="#secondary-income-message" hx-swap="innerHTML"
+                  style="display: flex; flex-direction: column; gap: 20px;">
+
+                <div>
+                    <label for="label" class="gw-label">Income Source Name</label>
+                    <input type="text" id="label" name="label"
+                           value="{{ allocation.label if allocation else 'Secondary Income' }}"
+                           class="gw-input" maxlength="100" placeholder="e.g. Partner Income">
+                </div>
+
+                {% if sinking_funds %}
+                <div>
+                    <label class="gw-label">Monthly Goals</label>
+                    <div style="font-size: 0.8rem; color: var(--text-secondary); margin-bottom: 10px;">
+                        Total goals: $<span id="secondary-total-goals">0.00</span>
+                    </div>
+                    <div style="display: grid; grid-template-columns: 1fr auto auto; gap: 8px 10px; align-items: center;">
+                        <span style="font-size: 0.75rem; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.05em;">Fund</span>
+                        <span style="font-size: 0.75rem; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.05em; text-align: right;">Goal ($)</span>
+                        <span style="font-size: 0.75rem; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.05em; text-align: center;">Priority</span>
+
+                        {% for fund in sinking_funds %}
+                        {% set rule = rule_map.get(fund.id, {}) %}
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <span style="display: inline-block; width: 10px; height: 10px; border-radius: 50%; background: {{ fund.color }}; flex-shrink: 0;"></span>
+                            <span style="font-size: 0.875rem; color: var(--text-primary);">{{ fund.name }}</span>
+                        </div>
+                        <input type="number" id="sec_goal_{{ fund.id }}" name="sec_goal_{{ fund.id }}"
+                               value="{{ '%.2f'|format(rule.get('goal_amount', 0)) if rule else '0.00' }}"
+                               min="0" step="0.01"
+                               class="gw-input" style="width: 90px; text-align: right;"
+                               oninput="updateGoalTotal()">
+                        <input type="number" id="sec_order_{{ fund.id }}" name="sec_order_{{ fund.id }}"
+                               value="{{ rule.get('sort_order', '') if rule else '' }}"
+                               min="1" step="1"
+                               class="gw-input" style="width: 60px; text-align: center;"
+                               placeholder="—">
+                        {% endfor %}
+                    </div>
+                    <p style="font-size: 0.75rem; color: var(--text-secondary); margin-top: 8px;">
+                        Leave goal at 0 to exclude a fund. Lower priority number = funded first.
+                    </p>
+                </div>
+
+                <div>
+                    <label for="overflow_sinking_fund_id" class="gw-label">Overflow Fund</label>
+                    <p style="color: var(--text-secondary); font-size: 0.8rem; margin-bottom: 6px;">
+                        Income remaining after all goals are met goes here.
+                    </p>
+                    <select id="overflow_sinking_fund_id" name="overflow_sinking_fund_id" class="gw-input">
+                        <option value="">— None (track as unallocated) —</option>
+                        {% for fund in sinking_funds %}
+                        <option value="{{ fund.id }}"
+                            {% if allocation and allocation.overflow_sinking_fund_id == fund.id %}selected{% endif %}>
+                            {{ fund.name }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                {% else %}
+                <p style="color: var(--text-secondary); font-size: 0.875rem;">No active sinking funds. <a href="/sinking-funds" class="gw-link">Add one</a> first.</p>
+                {% endif %}
+
+                <button type="submit" class="gw-btn gw-btn-primary">Save Goals</button>
+            </form>
+        </div>
+
+        <!-- Right: Record income -->
+        <div class="gw-section" style="width: 340px; flex-shrink: 0;">
+            <h3 class="gw-section-header">Record Income</h3>
+            <p style="color: var(--text-secondary); font-size: 0.875rem; margin-bottom: 16px;">
+                When income arrives, enter the amount. Goals are funded in priority order and any surplus goes to the overflow fund.
+            </p>
+
+            <div id="record-income-message" style="margin-bottom: 12px;"></div>
+
+            {% if allocation %}
+            <form hx-post="/income/secondary/record" hx-target="#record-income-message" hx-swap="innerHTML"
+                  style="display: flex; flex-direction: column; gap: 16px;">
+
+                <div>
+                    <label for="amount" class="gw-label">Amount Received</label>
+                    <input type="number" id="amount" name="amount"
+                           step="0.01" min="0.01"
+                           class="gw-input" placeholder="0.00" required>
+                </div>
+
+                <div>
+                    <label for="date" class="gw-label">Date</label>
+                    <input type="date" id="date" name="date"
+                           class="gw-input" required>
+                </div>
+
+                <div>
+                    <label for="description" class="gw-label">Description (optional)</label>
+                    <input type="text" id="description" name="description"
+                           class="gw-input" maxlength="200"
+                           placeholder="{{ allocation.label }}">
+                </div>
+
+                {% if allocation.rules %}
+                <div style="background: var(--surface-3); border: 1px solid var(--border-subtle); border-radius: 6px; padding: 12px; font-size: 0.8rem; color: var(--text-secondary);">
+                    <strong style="color: var(--text-primary); display: block; margin-bottom: 6px;">Goals summary</strong>
+                    {% for rule in allocation.rules | sort(attribute='sort_order') %}
+                    {% set fund = rule.sinking_fund %}
+                    <div style="display: flex; justify-content: space-between; margin-bottom: 2px;">
+                        <span>{{ loop.index }}. {{ fund.name if fund else '(deleted fund)' }}</span>
+                        <span>${{ '%.2f'|format(rule.goal_amount) }}</span>
+                    </div>
+                    {% endfor %}
+                    {% if allocation.overflow_sinking_fund %}
+                    <div style="border-top: 1px solid var(--border-dim); margin-top: 6px; padding-top: 6px;">
+                        Overflow → {{ allocation.overflow_sinking_fund.name }}
+                    </div>
+                    {% endif %}
+                </div>
+                {% endif %}
+
+                <button type="submit" class="gw-btn gw-btn-primary">Record Income</button>
+            </form>
+            {% else %}
+            <p style="color: var(--text-secondary); font-size: 0.875rem;">Save your allocation goals first before recording income.</p>
+            {% endif %}
+        </div>
+
+    </div>
+</div>
+
+<script>
+function updateGoalTotal() {
+    const inputs = document.querySelectorAll('[name^="sec_goal_"]');
+    let total = 0;
+    inputs.forEach(function(inp) { total += parseFloat(inp.value || 0); });
+    document.getElementById('secondary-total-goals').textContent = total.toFixed(2);
+}
+document.addEventListener('DOMContentLoaded', function() {
+    updateGoalTotal();
+    const dateInput = document.getElementById('date');
+    if (dateInput && !dateInput.value) {
+        dateInput.value = new Date().toISOString().slice(0, 10);
+    }
+});
+</script>
+{% endblock %}

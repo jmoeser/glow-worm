@@ -21,7 +21,16 @@ os.environ["SECURE_COOKIES"] = "false"
 from app.auth import hash_password  # noqa: E402
 from app.database import Base, get_db  # noqa: E402
 from app.main import app  # noqa: E402
-from app.models import Budget, Category, RecurringBill, SinkingFund, Transaction, User  # noqa: E402
+from app.models import (  # noqa: E402
+    Budget,
+    Category,
+    RecurringBill,
+    SecondaryIncomeAllocation,
+    SecondaryIncomeAllocationRule,
+    SinkingFund,
+    Transaction,
+    User,
+)
 import app.middleware as _app_middleware  # noqa: E402
 import app.mcp_server as _app_mcp  # noqa: E402
 import app.routes.auth as _app_auth  # noqa: E402
@@ -262,6 +271,32 @@ def sample_transactions(db_session, sample_category, sample_income_category):
     for t in txns:
         db_session.refresh(t)
     return txns
+
+
+@pytest.fixture
+def secondary_income_allocation(db_session, sample_sinking_funds):
+    alloc = SecondaryIncomeAllocation(label="Partner Income")
+    db_session.add(alloc)
+    db_session.flush()
+    db_session.add(
+        SecondaryIncomeAllocationRule(
+            secondary_income_allocation_id=alloc.id,
+            sinking_fund_id=sample_sinking_funds[0].id,
+            goal_amount=600.0,
+            sort_order=1,
+        )
+    )
+    db_session.add(
+        SecondaryIncomeAllocationRule(
+            secondary_income_allocation_id=alloc.id,
+            sinking_fund_id=sample_sinking_funds[1].id,
+            goal_amount=400.0,
+            sort_order=2,
+        )
+    )
+    db_session.commit()
+    db_session.refresh(alloc)
+    return alloc
 
 
 @pytest.fixture

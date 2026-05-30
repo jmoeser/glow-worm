@@ -327,6 +327,47 @@ class IncomeAllocationResponse(BaseModel):
     updated_at: datetime
 
 
+# --- Secondary Income Allocation Schemas ---
+
+
+class SecondaryIncomeAllocationRuleCreate(BaseModel):
+    sinking_fund_id: int
+    goal_amount: Decimal = Field(..., gt=0)
+    sort_order: int = Field(default=0, ge=0)
+
+
+class SecondaryIncomeAllocationRuleResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    sinking_fund_id: int
+    goal_amount: Decimal
+    sort_order: int
+
+
+class SecondaryIncomeAllocationCreate(BaseModel):
+    label: str = Field(default="Secondary Income", min_length=1, max_length=100)
+    rules: list[SecondaryIncomeAllocationRuleCreate] = []
+    overflow_sinking_fund_id: int | None = None
+
+
+class SecondaryIncomeAllocationResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    label: str
+    rules: list[SecondaryIncomeAllocationRuleResponse] = []
+    overflow_sinking_fund_id: int | None = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class RecordSecondaryIncomeRequest(BaseModel):
+    amount: Decimal = Field(..., gt=0)
+    date: str = Field(..., pattern=r"^\d{4}-\d{2}-\d{2}$")
+    description: str | None = Field(None, max_length=200)
+
+
 # --- Monthly Unallocated Income Schemas ---
 
 

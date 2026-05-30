@@ -219,6 +219,47 @@ class IncomeAllocationRecurringTransfer(Base):
     )
 
 
+class SecondaryIncomeAllocation(Base):
+    __tablename__ = "secondary_income_allocations"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    label: Mapped[str] = mapped_column(
+        String(100), nullable=False, default="Secondary Income"
+    )
+    overflow_sinking_fund_id: Mapped[int | None] = mapped_column(
+        ForeignKey("sinking_funds.id"), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(default=_utcnow)
+    updated_at: Mapped[datetime] = mapped_column(default=_utcnow, onupdate=_utcnow)
+
+    rules: Mapped[list["SecondaryIncomeAllocationRule"]] = relationship(
+        back_populates="secondary_income_allocation", cascade="all, delete-orphan"
+    )
+    overflow_sinking_fund: Mapped["SinkingFund | None"] = relationship(
+        "SinkingFund",
+        foreign_keys="[SecondaryIncomeAllocation.overflow_sinking_fund_id]",
+    )
+
+
+class SecondaryIncomeAllocationRule(Base):
+    __tablename__ = "secondary_income_allocation_rules"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    secondary_income_allocation_id: Mapped[int] = mapped_column(
+        ForeignKey("secondary_income_allocations.id"), nullable=False
+    )
+    sinking_fund_id: Mapped[int] = mapped_column(
+        ForeignKey("sinking_funds.id"), nullable=False
+    )
+    goal_amount: Mapped[float] = mapped_column(Numeric(12, 2), nullable=False)
+    sort_order: Mapped[int] = mapped_column(nullable=False, default=0)
+
+    secondary_income_allocation: Mapped["SecondaryIncomeAllocation"] = relationship(
+        back_populates="rules"
+    )
+    sinking_fund: Mapped["SinkingFund"] = relationship()
+
+
 class ApiKey(Base):
     __tablename__ = "api_keys"
 
