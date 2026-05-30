@@ -765,6 +765,7 @@ h1, h2, h3, h4 {
     display: flex;
     align-items: center;
     justify-content: space-between;
+    gap: 16px;
     padding: 12px 20px;
     background: var(--surface-1);
     border: 1px solid var(--border-subtle);
@@ -785,7 +786,7 @@ h1, h2, h3, h4 {
 
 .gw-month-nav span {
     font-family: var(--font-display);
-    font-size: 1.1rem;
+    font-size: 0.875rem;
     font-weight: 600;
 }
 
