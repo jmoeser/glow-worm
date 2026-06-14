@@ -127,8 +127,9 @@
                     <strong style="color: var(--text-primary); display: block; margin-bottom: 6px;">Goals summary</strong>
                     {% for rule in allocation.rules | sort(attribute='sort_order') %}
                     {% set fund = rule.sinking_fund %}
-                    <div style="display: flex; justify-content: space-between; margin-bottom: 2px;">
-                        <span>{{ loop.index }}. {{ fund.name if fund else '(deleted fund)' }}</span>
+                    {% set met = goal_progress.get(rule.sinking_fund_id, 0) >= rule.goal_amount %}
+                    <div style="display: flex; justify-content: space-between; margin-bottom: 2px; {% if met %}color: var(--positive);{% endif %}">
+                        <span>{{ loop.index }}. {{ fund.name if fund else '(deleted fund)' }}{% if met %} ✓{% endif %}</span>
                         <span>${{ '%.2f'|format(rule.goal_amount) }}</span>
                     </div>
                     {% endfor %}

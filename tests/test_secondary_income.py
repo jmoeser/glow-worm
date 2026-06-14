@@ -30,6 +30,39 @@ class TestSecondaryIncomePageGet:
         assert "600.00" in response.text
         assert "400.00" in response.text
 
+    def test_met_goal_shown_in_green(
+        self,
+        authed_client,
+        db_session,
+        secondary_income_allocation,
+        sample_income_category,
+        transfer_category,
+        sample_sinking_funds,
+    ):
+        # Record enough to fully meet fund0's $600 goal this month
+        authed_client.post(
+            "/income/secondary/record",
+            data={"amount": "600", "date": "2026-06-01"},
+            headers={"x-csrftoken": authed_client.csrf_token},
+        )
+        response = authed_client.get("/income/secondary")
+        assert response.status_code == 200
+        assert "var(--positive)" in response.text
+        assert "✓" in response.text
+
+    def test_unmet_goal_not_green(
+        self,
+        authed_client,
+        db_session,
+        secondary_income_allocation,
+        sample_income_category,
+        transfer_category,
+    ):
+        response = authed_client.get("/income/secondary")
+        assert response.status_code == 200
+        assert "var(--positive)" not in response.text
+        assert "✓" not in response.text
+
     def test_unauthenticated_redirects(self, client):
         response = client.get("/income/secondary", follow_redirects=False)
         assert response.status_code == 303

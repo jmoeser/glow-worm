@@ -502,12 +502,26 @@ async def secondary_income_page(request: Request, db: Session = Depends(get_db))
         db.query(SinkingFund).filter(SinkingFund.is_deleted == False).all()  # noqa: E712
     )
     rule_map: dict[int, dict] = {}
+    goal_progress: dict[int, float] = {}
     if alloc:
         for rule in alloc.rules:
             rule_map[rule.sinking_fund_id] = {
                 "goal_amount": float(rule.goal_amount),
                 "sort_order": rule.sort_order,
             }
+        now = datetime.now(TIMEZONE)
+        year_month = f"{now.year}-{now.month:02d}"
+        for rule in alloc.rules:
+            contributed = (
+                db.query(func.coalesce(func.sum(Transaction.amount), 0))
+                .filter(
+                    Transaction.transaction_type == "secondary_income_allocation",
+                    Transaction.sinking_fund_id == rule.sinking_fund_id,
+                    Transaction.date.like(f"{year_month}%"),
+                )
+                .scalar()
+            )
+            goal_progress[rule.sinking_fund_id] = float(contributed)
 
     return templates.TemplateResponse(
         request,
@@ -517,6 +531,7 @@ async def secondary_income_page(request: Request, db: Session = Depends(get_db))
             "allocation": alloc,
             "sinking_funds": sinking_funds,
             "rule_map": rule_map,
+            "goal_progress": goal_progress,
         },
     )
 
