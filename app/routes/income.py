@@ -4,6 +4,7 @@ from decimal import Decimal, InvalidOperation
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 from pydantic import ValidationError
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.config import TIMEZONE
@@ -379,6 +380,7 @@ def _record_secondary_income(
 
     remaining = amount
     distributions: list[dict] = []
+    year_month = date_str[:7]  # "YYYY-MM" — goal progress resets each calendar month
 
     for rule in sorted(alloc.rules, key=lambda r: r.sort_order):
         if remaining <= 0:
@@ -394,9 +396,22 @@ def _record_secondary_income(
         if not fund:
             continue
 
-        alloc_amount = min(remaining, Decimal(str(rule.goal_amount))).quantize(
-            Decimal("0.01")
+        already_this_month = Decimal(
+            str(
+                db.query(func.coalesce(func.sum(Transaction.amount), 0))
+                .filter(
+                    Transaction.transaction_type == "secondary_income_allocation",
+                    Transaction.sinking_fund_id == rule.sinking_fund_id,
+                    Transaction.date.like(f"{year_month}%"),
+                )
+                .scalar()
+            )
         )
+        goal_remaining = Decimal(str(rule.goal_amount)) - already_this_month
+        if goal_remaining <= 0:
+            continue
+
+        alloc_amount = min(remaining, goal_remaining).quantize(Decimal("0.01"))
         if alloc_amount <= 0:
             continue
 
@@ -407,7 +422,7 @@ def _record_secondary_income(
                 amount=float(alloc_amount),
                 category_id=transfer_cat.id,
                 type="transfer",
-                transaction_type="income_allocation",
+                transaction_type="secondary_income_allocation",
                 sinking_fund_id=fund.id,
             )
         )

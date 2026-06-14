@@ -18,6 +18,7 @@ class TransactionType(str, Enum):
     regular = "regular"
     income = "income"
     income_allocation = "income_allocation"
+    secondary_income_allocation = "secondary_income_allocation"
     contribution = "contribution"
     withdrawal = "withdrawal"
     budget_expense = "budget_expense"

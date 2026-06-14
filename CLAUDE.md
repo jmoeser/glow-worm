@@ -54,7 +54,7 @@ Middleware execution order (outermost to innermost): CORS (optional) → Session
 - **CSRF**: `starlette-csrf` middleware required. All HTMX non-GET requests must include `X-CSRF-Token`.
 - **Transactions**:
     - Support **Dual-Linkage**: A transaction can have both a `sinking_fund_id` and a `recurring_bill_id` (e.g., paying a bill from a fund).
-    - Transaction types: `regular`, `income`, `income_allocation`, `contribution`, `withdrawal`, `budget_expense`, `budget_transfer`.
+    - Transaction types: `regular`, `income`, `income_allocation`, `secondary_income_allocation`, `contribution`, `withdrawal`, `budget_expense`, `budget_transfer`. (`secondary_income_allocation` is for goal-fund contributions from secondary income, kept distinct from `income_allocation` so monthly goal-progress tracking is not polluted by primary allocations.)
 
 ## Logic Specifics
 - **Bills Allocation**: Recommended = (Total Annual Bill Cost / 12). Implement a "Buffer Warning" if the fund balance < 30-day upcoming bills.

@@ -183,7 +183,7 @@ class TestRecordSecondaryIncome:
 
         alloc_txns = (
             db_session.query(Transaction)
-            .filter(Transaction.transaction_type == "income_allocation")
+            .filter(Transaction.transaction_type == "secondary_income_allocation")
             .all()
         )
         assert len(alloc_txns) == 2
@@ -293,6 +293,109 @@ class TestRecordSecondaryIncome:
         unalloc = db_session.query(MonthlyUnallocatedIncome).first()
         assert unalloc is not None
         assert abs(float(unalloc.unallocated_amount) - 200.0) < 0.01
+
+    def test_goal_already_met_this_month_skips_fund(
+        self,
+        authed_client,
+        db_session,
+        sample_income_category,
+        transfer_category,
+        sample_sinking_funds,
+    ):
+        # goal1=$100 (p1), overflow=fund1. First $200: $100→fund0, $100→fund1 (overflow).
+        # Second $200: goal already met → full $200→fund1 (overflow).
+        alloc = SecondaryIncomeAllocation(label="Test")
+        db_session.add(alloc)
+        db_session.flush()
+        db_session.add(
+            SecondaryIncomeAllocationRule(
+                secondary_income_allocation_id=alloc.id,
+                sinking_fund_id=sample_sinking_funds[0].id,
+                goal_amount=100.0,
+                sort_order=1,
+            )
+        )
+        alloc.overflow_sinking_fund_id = sample_sinking_funds[1].id
+        db_session.commit()
+
+        self._record(authed_client, {"amount": "200", "date": "2026-05-10"})
+        self._record(authed_client, {"amount": "200", "date": "2026-05-15"})
+
+        db_session.expire_all()
+        f0 = db_session.get(SinkingFund, sample_sinking_funds[0].id)
+        f1 = db_session.get(SinkingFund, sample_sinking_funds[1].id)
+        # fund0 should only get $100 total (goal met after first call)
+        assert abs(float(f0.current_balance) - 100.0) < 0.01
+        # fund1 (overflow) gets $100 from first + $200 from second = $300
+        assert abs(float(f1.current_balance) - 300.0) < 0.01
+
+    def test_goal_partially_met_allocates_remainder_only(
+        self,
+        authed_client,
+        db_session,
+        sample_income_category,
+        transfer_category,
+        sample_sinking_funds,
+    ):
+        # goal1=$100 (p1), overflow=fund1. First $60: $60→fund0 (partial).
+        # Second $200: $40 still needed for goal → $40→fund0, $160→fund1 (overflow).
+        alloc = SecondaryIncomeAllocation(label="Test")
+        db_session.add(alloc)
+        db_session.flush()
+        db_session.add(
+            SecondaryIncomeAllocationRule(
+                secondary_income_allocation_id=alloc.id,
+                sinking_fund_id=sample_sinking_funds[0].id,
+                goal_amount=100.0,
+                sort_order=1,
+            )
+        )
+        alloc.overflow_sinking_fund_id = sample_sinking_funds[1].id
+        db_session.commit()
+
+        self._record(authed_client, {"amount": "60", "date": "2026-05-10"})
+        self._record(authed_client, {"amount": "200", "date": "2026-05-15"})
+
+        db_session.expire_all()
+        f0 = db_session.get(SinkingFund, sample_sinking_funds[0].id)
+        f1 = db_session.get(SinkingFund, sample_sinking_funds[1].id)
+        assert abs(float(f0.current_balance) - 100.0) < 0.01
+        assert abs(float(f1.current_balance) - 160.0) < 0.01
+
+    def test_goal_met_different_month_resets(
+        self,
+        authed_client,
+        db_session,
+        sample_income_category,
+        transfer_category,
+        sample_sinking_funds,
+    ):
+        # goal1=$100 (p1), overflow=fund1. Call in May meets goal.
+        # Call in June: goal resets, fund0 gets $100 again.
+        alloc = SecondaryIncomeAllocation(label="Test")
+        db_session.add(alloc)
+        db_session.flush()
+        db_session.add(
+            SecondaryIncomeAllocationRule(
+                secondary_income_allocation_id=alloc.id,
+                sinking_fund_id=sample_sinking_funds[0].id,
+                goal_amount=100.0,
+                sort_order=1,
+            )
+        )
+        alloc.overflow_sinking_fund_id = sample_sinking_funds[1].id
+        db_session.commit()
+
+        self._record(authed_client, {"amount": "200", "date": "2026-05-10"})
+        self._record(authed_client, {"amount": "200", "date": "2026-06-10"})
+
+        db_session.expire_all()
+        f0 = db_session.get(SinkingFund, sample_sinking_funds[0].id)
+        f1 = db_session.get(SinkingFund, sample_sinking_funds[1].id)
+        # fund0: $100 in May + $100 in June = $200
+        assert abs(float(f0.current_balance) - 200.0) < 0.01
+        # fund1: $100 overflow May + $100 overflow June = $200
+        assert abs(float(f1.current_balance) - 200.0) < 0.01
 
     def test_no_config_returns_error(
         self, authed_client, sample_income_category, transfer_category
