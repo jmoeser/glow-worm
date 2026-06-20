@@ -1,6 +1,6 @@
 # Glow-worm: Project Context & Guidelines
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+This file provides guidance to AI coding assistants (Claude, Grok, Cursor, etc.) when working with code in this repository.
 
 ## Project overview
 
@@ -100,7 +100,7 @@ Hooks run automatically on `git commit`. Install with `uv run pre-commit install
 
 ## Keeping Docs Current
 After any feature addition or significant change, update:
-- **CLAUDE.md**: architecture facts, API endpoint counts, logic specifics, pitfalls
+- **AGENTS.md**: architecture facts, API endpoint counts, logic specifics, pitfalls
 - **README.md**: Features list, project structure if new files/dirs were added
 
 ## API Routes
