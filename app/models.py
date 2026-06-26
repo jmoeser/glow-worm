@@ -127,7 +127,7 @@ class Transaction(Base):
     )
     type: Mapped[str] = mapped_column(String(10), nullable=False)
     transaction_type: Mapped[str] = mapped_column(
-        String(20), nullable=False, default=TransactionType.regular.value
+        String(30), nullable=False, default=TransactionType.regular.value
     )
     sinking_fund_id: Mapped[int | None] = mapped_column(
         ForeignKey("sinking_funds.id"), nullable=True

@@ -4,7 +4,7 @@ repos:
     hooks:
       - id: detect-secrets
         args: ["--baseline", ".secrets.baseline"]
-        exclude: ".env.example"
+        exclude: "^(.env.example|alembic/versions/)"
 
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: v0.15.2

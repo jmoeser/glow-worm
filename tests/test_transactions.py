@@ -346,6 +346,22 @@ class TestTransactionsEditPost:
         )
         assert "99.99" in response.text
 
+    def test_updates_secondary_income_allocation_type(
+        self, authed_client, db_session, sample_transactions
+    ):
+        txn = sample_transactions[0]
+        response = authed_client.post(
+            f"/transactions/{txn.id}",
+            data={
+                "transaction_type": "secondary_income_allocation",
+                "type": "income",
+            },
+            headers={"x-csrftoken": authed_client.csrf_token},
+        )
+        assert response.status_code == 200
+        db_session.refresh(txn)
+        assert txn.transaction_type == "secondary_income_allocation"
+
     def test_clears_linked_entity(
         self, authed_client, db_session, sample_transactions, sample_sinking_funds
     ):
