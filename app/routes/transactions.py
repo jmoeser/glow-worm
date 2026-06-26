@@ -24,6 +24,7 @@ TRANSACTION_TYPE_LABELS = {
     "regular": "Regular",
     "income": "Income",
     "income_allocation": "Income Allocation",
+    "secondary_income_allocation": "Secondary Income Allocation",
     "contribution": "Contribution",
     "withdrawal": "Withdrawal",
     "budget_expense": "Budget Expense",

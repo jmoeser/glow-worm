@@ -296,6 +296,29 @@ class TestTransactionsEditGet:
         assert 'name="amount"' in response.text
         assert 'name="date"' in response.text
 
+    def test_edit_form_includes_secondary_income_allocation(
+        self, authed_client, db_session, sample_income_category
+    ):
+        txn = Transaction(
+            date="2026-01-10",
+            description="Goal fund contribution",
+            amount=200.00,
+            category_id=sample_income_category.id,
+            type="income",
+            transaction_type="secondary_income_allocation",
+        )
+        db_session.add(txn)
+        db_session.commit()
+        db_session.refresh(txn)
+
+        response = authed_client.get(f"/transactions/{txn.id}/edit")
+        assert response.status_code == 200
+        assert 'value="secondary_income_allocation"' in response.text
+        assert "Secondary Income Allocation" in response.text
+        assert 'value="secondary_income_allocation" selected' in response.text.replace(
+            "\n", " "
+        )
+
     def test_404_for_nonexistent(self, authed_client):
         response = authed_client.get("/transactions/99999/edit")
         assert response.status_code == 404
