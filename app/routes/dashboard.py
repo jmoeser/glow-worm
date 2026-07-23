@@ -20,6 +20,7 @@ from app.models import (
 )
 from app.tasks import _compute_bills_recommended
 from app.schemas import DashboardSummary, SinkingFundResponse, TransactionResponse
+from app.services.budget_recommendations import recommendation_summary
 from app.templating import templates
 
 router = APIRouter()
@@ -159,6 +160,12 @@ def _dashboard_data(db: Session, month: int, year: int) -> dict:
         else Decimal("0.00")
     )
 
+    now_month, now_year = _current_month_year()
+    is_current_month = month == now_month and year == now_year
+    budget_rec_summary = (
+        recommendation_summary(db, month, year) if is_current_month else None
+    )
+
     return {
         "total_income": total_income,
         "total_expenses": total_expenses,
@@ -177,6 +184,8 @@ def _dashboard_data(db: Session, month: int, year: int) -> dict:
         "month_name": calendar.month_name[month],
         "budget_daily_remaining": budget_daily_remaining,
         "days_remaining": days_remaining,
+        "is_current_month": is_current_month,
+        "budget_recommendations": budget_rec_summary,
     }
 
 

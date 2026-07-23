@@ -39,10 +39,18 @@ class TestSecondaryIncomePageGet:
         transfer_category,
         sample_sinking_funds,
     ):
+        # Goal progress is keyed to the current calendar month — use today's month.
+        from datetime import datetime
+
+        from app.config import TIMEZONE
+
+        now = datetime.now(TIMEZONE)
+        date_str = f"{now.year}-{now.month:02d}-01"
+
         # Record enough to fully meet fund0's $600 goal this month
         authed_client.post(
             "/income/secondary/record",
-            data={"amount": "600", "date": "2026-06-01"},
+            data={"amount": "600", "date": date_str},
             headers={"x-csrftoken": authed_client.csrf_token},
         )
         response = authed_client.get("/income/secondary")

@@ -177,6 +177,33 @@ class BudgetResponse(BaseModel):
     updated_at: datetime
 
 
+class BudgetRecommendation(BaseModel):
+    """Advisory suggestion comparing allocated_amount to recent average spend."""
+
+    model_config = ConfigDict(frozen=True)
+
+    budget_id: int
+    category_id: int
+    category_name: str
+    category_color: str
+    current_allocated: Decimal
+    recommended: Decimal
+    delta: Decimal
+    direction: str  # "raise" | "lower"
+    months_used: int
+    sample_spends: list[Decimal]
+
+
+class BudgetRecommendationSummary(BaseModel):
+    """Aggregate of budget recommendations for dashboard / panel footers."""
+
+    model_config = ConfigDict(frozen=True)
+
+    count: int
+    net_delta: Decimal
+    items: list[BudgetRecommendation]
+
+
 # --- Sinking Fund Schemas ---
 
 

@@ -191,6 +191,45 @@
         {{ allocation_bar(budgets, total_allocated, income_budget_allocation, income_unallocated) }}
     </div>
 
+    {% if is_current_month and budget_recommendations and budget_recommendations.count > 0 %}
+    <!-- Budget recommendations (advisory only) -->
+    <div class="gw-card gw-section" id="budget-recommendations">
+        <h3 style="font-family: var(--font-display); font-size: 1.05rem; font-weight: 600; margin-bottom: 4px;">
+            Suggestions from last 6 months
+        </h3>
+        <p class="gw-text-dim" style="font-size: 0.8rem; margin-bottom: 14px;">
+            Based on average spend in completed months. Edit a row above to adjust — suggestions are advisory only.
+        </p>
+        <ul style="list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 10px;">
+            {% for rec in budget_recommendations.items %}
+            <li style="display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 8px 16px; padding: 10px 12px; background: var(--surface-3); border-radius: var(--radius-sm); border: 1px solid var(--border-subtle);">
+                <span>
+                    <span class="gw-dot" style="background-color: {{ rec.category_color }}"></span>
+                    <strong>{{ rec.category_name }}</strong>
+                </span>
+                <span style="font-size: 0.9rem;">
+                    allocated ${{ rec.current_allocated|money }}
+                    <span class="gw-text-dim">·</span>
+                    avg spent ${{ rec.recommended|money }}
+                    <span class="gw-text-dim">({{ rec.months_used }} mo)</span>
+                    <span style="font-weight: 600; margin-left: 6px;"
+                          class="{% if rec.direction == 'raise' %}gw-text-negative{% else %}gw-text-positive{% endif %}">
+                        {% if rec.delta > 0 %}+{% endif %}${{ rec.delta|money }}
+                    </span>
+                </span>
+            </li>
+            {% endfor %}
+        </ul>
+        <p style="margin-top: 14px; font-size: 0.85rem;">
+            Net if you matched averages:
+            <strong class="{% if budget_recommendations.net_delta > 0 %}gw-text-negative{% elif budget_recommendations.net_delta < 0 %}gw-text-positive{% endif %}">
+                {% if budget_recommendations.net_delta > 0 %}+{% endif %}${{ budget_recommendations.net_delta|money }}
+            </strong>
+            to total allocated
+        </p>
+    </div>
+    {% endif %}
+
     <!-- Budget table -->
     <div class="gw-table-wrap">
         <div class="gw-overflow-x">

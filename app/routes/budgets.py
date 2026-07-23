@@ -13,6 +13,7 @@ from app.database import get_db
 from app.middleware import get_current_user
 from app.models import Budget, Category, IncomeAllocation
 from app.schemas import BudgetCreate, BudgetResponse, BudgetUpdate
+from app.services.budget_recommendations import recommendation_summary
 from app.templating import templates
 
 router = APIRouter()
@@ -101,6 +102,10 @@ def _budget_context(db: Session, month: int, year: int) -> dict:
     else:
         next_month, next_year = month + 1, year
 
+    now_month, now_year = _current_month_year()
+    is_current_month = month == now_month and year == now_year
+    rec_summary = recommendation_summary(db, month, year) if is_current_month else None
+
     return {
         "budgets": budgets,
         "available_categories": available,
@@ -116,6 +121,8 @@ def _budget_context(db: Session, month: int, year: int) -> dict:
         "prev_year": prev_year,
         "next_month": next_month,
         "next_year": next_year,
+        "is_current_month": is_current_month,
+        "budget_recommendations": rec_summary,
     }
 
 

@@ -5,13 +5,13 @@ An opinionated, single-tenant household budgeting app built with Python and Fast
 ## Features
 
 - **Income Allocation** -- Configure how your monthly income is automatically distributed across budgets, sinking funds, bills, and recurring transfers on the 1st of each month. Includes a live Sankey diagram showing the breakdown.
-- **Monthly Budgets** -- Track spending against allocated amounts for repeating categories (Groceries, Eating Out, etc.) with color-coded progress bars. Any unspent surplus is automatically swept into your overflow sinking fund at month-end; net overspend is automatically withdrawn from it so your fund balances always reflect reality.
+- **Monthly Budgets** -- Track spending against allocated amounts for repeating categories (Groceries, Eating Out, etc.) with color-coded progress bars. Any unspent surplus is automatically swept into your overflow sinking fund at month-end; net overspend is automatically withdrawn from it so your fund balances always reflect reality. Advisory **budget suggestions** compare each category's allocation to its average spend over the last few completed months (shown on the budgets page and as a dashboard teaser).
 - **Sinking Funds** -- Savings pots (Bills, Savings, Emergency, etc.) that accumulate a balance over time via monthly contributions.
 - **Recurring Bills** -- Manage bills with flexible frequencies (monthly, quarterly, yearly, every 28 days). Bills are automatically generated as unpaid transactions when due.
 - **Recurring Transfers** -- Define fixed monthly outflows (e.g. an allowance, an external savings transfer) that are processed automatically as part of income allocation and deducted from the unallocated remainder.
 - **Category Management** -- Create and manage transaction categories (income, expense, transfer). System categories required for income allocation are protected from deletion.
 - **Transaction Ledger** -- Full transaction history with filters by date, category, and fund. Supports dual-linkage so a single transaction can reference both a sinking fund and a recurring bill.
-- **Dashboard** -- At-a-glance view of your budget status, upcoming bills, fund balances, and unallocated income. The Quick Expense form warns you in real time if a transaction would overdraw a budget category and tells you which fund will cover the shortfall at month-end.
+- **Dashboard** -- At-a-glance view of your budget status, upcoming bills, fund balances, and unallocated income. The Quick Expense form warns you in real time if a transaction would overdraw a budget category and tells you which fund will cover the shortfall at month-end. Surfaces a budget-suggestions teaser when allocations look off vs recent averages.
 - **MCP Server** -- Built-in [Model Context Protocol](https://modelcontextprotocol.io/) server so AI agents can manage your transactions and bills programmatically.
 - **API Keys** -- Generate Bearer tokens for API and MCP access, managed from the web UI.
 - **CLI (`glow`)** -- A `pipx`-installable command-line tool for managing transactions, bills, budgets, and sinking funds from the terminal.
@@ -306,6 +306,7 @@ glow-worm/
 │   ├── mcp_server.py      # MCP tool definitions
 │   ├── templating.py      # Jinja2 template helpers
 │   ├── routes/            # Route modules (auth, dashboard, bills, etc.)
+│   ├── services/          # Domain logic (e.g. budget recommendations)
 │   ├── templates/         # Jinja2 HTML templates
 │   ├── static/            # CSS, logo, static assets
 │   └── cli/               # glow CLI (pipx-installable)
