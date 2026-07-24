@@ -111,9 +111,7 @@ async def income_page(request: Request, db: Session = Depends(get_db)):
     fund_allocation_map: dict[int, float] = {}
     if allocation:
         for junction in allocation.sinking_fund_allocations:
-            fund_allocation_map[junction.sinking_fund_id] = float(
-                junction.allocation_amount
-            )
+            fund_allocation_map[junction.sinking_fund_id] = junction.allocation_amount
 
     sinking_funds_data = [
         {"id": f.id, "name": f.name, "color": f.color} for f in sinking_funds
@@ -506,7 +504,7 @@ async def secondary_income_page(request: Request, db: Session = Depends(get_db))
     if alloc:
         for rule in alloc.rules:
             rule_map[rule.sinking_fund_id] = {
-                "goal_amount": float(rule.goal_amount),
+                "goal_amount": rule.goal_amount,
                 "sort_order": rule.sort_order,
             }
         now = datetime.now(TIMEZONE)

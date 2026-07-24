@@ -114,10 +114,8 @@ def compute_recommendations(
             BudgetRecommendation(
                 budget_id=budget.id,
                 category_id=budget.category_id,
-                category_name=category.name
-                if category
-                else f"Category {budget.category_id}",
-                category_color=category.color if category else "#888888",
+                category_name=category.name,
+                category_color=category.color,
                 current_allocated=current_allocated,
                 recommended=recommended,
                 delta=delta,

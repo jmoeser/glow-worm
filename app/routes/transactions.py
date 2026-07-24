@@ -428,13 +428,9 @@ async def transactions_create(request: Request, db: Session = Depends(get_db)):
     raw_sf = form.get("sinking_fund_id")
     raw_rb = form.get("recurring_bill_id")
     raw_bid = form.get("budget_id")
-    sinking_fund_id = _parse_optional_int(
-        str(raw_sf) if isinstance(raw_sf, str) else None
-    )
-    recurring_bill_id = _parse_optional_int(
-        str(raw_rb) if isinstance(raw_rb, str) else None
-    )
-    budget_id = _parse_optional_int(str(raw_bid) if isinstance(raw_bid, str) else None)
+    sinking_fund_id = _parse_optional_int(raw_sf if isinstance(raw_sf, str) else None)
+    recurring_bill_id = _parse_optional_int(raw_rb if isinstance(raw_rb, str) else None)
+    budget_id = _parse_optional_int(raw_bid if isinstance(raw_bid, str) else None)
     is_paid = form.get("is_paid") == "on" or form.get("is_paid") == "true"
 
     try:
@@ -600,7 +596,7 @@ async def transactions_update(
     old_type = txn.type
     old_txn_type = txn.transaction_type
     old_budget_id = txn.budget_id
-    old_amount = float(txn.amount)
+    old_amount = txn.amount
 
     form = await request.form()
 
@@ -640,17 +636,17 @@ async def transactions_update(
     if "sinking_fund_id" in form:
         raw_sf = form.get("sinking_fund_id")
         txn.sinking_fund_id = _parse_optional_int(
-            str(raw_sf) if isinstance(raw_sf, str) else None
+            raw_sf if isinstance(raw_sf, str) else None
         )
     if "recurring_bill_id" in form:
         raw_rb = form.get("recurring_bill_id")
         txn.recurring_bill_id = _parse_optional_int(
-            str(raw_rb) if isinstance(raw_rb, str) else None
+            raw_rb if isinstance(raw_rb, str) else None
         )
     if "budget_id" in form:
         raw_bid = form.get("budget_id")
         txn.budget_id = _parse_optional_int(
-            str(raw_bid) if isinstance(raw_bid, str) else None
+            raw_bid if isinstance(raw_bid, str) else None
         )
 
     if "is_paid" in form:
@@ -660,10 +656,8 @@ async def transactions_update(
     _adjust_budget_fund_balance(
         db, old_budget_id, old_txn_type, old_amount, reverse=True
     )
-    _adjust_sinking_fund_balance(db, txn.sinking_fund_id, txn.type, float(txn.amount))
-    _adjust_budget_fund_balance(
-        db, txn.budget_id, txn.transaction_type, float(txn.amount)
-    )
+    _adjust_sinking_fund_balance(db, txn.sinking_fund_id, txn.type, txn.amount)
+    _adjust_budget_fund_balance(db, txn.budget_id, txn.transaction_type, txn.amount)
     db.commit()
     db.refresh(txn)
 
@@ -678,10 +672,10 @@ async def transactions_delete(
     if not txn:
         return HTMLResponse("Not found", status_code=404)
     _adjust_sinking_fund_balance(
-        db, txn.sinking_fund_id, txn.type, float(txn.amount), reverse=True
+        db, txn.sinking_fund_id, txn.type, txn.amount, reverse=True
     )
     _adjust_budget_fund_balance(
-        db, txn.budget_id, txn.transaction_type, float(txn.amount), reverse=True
+        db, txn.budget_id, txn.transaction_type, txn.amount, reverse=True
     )
     db.delete(txn)
     db.commit()
@@ -788,7 +782,7 @@ async def api_update_transaction(
     old_type = txn.type
     old_txn_type = txn.transaction_type
     old_budget_id = txn.budget_id
-    old_amount = float(txn.amount)
+    old_amount = txn.amount
 
     for field, value in data.model_dump(exclude_unset=True).items():
         if field in ("type", "transaction_type") and value is not None:
@@ -800,10 +794,8 @@ async def api_update_transaction(
     _adjust_budget_fund_balance(
         db, old_budget_id, old_txn_type, old_amount, reverse=True
     )
-    _adjust_sinking_fund_balance(db, txn.sinking_fund_id, txn.type, float(txn.amount))
-    _adjust_budget_fund_balance(
-        db, txn.budget_id, txn.transaction_type, float(txn.amount)
-    )
+    _adjust_sinking_fund_balance(db, txn.sinking_fund_id, txn.type, txn.amount)
+    _adjust_budget_fund_balance(db, txn.budget_id, txn.transaction_type, txn.amount)
     db.commit()
     db.refresh(txn)
 
@@ -819,10 +811,10 @@ async def api_delete_transaction(
     if not txn:
         return JSONResponse({"detail": "Transaction not found"}, status_code=404)
     _adjust_sinking_fund_balance(
-        db, txn.sinking_fund_id, txn.type, float(txn.amount), reverse=True
+        db, txn.sinking_fund_id, txn.type, txn.amount, reverse=True
     )
     _adjust_budget_fund_balance(
-        db, txn.budget_id, txn.transaction_type, float(txn.amount), reverse=True
+        db, txn.budget_id, txn.transaction_type, txn.amount, reverse=True
     )
     db.delete(txn)
     db.commit()

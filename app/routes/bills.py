@@ -541,7 +541,10 @@ async def api_pay_bill(request: Request, bill_id: int, db: Session = Depends(get
             "transaction": {
                 "id": txn.id,
                 "date": txn.date,
-                "amount": float(txn.amount),
+                # Numeric columns may be Decimal at runtime; cast for JSON.
+                "amount": float(
+                    txn.amount
+                ),  # pyrefly: ignore[unnecessary-type-conversion]
                 "description": txn.description,
             },
             "bill": bill_response.model_dump(mode="json"),
