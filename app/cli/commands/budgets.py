@@ -1,11 +1,12 @@
 from datetime import datetime
-from typing import Annotated, Optional
+from typing import Annotated
 
 import typer
 from rich.console import Console
 from rich.table import Table
 
 from app.cli.client import get_client, print_json, raise_for_status
+from app.config import TIMEZONE
 
 app = typer.Typer(help="Manage monthly budgets.")
 console = Console()
@@ -13,8 +14,8 @@ console = Console()
 
 @app.command("list")
 def list_budgets(
-    month: Annotated[Optional[int], typer.Option(help="Month (1-12)")] = None,
-    year: Annotated[Optional[int], typer.Option(help="Year")] = None,
+    month: Annotated[int | None, typer.Option(help="Month (1-12)")] = None,
+    year: Annotated[int | None, typer.Option(help="Year")] = None,
     json_output: Annotated[bool, typer.Option("--json", help="Output as JSON")] = False,
 ) -> None:
     """List budgets for a month."""
@@ -52,14 +53,12 @@ def list_budgets(
 def add_budget(
     category_id: Annotated[int, typer.Option(prompt=True)],
     allocated_amount: Annotated[float, typer.Option(prompt=True)],
-    month: Annotated[
-        Optional[int], typer.Option(help="Month (default: current)")
-    ] = None,
-    year: Annotated[Optional[int], typer.Option(help="Year (default: current)")] = None,
+    month: Annotated[int | None, typer.Option(help="Month (default: current)")] = None,
+    year: Annotated[int | None, typer.Option(help="Year (default: current)")] = None,
     json_output: Annotated[bool, typer.Option("--json", help="Output as JSON")] = False,
 ) -> None:
     """Create a new budget entry."""
-    now = datetime.now()
+    now = datetime.now(TIMEZONE)
     payload = {
         "category_id": category_id,
         "allocated_amount": allocated_amount,

@@ -4,11 +4,10 @@ from datetime import datetime
 from decimal import Decimal, InvalidOperation
 
 from fastapi import APIRouter, Depends, Form, Request
-
-from app.config import TIMEZONE
 from fastapi.responses import HTMLResponse, JSONResponse
 from sqlalchemy.orm import Session, joinedload
 
+from app.config import TIMEZONE
 from app.database import get_db
 from app.middleware import get_current_user
 from app.models import (
@@ -18,9 +17,9 @@ from app.models import (
     SinkingFund,
     Transaction,
 )
-from app.tasks import _compute_bills_recommended
 from app.schemas import DashboardSummary, SinkingFundResponse, TransactionResponse
 from app.services.budget_recommendations import recommendation_summary
+from app.tasks import _compute_bills_recommended
 from app.templating import templates
 
 router = APIRouter()
@@ -53,11 +52,11 @@ def _dashboard_data(db: Session, month: int, year: int) -> dict:
 
     total_income = sum(
         (Decimal(str(t.amount)) for t in transactions if t.type == "income"),
-        Decimal("0"),
+        Decimal(0),
     ).quantize(Decimal("0.01"))
     total_expenses = sum(
         (Decimal(str(t.amount)) for t in transactions if t.type == "expense"),
-        Decimal("0"),
+        Decimal(0),
     ).quantize(Decimal("0.01"))
     net = (total_income - total_expenses).quantize(Decimal("0.01"))
 
@@ -72,11 +71,11 @@ def _dashboard_data(db: Session, month: int, year: int) -> dict:
     )
     budget_total_allocated = sum(
         (Decimal(str(b.allocated_amount)) for b in budgets),
-        Decimal("0"),
+        Decimal(0),
     ).quantize(Decimal("0.01"))
     budget_total_spent = sum(
         (Decimal(str(b.spent_amount)) for b in budgets),
-        Decimal("0"),
+        Decimal(0),
     ).quantize(Decimal("0.01"))
     budget_total_remaining = (budget_total_allocated - budget_total_spent).quantize(
         Decimal("0.01")
@@ -85,7 +84,7 @@ def _dashboard_data(db: Session, month: int, year: int) -> dict:
     # Sinking funds (non-deleted, ordered by name)
     sinking_funds = (
         db.query(SinkingFund)
-        .filter(SinkingFund.is_deleted == False)  # noqa: E712
+        .filter(SinkingFund.is_deleted == False)
         .order_by(SinkingFund.name)
         .all()
     )
@@ -112,7 +111,7 @@ def _dashboard_data(db: Session, month: int, year: int) -> dict:
             # Identify Bills fund to skip it from the regular fund loop
             bills_fund_obj = (
                 db.query(SinkingFund)
-                .filter(SinkingFund.name == "Bills", SinkingFund.is_deleted == False)  # noqa: E712
+                .filter(SinkingFund.name == "Bills", SinkingFund.is_deleted == False)
                 .first()
             )
             bills_fund_id = bills_fund_obj.id if bills_fund_obj else None
@@ -139,7 +138,7 @@ def _dashboard_data(db: Session, month: int, year: int) -> dict:
     # Total net worth: sinking fund balances + unallocated income + budget remaining
     total_sinking_funds = sum(
         (Decimal(str(sf.current_balance)) for sf in sinking_funds),
-        Decimal("0"),
+        Decimal(0),
     ).quantize(Decimal("0.01"))
     total_net_worth = (
         total_sinking_funds + unallocated_income + budget_total_remaining

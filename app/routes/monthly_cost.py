@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 
 from fastapi import APIRouter, Depends, Request
@@ -24,7 +24,7 @@ def _build_monthly_cost_data(
 
     excluded_cat_ids = (
         db.query(Category.id)
-        .filter(Category.exclude_from_monthly_cost == True)  # noqa: E712
+        .filter(Category.exclude_from_monthly_cost == True)
         .scalar_subquery()
     )
 
@@ -49,7 +49,7 @@ def _build_monthly_cost_data(
             "net": net,
         }
 
-    first_date = datetime.strptime(first_date_str, "%Y-%m-%d")
+    first_date = date.fromisoformat(first_date_str)
     months_elapsed = (
         (today.year - first_date.year) * 12 + (today.month - first_date.month) + 1
     )
@@ -60,7 +60,7 @@ def _build_monthly_cost_data(
         .filter(
             Transaction.type == "expense",
             Transaction.transaction_type.in_(_INCLUDED_TYPES),
-            Category.exclude_from_monthly_cost == False,  # noqa: E712
+            Category.exclude_from_monthly_cost == False,
         )
         .group_by(Category.id)
         .order_by(func.sum(Transaction.amount).desc())
@@ -77,7 +77,7 @@ def _build_monthly_cost_data(
             .join(Category, Category.id == Transaction.category_id)
             .filter(
                 Transaction.transaction_type == "contribution",
-                Category.exclude_from_monthly_cost == False,  # noqa: E712
+                Category.exclude_from_monthly_cost == False,
             )
             .group_by(Transaction.category_id)
             .all()
@@ -86,12 +86,12 @@ def _build_monthly_cost_data(
             r.category_id: Decimal(str(r.total_offset or 0)) for r in offset_rows
         }
 
-    grand_total = Decimal("0")
+    grand_total = Decimal(0)
     rows: list[dict] = []
     for row in rows_raw:
         total = Decimal(str(row.total_spent or 0))
         if net:
-            total = total - offset_map.get(row.Category.id, Decimal("0"))
+            total = total - offset_map.get(row.Category.id, Decimal(0))
         total = total.quantize(Decimal("0.01"))
         grand_total += total
         monthly_avg = (total / months_elapsed).quantize(Decimal("0.01"))

@@ -1,6 +1,6 @@
 import contextvars
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
@@ -97,7 +97,7 @@ class AuthenticationMiddleware(BaseHTTPMiddleware):
                 )
 
             # Update last_used_at
-            api_key.last_used_at = datetime.now(timezone.utc)
+            api_key.last_used_at = datetime.now(UTC)
             db.commit()
 
             request.state.user = user

@@ -9,6 +9,7 @@ from decimal import Decimal
 from typing import Any
 
 from fastmcp import FastMCP
+from pydantic import ValidationError
 
 from app.config import TIMEZONE
 from app.database import SessionLocal
@@ -161,7 +162,7 @@ def create_transaction(
             budget_id=budget_id,
             is_paid=is_paid,
         )
-    except Exception as exc:
+    except (ValidationError, ValueError, TypeError) as exc:
         return f"Validation error: {exc}"
 
     db = SessionLocal()
@@ -257,7 +258,7 @@ def update_transaction(
 
     try:
         data = TransactionUpdate(**update_data)
-    except Exception as exc:
+    except (ValidationError, ValueError, TypeError) as exc:
         return f"Validation error: {exc}"
 
     db = SessionLocal()
@@ -348,7 +349,7 @@ def list_bills(include_inactive: bool = False) -> list[dict]:
     try:
         query = db.query(RecurringBill)
         if not include_inactive:
-            query = query.filter(RecurringBill.is_active == True)  # noqa: E712
+            query = query.filter(RecurringBill.is_active == True)
         bills = query.order_by(RecurringBill.next_due_date).all()
         return [
             RecurringBillResponse.model_validate(b).model_dump(mode="json")
@@ -418,7 +419,7 @@ def create_bill(
             end_date=end_date,
             is_active=is_active,
         )
-    except Exception as exc:
+    except (ValidationError, ValueError, TypeError) as exc:
         return f"Validation error: {exc}"
 
     db = SessionLocal()
@@ -503,7 +504,7 @@ def update_bill(
 
     try:
         data = RecurringBillUpdate(**update_data)
-    except Exception as exc:
+    except (ValidationError, ValueError, TypeError) as exc:
         return f"Validation error: {exc}"
 
     db = SessionLocal()

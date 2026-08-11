@@ -12,9 +12,9 @@ from app.database import SessionLocal
 from app.models import (
     Budget,
     Category,
+    IncomeAllocation,
     MonthlyUnallocatedIncome,
     RecurringBill,
-    IncomeAllocation,
     SinkingFund,
     Transaction,
 )
@@ -67,21 +67,17 @@ def advance_due_date(current: date, frequency: str) -> date:
 
 def _compute_bills_recommended(db: Session) -> Decimal:
     """Calculate recommended monthly bills allocation: total annual cost / 12."""
-    bills = (
-        db.query(RecurringBill)
-        .filter(RecurringBill.is_active == True)  # noqa: E712
-        .all()
-    )
+    bills = db.query(RecurringBill).filter(RecurringBill.is_active == True).all()
     total_annual = sum(
         (
             Decimal(str(b.amount))
             * Decimal(str(FREQUENCY_ANNUAL_MULTIPLIER.get(b.frequency, 1)))
             for b in bills
         ),
-        Decimal("0"),
+        Decimal(0),
     )
     if total_annual == 0:
-        return Decimal("0")
+        return Decimal(0)
     return (total_annual / 12).quantize(Decimal("0.01"))
 
 
@@ -93,19 +89,15 @@ def generate_bills_forecast(db: Session, months: int = 12) -> list[dict]:
     """
     today = _today()
 
-    active_bills = (
-        db.query(RecurringBill)
-        .filter(RecurringBill.is_active == True)  # noqa: E712
-        .all()
-    )
+    active_bills = db.query(RecurringBill).filter(RecurringBill.is_active == True).all()
 
     bills_fund = (
         db.query(SinkingFund)
-        .filter(SinkingFund.name == "Bills", SinkingFund.is_deleted == False)  # noqa: E712
+        .filter(SinkingFund.name == "Bills", SinkingFund.is_deleted == False)
         .first()
     )
     running_balance = (
-        Decimal(str(bills_fund.current_balance)) if bills_fund else Decimal("0")
+        Decimal(str(bills_fund.current_balance)) if bills_fund else Decimal(0)
     )
 
     # Determine monthly contribution from income allocation config
@@ -116,7 +108,7 @@ def generate_bills_forecast(db: Session, months: int = 12) -> list[dict]:
         else:
             monthly_contribution = _compute_bills_recommended(db)
     else:
-        monthly_contribution = Decimal("0")
+        monthly_contribution = Decimal(0)
 
     # Check if this month's contribution has already been deposited
     month_start = f"{today.year}-{today.month:02d}-01"
@@ -169,11 +161,11 @@ def generate_bills_forecast(db: Session, months: int = 12) -> list[dict]:
         y = today.year + abs_month // 12
 
         bills_this_month = monthly_bills.get((y, m), [])
-        total_out = sum((b["amount"] for b in bills_this_month), Decimal("0"))
+        total_out = sum((b["amount"] for b in bills_this_month), Decimal(0))
 
         # Skip contribution for current month if already processed
         contribution = (
-            Decimal("0") if (i == 0 and already_contributed) else monthly_contribution
+            Decimal(0) if (i == 0 and already_contributed) else monthly_contribution
         )
 
         running_balance = running_balance + contribution - total_out
@@ -236,7 +228,7 @@ def process_income_allocation(db: Session | None = None) -> None:
         # Find required categories
         income_cat = (
             db.query(Category)
-            .filter(Category.type == "income", Category.is_deleted == False)  # noqa: E712
+            .filter(Category.type == "income", Category.is_deleted == False)
             .first()
         )
         if not income_cat:
@@ -245,7 +237,7 @@ def process_income_allocation(db: Session | None = None) -> None:
 
         transfer_cat = (
             db.query(Category)
-            .filter(Category.type == "transfer", Category.is_deleted == False)  # noqa: E712
+            .filter(Category.type == "transfer", Category.is_deleted == False)
             .first()
         )
         if not transfer_cat:
@@ -264,12 +256,12 @@ def process_income_allocation(db: Session | None = None) -> None:
             )
         )
 
-        total_allocated = Decimal("0")
+        total_allocated = Decimal(0)
 
         # Identify the Bills fund (handled separately)
         bills_fund = (
             db.query(SinkingFund)
-            .filter(SinkingFund.name == "Bills", SinkingFund.is_deleted == False)  # noqa: E712
+            .filter(SinkingFund.name == "Bills", SinkingFund.is_deleted == False)
             .first()
         )
         bills_fund_id = bills_fund.id if bills_fund else None
@@ -283,7 +275,7 @@ def process_income_allocation(db: Session | None = None) -> None:
                 db.query(SinkingFund)
                 .filter(
                     SinkingFund.id == junction.sinking_fund_id,
-                    SinkingFund.is_deleted == False,  # noqa: E712
+                    SinkingFund.is_deleted == False,
                 )
                 .first()
             )
@@ -358,7 +350,7 @@ def process_income_allocation(db: Session | None = None) -> None:
                 db.query(SinkingFund)
                 .filter(
                     SinkingFund.id == allocation.overflow_sinking_fund_id,
-                    SinkingFund.is_deleted == False,  # noqa: E712
+                    SinkingFund.is_deleted == False,
                 )
                 .first()
             )
@@ -369,7 +361,7 @@ def process_income_allocation(db: Session | None = None) -> None:
                 .filter(Budget.month == prev_month, Budget.year == prev_year)
                 .all()
             )
-            total_surplus = Decimal("0")
+            total_surplus = Decimal(0)
             for pb in prev_budgets:
                 surplus = (
                     Decimal(str(pb.allocated_amount))
@@ -416,8 +408,8 @@ def process_income_allocation(db: Session | None = None) -> None:
         budget_cats = (
             db.query(Category)
             .filter(
-                Category.is_budget_category == True,  # noqa: E712
-                Category.is_deleted == False,  # noqa: E712
+                Category.is_budget_category == True,
+                Category.is_deleted == False,
             )
             .all()
         )
@@ -513,7 +505,7 @@ def process_due_bills(db: Session | None = None) -> None:
 
         bills_fund = (
             db.query(SinkingFund)
-            .filter(SinkingFund.name == "Bills", SinkingFund.is_deleted == False)  # noqa: E712
+            .filter(SinkingFund.name == "Bills", SinkingFund.is_deleted == False)
             .first()
         )
         if not bills_fund:
@@ -523,7 +515,7 @@ def process_due_bills(db: Session | None = None) -> None:
         due_bills = (
             db.query(RecurringBill)
             .filter(
-                RecurringBill.is_active == True,  # noqa: E712
+                RecurringBill.is_active == True,
                 RecurringBill.next_due_date <= today_str,
             )
             .all()

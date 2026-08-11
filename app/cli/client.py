@@ -24,7 +24,7 @@ def raise_for_status(response: httpx.Response) -> None:
     if response.is_error:
         try:
             detail = response.json().get("detail", response.text)
-        except Exception:
+        except ValueError, TypeError, KeyError, AttributeError:
             detail = response.text
         typer.echo(f"Error {response.status_code}: {detail}", err=True)
         raise typer.Exit(1)

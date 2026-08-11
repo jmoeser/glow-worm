@@ -1,11 +1,12 @@
-from datetime import date
-from typing import Annotated, Optional
+from datetime import datetime
+from typing import Annotated
 
 import typer
 from rich.console import Console
 from rich.table import Table
 
 from app.cli.client import get_client, print_json, raise_for_status
+from app.config import TIMEZONE
 
 app = typer.Typer(help="Manage transactions.")
 console = Console()
@@ -13,12 +14,12 @@ console = Console()
 
 @app.command("list")
 def list_transactions(
-    month: Annotated[Optional[int], typer.Option(help="Month (1-12)")] = None,
-    year: Annotated[Optional[int], typer.Option(help="Year")] = None,
+    month: Annotated[int | None, typer.Option(help="Month (1-12)")] = None,
+    year: Annotated[int | None, typer.Option(help="Year")] = None,
     type_filter: Annotated[
-        Optional[str], typer.Option("--type", help="Filter: income or expense")
+        str | None, typer.Option("--type", help="Filter: income or expense")
     ] = None,
-    limit: Annotated[Optional[int], typer.Option(help="Max rows to display")] = None,
+    limit: Annotated[int | None, typer.Option(help="Max rows to display")] = None,
     json_output: Annotated[bool, typer.Option("--json", help="Output as JSON")] = False,
 ) -> None:
     """List transactions for a month."""
@@ -61,21 +62,21 @@ def add_transaction(
     tx_type: Annotated[
         str, typer.Option("--type", prompt=True, help="income or expense")
     ],
-    description: Annotated[Optional[str], typer.Option(help="Description")] = None,
+    description: Annotated[str | None, typer.Option(help="Description")] = None,
     transaction_type: Annotated[
         str, typer.Option(help="Transaction type (default: regular)")
     ] = "regular",
-    fund_id: Annotated[Optional[int], typer.Option(help="Sinking fund ID")] = None,
-    bill_id: Annotated[Optional[int], typer.Option(help="Recurring bill ID")] = None,
-    budget_id: Annotated[Optional[int], typer.Option(help="Budget ID")] = None,
+    fund_id: Annotated[int | None, typer.Option(help="Sinking fund ID")] = None,
+    bill_id: Annotated[int | None, typer.Option(help="Recurring bill ID")] = None,
+    budget_id: Annotated[int | None, typer.Option(help="Budget ID")] = None,
     tx_date: Annotated[
-        Optional[str], typer.Option("--date", help="Date YYYY-MM-DD (default: today)")
+        str | None, typer.Option("--date", help="Date YYYY-MM-DD (default: today)")
     ] = None,
     json_output: Annotated[bool, typer.Option("--json", help="Output as JSON")] = False,
 ) -> None:
     """Add a new transaction."""
     if tx_date is None:
-        tx_date = date.today().isoformat()
+        tx_date = datetime.now(TIMEZONE).date().isoformat()
     payload: dict = {
         "amount": amount,
         "category_id": category_id,

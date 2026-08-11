@@ -13,8 +13,8 @@ from app.config import TIMEZONE
 from app.database import get_db
 from app.middleware import get_current_user
 from app.models import RecurringBill, SinkingFund, Transaction
-from app.tasks import generate_bills_forecast
 from app.schemas import SinkingFundCreate, SinkingFundResponse, SinkingFundUpdate
+from app.tasks import generate_bills_forecast
 from app.templating import templates
 
 _COLOR_RE = re.compile(r"^#[0-9a-fA-F]{6}$")
@@ -32,50 +32,46 @@ FREQUENCY_ANNUAL_MULTIPLIER = {
 def _active_funds(db: Session):
     return (
         db.query(SinkingFund)
-        .filter(SinkingFund.is_deleted == False)  # noqa: E712
+        .filter(SinkingFund.is_deleted == False)
         .order_by(SinkingFund.name)
         .all()
     )
 
 
 def _compute_bills_recommended(db: Session) -> Decimal:
-    bills = (
-        db.query(RecurringBill)
-        .filter(RecurringBill.is_active == True)  # noqa: E712
-        .all()
-    )
+    bills = db.query(RecurringBill).filter(RecurringBill.is_active == True).all()
     total_annual = sum(
         (
             Decimal(str(b.amount))
             * Decimal(str(FREQUENCY_ANNUAL_MULTIPLIER.get(b.frequency, 1)))
             for b in bills
         ),
-        Decimal("0"),
+        Decimal(0),
     )
     return (total_annual / 12).quantize(Decimal("0.01"))
 
 
 def _bills_due_next_30_days(db: Session) -> Decimal:
-    today = date.today()
+    today = datetime.now(TIMEZONE).date()
     cutoff = today + timedelta(days=30)
     today_str = today.isoformat()
     cutoff_str = cutoff.isoformat()
     bills = (
         db.query(RecurringBill)
         .filter(
-            RecurringBill.is_active == True,  # noqa: E712
+            RecurringBill.is_active == True,
             RecurringBill.next_due_date >= today_str,
             RecurringBill.next_due_date <= cutoff_str,
         )
         .all()
     )
-    return sum((Decimal(str(b.amount)) for b in bills), Decimal("0"))
+    return sum((Decimal(str(b.amount)) for b in bills), Decimal(0))
 
 
 def _fund_context(db: Session):
     funds = _active_funds(db)
     total_balance = sum(
-        (Decimal(str(f.current_balance)) for f in funds), Decimal("0")
+        (Decimal(str(f.current_balance)) for f in funds), Decimal(0)
     ).quantize(Decimal("0.01"))
     bills_recommended = _compute_bills_recommended(db)
     bills_due_30 = _bills_due_next_30_days(db)
@@ -107,7 +103,7 @@ def _render_table_body(request: Request, db: Session) -> str:
 
 
 def _render_fund_row(
-    request: Request, fund: SinkingFund, bills_recommended: Decimal = Decimal("0")
+    request: Request, fund: SinkingFund, bills_recommended: Decimal = Decimal(0)
 ) -> str:
     return bytes(
         templates.TemplateResponse(
@@ -247,7 +243,7 @@ def _generate_fund_history(fund: SinkingFund, db: Session) -> list[dict]:
       year, month, month_name, is_current, total_in, total_out, net,
       closing_balance, transactions
     """
-    today = date.today()
+    today = datetime.now(TIMEZONE).date()
 
     # Start month: 11 months before current → 12 months total including current
     start_month = today.month - 11
@@ -296,7 +292,7 @@ def _generate_fund_history(fund: SinkingFund, db: Session) -> list[dict]:
         txns = by_month.get(ym, [])
         month_in = sum(
             (Decimal(str(t.amount)) for t in txns if t.type in ("income", "transfer")),
-            Decimal("0"),
+            Decimal(0),
         )
         month_out = sum(
             (
@@ -304,7 +300,7 @@ def _generate_fund_history(fund: SinkingFund, db: Session) -> list[dict]:
                 for t in txns
                 if t.type not in ("income", "transfer")
             ),
-            Decimal("0"),
+            Decimal(0),
         )
         closing_balances[ym] = running.quantize(Decimal("0.01"))
         running -= month_in - month_out
@@ -316,7 +312,7 @@ def _generate_fund_history(fund: SinkingFund, db: Session) -> list[dict]:
         txns = by_month.get(ym, [])
         month_in = sum(
             (Decimal(str(t.amount)) for t in txns if t.type in ("income", "transfer")),
-            Decimal("0"),
+            Decimal(0),
         ).quantize(Decimal("0.01"))
         month_out = sum(
             (
@@ -324,7 +320,7 @@ def _generate_fund_history(fund: SinkingFund, db: Session) -> list[dict]:
                 for t in txns
                 if t.type not in ("income", "transfer")
             ),
-            Decimal("0"),
+            Decimal(0),
         ).quantize(Decimal("0.01"))
         result.append(
             {
@@ -434,7 +430,7 @@ async def sinking_fund_detail(
             for t in transactions
             if t.type in ("income", "transfer")
         ),
-        Decimal("0"),
+        Decimal(0),
     )
     expenses = sum(
         (
@@ -442,7 +438,7 @@ async def sinking_fund_detail(
             for t in transactions
             if t.type not in ("income", "transfer")
         ),
-        Decimal("0"),
+        Decimal(0),
     )
     net = (income - expenses).quantize(Decimal("0.01"))
 

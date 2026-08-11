@@ -2,18 +2,19 @@
 
 import calendar
 import sys
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 
 from sqlalchemy import select
 
+from app.config import TIMEZONE
 from app.database import Base, SessionLocal, engine
 from app.models import (
     Budget,
     Category,
-    MonthlyUnallocatedIncome,
-    RecurringBill,
     IncomeAllocation,
     IncomeAllocationToSinkingFund,
+    MonthlyUnallocatedIncome,
+    RecurringBill,
     SinkingFund,
     Transaction,
     User,
@@ -43,7 +44,7 @@ def seed_data() -> None:
         # Exclude system categories (e.g. Transfer, seeded by migration) from the check
         # so that a fresh install after `alembic upgrade head` still runs the seed.
         existing = (
-            db.execute(select(Category).filter(Category.is_system == False))  # noqa: E712
+            db.execute(select(Category).filter(Category.is_system == False))
             .scalars()
             .first()
         )
@@ -51,7 +52,7 @@ def seed_data() -> None:
             print("Seed data already exists. Aborting to prevent duplicates.")
             sys.exit(0)
 
-        today = date.today()
+        today = datetime.now(TIMEZONE).date()
         current_month = today.month
         current_year = today.year
         first_of_month = date(current_year, current_month, 1)

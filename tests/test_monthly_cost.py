@@ -1,11 +1,10 @@
-from datetime import datetime
+from datetime import UTC, datetime
 from decimal import Decimal
-
 
 from app.models import Category, Transaction
 from app.routes.monthly_cost import _build_monthly_cost_data
 
-_TODAY = datetime(2026, 4, 2)
+_TODAY = datetime(2026, 4, 2, tzinfo=UTC)
 
 
 def _expense_cat(db_session, name="Food", color="#FF0000"):
@@ -54,6 +53,7 @@ class TestMonthlyCostPage:
     def test_shows_monthly_average(self, authed_client, db_session):
         from datetime import datetime
         from decimal import Decimal
+
         from app.config import TIMEZONE
 
         today = datetime.now(TIMEZONE)

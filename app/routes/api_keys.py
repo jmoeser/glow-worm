@@ -1,8 +1,9 @@
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import HTMLResponse, JSONResponse
+from pydantic import ValidationError
 from sqlalchemy.orm import Session
 
 from app.auth import generate_api_key, hash_api_key
@@ -38,7 +39,7 @@ def _check_rate_limits(db: Session, user_id: int) -> str | None:
     if active_count >= MAX_KEYS_PER_USER:
         return f"Maximum of {MAX_KEYS_PER_USER} active API keys allowed. Revoke an existing key first."
 
-    one_day_ago = datetime.now(timezone.utc) - timedelta(days=1)
+    one_day_ago = datetime.now(UTC) - timedelta(days=1)
     recent_count = (
         db.query(ApiKey)
         .filter(ApiKey.user_id == user_id, ApiKey.created_at >= one_day_ago)
@@ -119,7 +120,7 @@ async def api_keys_revoke(request: Request, key_id: int, db: Session = Depends(g
             status_code=400,
         )
 
-    api_key.revoked_at = datetime.now(timezone.utc)
+    api_key.revoked_at = datetime.now(UTC)
     db.commit()
 
     logger.info("API key revoked: id=%d user=%s", key_id, user.username)
@@ -153,7 +154,7 @@ async def create_api_key(
     try:
         body = await request.json()
         data = ApiKeyCreate(**body)
-    except Exception:
+    except ValidationError, ValueError, TypeError:
         data = ApiKeyCreate()
 
     # Generate and store key
@@ -209,7 +210,7 @@ async def revoke_api_key(
     if api_key.revoked_at is not None:
         return JSONResponse({"detail": "API key already revoked"}, status_code=400)
 
-    api_key.revoked_at = datetime.now(timezone.utc)
+    api_key.revoked_at = datetime.now(UTC)
     db.commit()
 
     logger.info("API key revoked: id=%d user=%s", key_id, user.username)

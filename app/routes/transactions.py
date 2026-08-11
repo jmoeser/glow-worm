@@ -3,13 +3,12 @@ from datetime import datetime
 from decimal import Decimal, InvalidOperation
 
 from fastapi import APIRouter, Depends, Request
-
-from app.config import TIMEZONE
 from fastapi.responses import HTMLResponse, JSONResponse
 from pydantic import ValidationError
 from sqlalchemy import func
 from sqlalchemy.orm import Session, joinedload
 
+from app.config import TIMEZONE
 from app.database import get_db
 from app.middleware import get_current_user
 from app.models import Budget, Category, RecurringBill, SinkingFund, Transaction
@@ -119,8 +118,8 @@ def _month_totals(
         .group_by(Transaction.type)
         .all()
     )
-    income = Decimal("0")
-    expenses = Decimal("0")
+    income = Decimal(0)
+    expenses = Decimal(0)
     for txn_type, total in rows:
         if txn_type == "income":
             income = Decimal(str(total or 0))
@@ -132,7 +131,7 @@ def _month_totals(
 def _all_categories(db: Session) -> list[Category]:
     return (
         db.query(Category)
-        .filter(Category.is_deleted == False)  # noqa: E712
+        .filter(Category.is_deleted == False)
         .order_by(Category.name)
         .all()
     )
@@ -141,7 +140,7 @@ def _all_categories(db: Session) -> list[Category]:
 def _active_sinking_funds(db: Session) -> list[SinkingFund]:
     return (
         db.query(SinkingFund)
-        .filter(SinkingFund.is_deleted == False)  # noqa: E712
+        .filter(SinkingFund.is_deleted == False)
         .order_by(SinkingFund.name)
         .all()
     )
@@ -150,7 +149,7 @@ def _active_sinking_funds(db: Session) -> list[SinkingFund]:
 def _active_recurring_bills(db: Session) -> list[RecurringBill]:
     return (
         db.query(RecurringBill)
-        .filter(RecurringBill.is_active == True)  # noqa: E712
+        .filter(RecurringBill.is_active == True)
         .order_by(RecurringBill.name)
         .all()
     )
@@ -168,7 +167,7 @@ def _budgets_for_month_dropdown(db: Session, month: int, year: int) -> list[Budg
 def _transfer_category_id(db: Session) -> int | None:
     cat = (
         db.query(Category)
-        .filter(Category.type == "transfer", Category.is_deleted == False)  # noqa: E712
+        .filter(Category.type == "transfer", Category.is_deleted == False)
         .first()
     )
     return cat.id if cat else None
@@ -376,8 +375,7 @@ async def transactions_page(
     user = get_current_user(request)
     if month is None or year is None:
         month, year = _current_month_year()
-    if page < 1:
-        page = 1
+    page = max(page, 1)
     ctx = _transaction_context(db, month, year, type_filter, category_id, page=page)
     return templates.TemplateResponse(
         request,
@@ -506,7 +504,7 @@ async def fund_transfer(request: Request, db: Session = Depends(get_db)):
 
     transfer_cat = (
         db.query(Category)
-        .filter(Category.type == "transfer", Category.is_deleted == False)  # noqa: E712
+        .filter(Category.type == "transfer", Category.is_deleted == False)
         .first()
     )
     if not transfer_cat:

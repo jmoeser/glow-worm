@@ -2,11 +2,10 @@ from logging.config import fileConfig
 
 from sqlalchemy import engine_from_config, pool
 
-from alembic import context
-from app.database import DATABASE_URL, Base
-
 # Import all models so Base.metadata is fully populated for autogenerate.
 import app.models  # noqa: F401
+from alembic import context
+from app.database import DATABASE_URL, Base
 
 config = context.config
 

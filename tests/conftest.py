@@ -18,10 +18,14 @@ os.environ["SECRET_KEY"] = "test-secret-key-do-not-use-in-production-1234567890"
 os.environ["SECURE_COOKIES"] = "false"
 
 
-from app.auth import hash_password  # noqa: E402
-from app.database import Base, get_db  # noqa: E402
-from app.main import app  # noqa: E402
-from app.models import (  # noqa: E402
+import app.mcp_server as _app_mcp
+import app.middleware as _app_middleware
+import app.routes.auth as _app_auth
+import app.tasks as _app_tasks
+from app.auth import hash_password
+from app.database import Base, get_db
+from app.main import app
+from app.models import (
     Budget,
     Category,
     RecurringBill,
@@ -31,10 +35,6 @@ from app.models import (  # noqa: E402
     Transaction,
     User,
 )
-import app.middleware as _app_middleware  # noqa: E402
-import app.mcp_server as _app_mcp  # noqa: E402
-import app.routes.auth as _app_auth  # noqa: E402
-import app.tasks as _app_tasks  # noqa: E402
 
 # Single in-memory SQLite engine shared across all tests.
 # StaticPool ensures one connection is always reused, keeping the in-memory

@@ -1,4 +1,4 @@
-from typing import Annotated, Optional
+from typing import Annotated
 
 import typer
 from rich.console import Console
@@ -11,9 +11,9 @@ console = Console()
 
 def dashboard(
     month: Annotated[
-        Optional[int], typer.Option("--month", "-m", help="Month (1-12)")
+        int | None, typer.Option("--month", "-m", help="Month (1-12)")
     ] = None,
-    year: Annotated[Optional[int], typer.Option("--year", "-y", help="Year")] = None,
+    year: Annotated[int | None, typer.Option("--year", "-y", help="Year")] = None,
     json_output: Annotated[bool, typer.Option("--json", help="Output as JSON")] = False,
 ) -> None:
     """Show budget and sinking fund summary."""

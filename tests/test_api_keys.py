@@ -1,6 +1,6 @@
 """Tests for API key management endpoints."""
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from app.auth import hash_api_key
 from app.models import ApiKey
@@ -66,7 +66,7 @@ class TestCreateApiKey:
                 user_id=test_user.id,
                 key_hash="recenthash",
                 name="recent",
-                created_at=datetime.now(timezone.utc),
+                created_at=datetime.now(UTC),
             )
         )
         db_session.commit()
@@ -89,9 +89,9 @@ class TestCreateApiKey:
                     user_id=test_user.id,
                     key_hash=f"revokedhash{i}",
                     name=f"revoked-{i}",
-                    revoked_at=datetime.now(timezone.utc),
+                    revoked_at=datetime.now(UTC),
                     # Older than 1 day so rate limit doesn't trigger
-                    created_at=datetime.now(timezone.utc) - timedelta(days=2),
+                    created_at=datetime.now(UTC) - timedelta(days=2),
                 )
             )
         db_session.commit()
@@ -152,7 +152,7 @@ class TestRevokeApiKey:
             user_id=test_user.id,
             key_hash="revhash",
             name="already-revoked",
-            revoked_at=datetime.now(timezone.utc),
+            revoked_at=datetime.now(UTC),
         )
         db_session.add(api_key)
         db_session.commit()
@@ -225,7 +225,7 @@ class TestApiKeysHtmlPage:
                 user_id=test_user.id,
                 key_hash="recenthtml",
                 name="recent",
-                created_at=datetime.now(timezone.utc),
+                created_at=datetime.now(UTC),
             )
         )
         db_session.commit()
@@ -295,7 +295,7 @@ class TestBearerTokenAuth:
                 user_id=test_user.id,
                 key_hash=hash_api_key(plain_key),
                 name="revoked-bearer",
-                revoked_at=datetime.now(timezone.utc),
+                revoked_at=datetime.now(UTC),
             )
         )
         db_session.commit()

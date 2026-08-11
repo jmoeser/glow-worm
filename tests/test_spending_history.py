@@ -1,6 +1,5 @@
 from decimal import Decimal
 
-
 from app.models import Category, Transaction
 from app.routes.spending_history import _build_spending_matrix
 
@@ -211,7 +210,7 @@ class TestBuildSpendingMatrix:
         db_session.add(cat)
         db_session.commit()
 
-        matrix, row_totals, col_totals, grand_total = _build_spending_matrix(
+        _matrix, row_totals, col_totals, grand_total = _build_spending_matrix(
             db_session, 2026, [cat]
         )
 
