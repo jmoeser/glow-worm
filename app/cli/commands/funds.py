@@ -1,4 +1,4 @@
-from typing import Annotated, Optional
+from typing import Annotated
 
 import typer
 from rich.console import Console
@@ -40,7 +40,7 @@ def list_funds(
 def add_fund(
     name: Annotated[str, typer.Option(prompt=True)],
     color: Annotated[str, typer.Option(prompt=True, help="Hex color, e.g. #3b82f6")],
-    description: Annotated[Optional[str], typer.Option(help="Description")] = None,
+    description: Annotated[str | None, typer.Option(help="Description")] = None,
     balance: Annotated[float, typer.Option(help="Starting balance")] = 0.0,
     json_output: Annotated[bool, typer.Option("--json", help="Output as JSON")] = False,
 ) -> None:

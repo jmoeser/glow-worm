@@ -1,11 +1,12 @@
-from datetime import date
-from typing import Annotated, Optional
+from datetime import datetime
+from typing import Annotated
 
 import typer
 from rich.console import Console
 from rich.table import Table
 
 from app.cli.client import get_client, print_json, raise_for_status
+from app.config import TIMEZONE
 
 app = typer.Typer(help="Manage recurring bills.")
 console = Console()
@@ -44,17 +45,17 @@ def list_bills(
 def pay_bill(
     bill_id: Annotated[int, typer.Argument(help="Bill ID")],
     amount: Annotated[
-        Optional[float], typer.Option(help="Override payment amount")
+        float | None, typer.Option(help="Override payment amount")
     ] = None,
     pay_date: Annotated[
-        Optional[str],
+        str | None,
         typer.Option("--date", help="Payment date YYYY-MM-DD (default: today)"),
     ] = None,
     json_output: Annotated[bool, typer.Option("--json", help="Output as JSON")] = False,
 ) -> None:
     """Record payment for a bill."""
     if pay_date is None:
-        pay_date = date.today().isoformat()
+        pay_date = datetime.now(TIMEZONE).date().isoformat()
     client = get_client()
     if amount is None:
         bill_resp = client.get(f"/api/bills/{bill_id}")

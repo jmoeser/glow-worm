@@ -19,7 +19,7 @@ router = APIRouter()
 def _active_categories(db: Session):
     return (
         db.query(Category)
-        .filter(Category.is_deleted == False)  # noqa: E712
+        .filter(Category.is_deleted == False)
         .order_by(Category.name)
         .all()
     )

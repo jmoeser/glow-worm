@@ -72,20 +72,20 @@ def _build_spending_matrix(
     cat_ids = {c.id for c in categories}
     row_totals: dict[int, Decimal] = {}
     col_totals: dict[int, Decimal] = defaultdict(Decimal)
-    grand_total = Decimal("0")
+    grand_total = Decimal(0)
 
     for month_num in range(1, 13):
         row_total = sum(
             (v for k, v in matrix[month_num].items() if k in cat_ids),
-            Decimal("0"),
+            Decimal(0),
         )
         row_totals[month_num] = row_total.quantize(Decimal("0.01"))
         grand_total += row_total
         for cat in categories:
-            col_totals[cat.id] += matrix[month_num].get(cat.id, Decimal("0"))
+            col_totals[cat.id] += matrix[month_num].get(cat.id, Decimal(0))
 
-    for cat_id in col_totals:
-        col_totals[cat_id] = col_totals[cat_id].quantize(Decimal("0.01"))
+    for cat_id, total in col_totals.items():
+        col_totals[cat_id] = total.quantize(Decimal("0.01"))
 
     return matrix, row_totals, dict(col_totals), grand_total.quantize(Decimal("0.01"))
 
@@ -104,7 +104,7 @@ async def spending_history_page(
     categories = (
         db.query(Category)
         .filter(
-            Category.is_deleted == False,  # noqa: E712
+            Category.is_deleted == False,
             Category.type == "expense",
         )
         .order_by(Category.name)

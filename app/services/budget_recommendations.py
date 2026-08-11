@@ -12,7 +12,7 @@ from app.schemas import BudgetRecommendation, BudgetRecommendationSummary
 
 _DEFAULT_LOOKBACK = 6
 _DEFAULT_MIN_MONTHS = 2
-_DEFAULT_MIN_DELTA_ABS = Decimal("20")
+_DEFAULT_MIN_DELTA_ABS = Decimal(20)
 _DEFAULT_MIN_DELTA_PCT = Decimal("0.10")
 
 
@@ -96,7 +96,7 @@ def compute_recommendations(
         if len(samples) < min_months:
             continue
 
-        total = sum(samples, Decimal("0"))
+        total = sum(samples, Decimal(0))
         recommended = (total / len(samples)).quantize(Decimal("0.01"))
         current_allocated = _to_decimal(budget.allocated_amount)
         delta = (recommended - current_allocated).quantize(Decimal("0.01"))
@@ -149,7 +149,7 @@ def recommendation_summary(
         min_delta_abs=min_delta_abs,
         min_delta_pct=min_delta_pct,
     )
-    net_delta = sum((r.delta for r in items), Decimal("0")).quantize(Decimal("0.01"))
+    net_delta = sum((r.delta for r in items), Decimal(0)).quantize(Decimal("0.01"))
     return BudgetRecommendationSummary(
         count=len(items),
         net_delta=net_delta,

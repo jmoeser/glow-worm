@@ -104,9 +104,7 @@ def _upsert_allocation(
 async def income_page(request: Request, db: Session = Depends(get_db)):
     user = get_current_user(request)
     allocation = db.query(IncomeAllocation).first()
-    sinking_funds = (
-        db.query(SinkingFund).filter(SinkingFund.is_deleted == False).all()  # noqa: E712
-    )
+    sinking_funds = db.query(SinkingFund).filter(SinkingFund.is_deleted == False).all()
 
     fund_allocation_map: dict[int, float] = {}
     if allocation:
@@ -141,7 +139,7 @@ async def income_save(request: Request, db: Session = Depends(get_db)):
     try:
         monthly_income_amount = Decimal(str(form.get("monthly_income_amount") or "0"))
     except InvalidOperation, TypeError:
-        monthly_income_amount = Decimal("0")
+        monthly_income_amount = Decimal(0)
 
     if monthly_income_amount <= 0:
         return HTMLResponse(
@@ -154,7 +152,7 @@ async def income_save(request: Request, db: Session = Depends(get_db)):
             str(form.get("monthly_budget_allocation") or "0")
         )
     except InvalidOperation, TypeError:
-        monthly_budget_allocation = Decimal("0")
+        monthly_budget_allocation = Decimal(0)
 
     # Parse bills fund allocation type
     bills_fund_allocation_type = str(
@@ -177,8 +175,7 @@ async def income_save(request: Request, db: Session = Depends(get_db)):
 
     # Parse sinking fund allocations from fund_<id> keys (skip system funds — Bills is handled separately)
     system_fund_ids = {
-        row.id
-        for row in db.query(SinkingFund.id).filter(SinkingFund.is_system == True)  # noqa: E712
+        row.id for row in db.query(SinkingFund.id).filter(SinkingFund.is_system == True)
     }
     fund_allocations = []
     for key in form:
@@ -205,7 +202,7 @@ async def income_save(request: Request, db: Session = Depends(get_db)):
             try:
                 amt = Decimal(amt_str or "0")
             except InvalidOperation:
-                amt = Decimal("0")
+                amt = Decimal(0)
             if desc and amt > 0:
                 transfers.append(
                     IncomeAllocationRecurringTransferCreate(
@@ -348,7 +345,7 @@ def _record_secondary_income(
 
     income_cat = (
         db.query(Category)
-        .filter(Category.type == "income", Category.is_deleted == False)  # noqa: E712
+        .filter(Category.type == "income", Category.is_deleted == False)
         .first()
     )
     if not income_cat:
@@ -356,7 +353,7 @@ def _record_secondary_income(
 
     transfer_cat = (
         db.query(Category)
-        .filter(Category.type == "transfer", Category.is_deleted == False)  # noqa: E712
+        .filter(Category.type == "transfer", Category.is_deleted == False)
         .first()
     )
     if not transfer_cat:
@@ -387,7 +384,7 @@ def _record_secondary_income(
             db.query(SinkingFund)
             .filter(
                 SinkingFund.id == rule.sinking_fund_id,
-                SinkingFund.is_deleted == False,  # noqa: E712
+                SinkingFund.is_deleted == False,
             )
             .first()
         )
@@ -429,13 +426,13 @@ def _record_secondary_income(
         distributions.append({"fund_name": fund.name, "amount": float(alloc_amount)})
 
     # Send surplus to overflow fund, or track as unallocated
-    if remaining > Decimal("0"):
+    if remaining > Decimal(0):
         if alloc.overflow_sinking_fund_id:
             overflow_fund = (
                 db.query(SinkingFund)
                 .filter(
                     SinkingFund.id == alloc.overflow_sinking_fund_id,
-                    SinkingFund.is_deleted == False,  # noqa: E712
+                    SinkingFund.is_deleted == False,
                 )
                 .first()
             )
@@ -457,9 +454,9 @@ def _record_secondary_income(
                 distributions.append(
                     {"fund_name": overflow_fund.name, "amount": float(remaining)}
                 )
-                remaining = Decimal("0")
+                remaining = Decimal(0)
 
-        if remaining > Decimal("0"):
+        if remaining > Decimal(0):
             now = datetime.now(TIMEZONE)
             month, year = now.month, now.year
             existing_unalloc = (
@@ -496,9 +493,7 @@ def _record_secondary_income(
 async def secondary_income_page(request: Request, db: Session = Depends(get_db)):
     user = get_current_user(request)
     alloc = db.query(SecondaryIncomeAllocation).first()
-    sinking_funds = (
-        db.query(SinkingFund).filter(SinkingFund.is_deleted == False).all()  # noqa: E712
-    )
+    sinking_funds = db.query(SinkingFund).filter(SinkingFund.is_deleted == False).all()
     rule_map: dict[int, dict] = {}
     goal_progress: dict[int, float] = {}
     if alloc:
@@ -590,7 +585,7 @@ async def secondary_income_record(request: Request, db: Session = Depends(get_db
     try:
         amount = Decimal(str(form.get("amount") or "0"))
     except InvalidOperation:
-        amount = Decimal("0")
+        amount = Decimal(0)
 
     if amount <= 0:
         return HTMLResponse(

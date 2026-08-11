@@ -3,12 +3,11 @@ from datetime import datetime
 from decimal import Decimal, InvalidOperation
 
 from fastapi import APIRouter, Depends, Request
-
-from app.config import TIMEZONE
 from fastapi.responses import HTMLResponse, JSONResponse
 from pydantic import ValidationError
 from sqlalchemy.orm import Session, joinedload
 
+from app.config import TIMEZONE
 from app.database import get_db
 from app.middleware import get_current_user
 from app.models import Budget, Category, IncomeAllocation
@@ -39,8 +38,8 @@ def _budget_categories(db: Session) -> list[Category]:
     return (
         db.query(Category)
         .filter(
-            Category.is_budget_category == True,  # noqa: E712
-            Category.is_deleted == False,  # noqa: E712
+            Category.is_budget_category == True,
+            Category.is_deleted == False,
         )
         .order_by(Category.name)
         .all()
@@ -63,13 +62,13 @@ def _budget_context(db: Session, month: int, year: int) -> dict:
     available = _available_categories(db, month, year)
 
     total_allocated = sum(
-        (Decimal(str(b.allocated_amount)) for b in budgets), Decimal("0")
+        (Decimal(str(b.allocated_amount)) for b in budgets), Decimal(0)
     ).quantize(Decimal("0.01"))
     total_spent = sum(
-        (Decimal(str(b.spent_amount)) for b in budgets), Decimal("0")
+        (Decimal(str(b.spent_amount)) for b in budgets), Decimal(0)
     ).quantize(Decimal("0.01"))
     total_fund_balance = sum(
-        (Decimal(str(b.fund_balance)) for b in budgets), Decimal("0")
+        (Decimal(str(b.fund_balance)) for b in budgets), Decimal(0)
     ).quantize(Decimal("0.01"))
     total_remaining = (total_allocated + total_fund_balance - total_spent).quantize(
         Decimal("0.01")

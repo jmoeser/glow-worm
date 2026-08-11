@@ -17,8 +17,7 @@ def load_config() -> dict:
 def save_config(config: dict) -> None:
     CONFIG_DIR.mkdir(parents=True, exist_ok=True)
     with open(CONFIG_FILE, "w") as f:
-        for key, value in config.items():
-            f.write(f'{key} = "{value}"\n')
+        f.writelines(f'{key} = "{value}"\n' for key, value in config.items())
 
 
 def require_config() -> dict:

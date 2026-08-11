@@ -4,7 +4,6 @@ from enum import Enum
 
 from pydantic import BaseModel, ConfigDict, Field
 
-
 # --- Enums ---
 
 
@@ -105,7 +104,7 @@ class CategoryResponse(BaseModel):
 class TransactionCreate(BaseModel):
     date: str = Field(..., pattern=r"^\d{4}-\d{2}-\d{2}$")
     description: str | None = None
-    amount: Decimal = Field(..., gt=Decimal("0"))
+    amount: Decimal = Field(..., gt=Decimal(0))
     category_id: int
     type: CategoryType
     transaction_type: TransactionType = TransactionType.regular
@@ -118,7 +117,7 @@ class TransactionCreate(BaseModel):
 class TransactionUpdate(BaseModel):
     date: str | None = Field(None, pattern=r"^\d{4}-\d{2}-\d{2}$")
     description: str | None = None
-    amount: Decimal | None = Field(None, gt=Decimal("0"))
+    amount: Decimal | None = Field(None, gt=Decimal(0))
     category_id: int | None = None
     type: CategoryType | None = None
     transaction_type: TransactionType | None = None
@@ -152,14 +151,14 @@ class BudgetCreate(BaseModel):
     category_id: int
     month: int = Field(..., ge=1, le=12)
     year: int = Field(..., ge=2000)
-    allocated_amount: Decimal = Field(..., ge=Decimal("0"))
-    spent_amount: Decimal = Field(default=Decimal("0"), ge=Decimal("0"))
-    fund_balance: Decimal = Field(default=Decimal("0"), ge=Decimal("0"))
+    allocated_amount: Decimal = Field(..., ge=Decimal(0))
+    spent_amount: Decimal = Field(default=Decimal(0), ge=Decimal(0))
+    fund_balance: Decimal = Field(default=Decimal(0), ge=Decimal(0))
 
 
 class BudgetUpdate(BaseModel):
-    allocated_amount: Decimal | None = Field(None, ge=Decimal("0"))
-    spent_amount: Decimal | None = Field(None, ge=Decimal("0"))
+    allocated_amount: Decimal | None = Field(None, ge=Decimal(0))
+    spent_amount: Decimal | None = Field(None, ge=Decimal(0))
     fund_balance: Decimal | None = None
 
 
@@ -210,7 +209,7 @@ class BudgetRecommendationSummary(BaseModel):
 class SinkingFundCreate(BaseModel):
     name: str = Field(..., min_length=1)
     description: str | None = None
-    current_balance: Decimal = Field(default=Decimal("0"))
+    current_balance: Decimal = Field(default=Decimal(0))
     color: str = Field(..., pattern=r"^#[0-9a-fA-F]{6}$")
 
 
@@ -239,7 +238,7 @@ class SinkingFundResponse(BaseModel):
 
 class RecurringBillCreate(BaseModel):
     name: str = Field(..., min_length=1)
-    amount: Decimal = Field(..., gt=Decimal("0"))
+    amount: Decimal = Field(..., gt=Decimal(0))
     debtor_provider: str = Field(..., min_length=1)
     start_date: str = Field(..., pattern=r"^\d{4}-\d{2}-\d{2}$")
     frequency: BillFrequency
@@ -248,20 +247,20 @@ class RecurringBillCreate(BaseModel):
     is_active: bool = True
     next_due_date: str = Field(..., pattern=r"^\d{4}-\d{2}-\d{2}$")
     bill_type: BillType = BillType.fixed
-    foreign_amount: Decimal | None = Field(None, gt=Decimal("0"))
+    foreign_amount: Decimal | None = Field(None, gt=Decimal(0))
     foreign_currency: str | None = Field(None, min_length=3, max_length=3)
 
 
 class RecurringBillUpdate(BaseModel):
     name: str | None = None
-    amount: Decimal | None = Field(None, gt=Decimal("0"))
+    amount: Decimal | None = Field(None, gt=Decimal(0))
     debtor_provider: str | None = None
     frequency: BillFrequency | None = None
     end_date: str | None = Field(None, pattern=r"^\d{4}-\d{2}-\d{2}$")
     is_active: bool | None = None
     next_due_date: str | None = Field(None, pattern=r"^\d{4}-\d{2}-\d{2}$")
     bill_type: BillType | None = None
-    foreign_amount: Decimal | None = Field(None, gt=Decimal("0"))
+    foreign_amount: Decimal | None = Field(None, gt=Decimal(0))
     foreign_currency: str | None = Field(None, min_length=3, max_length=3)
 
 
@@ -286,7 +285,7 @@ class RecurringBillResponse(BaseModel):
 
 
 class RecurringBillPay(BaseModel):
-    amount: Decimal = Field(..., gt=Decimal("0"))
+    amount: Decimal = Field(..., gt=Decimal(0))
     date: str = Field(..., pattern=r"^\d{4}-\d{2}-\d{2}$")
 
 
@@ -295,7 +294,7 @@ class RecurringBillPay(BaseModel):
 
 class IncomeAllocationToSinkingFundCreate(BaseModel):
     sinking_fund_id: int
-    allocation_amount: Decimal = Field(..., ge=Decimal("0"))
+    allocation_amount: Decimal = Field(..., ge=Decimal(0))
 
 
 class IncomeAllocationToSinkingFundResponse(BaseModel):
@@ -308,7 +307,7 @@ class IncomeAllocationToSinkingFundResponse(BaseModel):
 
 class IncomeAllocationRecurringTransferCreate(BaseModel):
     description: str = Field(..., min_length=1, max_length=200)
-    amount: Decimal = Field(..., gt=Decimal("0"))
+    amount: Decimal = Field(..., gt=Decimal(0))
 
 
 class IncomeAllocationRecurringTransferResponse(BaseModel):
@@ -320,22 +319,22 @@ class IncomeAllocationRecurringTransferResponse(BaseModel):
 
 
 class IncomeAllocationCreate(BaseModel):
-    monthly_income_amount: Decimal = Field(..., gt=Decimal("0"))
-    monthly_budget_allocation: Decimal = Field(..., ge=Decimal("0"))
+    monthly_income_amount: Decimal = Field(..., gt=Decimal(0))
+    monthly_budget_allocation: Decimal = Field(..., ge=Decimal(0))
     bills_fund_allocation_type: BillsAllocationMethod = (
         BillsAllocationMethod.recommended
     )
-    bills_fund_fixed_amount: Decimal | None = Field(None, ge=Decimal("0"))
+    bills_fund_fixed_amount: Decimal | None = Field(None, ge=Decimal(0))
     sinking_fund_allocations: list[IncomeAllocationToSinkingFundCreate] = []
     recurring_transfers: list[IncomeAllocationRecurringTransferCreate] = []
     overflow_sinking_fund_id: int | None = None
 
 
 class IncomeAllocationUpdate(BaseModel):
-    monthly_income_amount: Decimal | None = Field(None, gt=Decimal("0"))
-    monthly_budget_allocation: Decimal | None = Field(None, ge=Decimal("0"))
+    monthly_income_amount: Decimal | None = Field(None, gt=Decimal(0))
+    monthly_budget_allocation: Decimal | None = Field(None, ge=Decimal(0))
     bills_fund_allocation_type: BillsAllocationMethod | None = None
-    bills_fund_fixed_amount: Decimal | None = Field(None, ge=Decimal("0"))
+    bills_fund_fixed_amount: Decimal | None = Field(None, ge=Decimal(0))
     sinking_fund_allocations: list[IncomeAllocationToSinkingFundCreate] | None = None
     overflow_sinking_fund_id: int | None = None
 
@@ -360,7 +359,7 @@ class IncomeAllocationResponse(BaseModel):
 
 class SecondaryIncomeAllocationRuleCreate(BaseModel):
     sinking_fund_id: int
-    goal_amount: Decimal = Field(..., gt=Decimal("0"))
+    goal_amount: Decimal = Field(..., gt=Decimal(0))
     sort_order: int = Field(default=0, ge=0)
 
 
@@ -391,7 +390,7 @@ class SecondaryIncomeAllocationResponse(BaseModel):
 
 
 class RecordSecondaryIncomeRequest(BaseModel):
-    amount: Decimal = Field(..., gt=Decimal("0"))
+    amount: Decimal = Field(..., gt=Decimal(0))
     date: str = Field(..., pattern=r"^\d{4}-\d{2}-\d{2}$")
     description: str | None = Field(None, max_length=200)
 
@@ -402,7 +401,7 @@ class RecordSecondaryIncomeRequest(BaseModel):
 class MonthlyUnallocatedIncomeCreate(BaseModel):
     month: int = Field(..., ge=1, le=12)
     year: int = Field(..., ge=2000)
-    unallocated_amount: Decimal = Field(default=Decimal("0"))
+    unallocated_amount: Decimal = Field(default=Decimal(0))
 
 
 class MonthlyUnallocatedIncomeUpdate(BaseModel):
@@ -452,7 +451,7 @@ class AllocateRemainderRequest(BaseModel):
     """Request to manually allocate unallocated income to a sinking fund."""
 
     sinking_fund_id: int
-    amount: Decimal = Field(..., gt=Decimal("0"))
+    amount: Decimal = Field(..., gt=Decimal(0))
 
 
 class BudgetTransferRequest(BaseModel):
@@ -460,7 +459,7 @@ class BudgetTransferRequest(BaseModel):
 
     sinking_fund_id: int
     budget_id: int
-    amount: Decimal = Field(..., gt=Decimal("0"))
+    amount: Decimal = Field(..., gt=Decimal(0))
 
 
 class DashboardSummary(BaseModel):

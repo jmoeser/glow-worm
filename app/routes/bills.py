@@ -1,5 +1,5 @@
 import json
-from datetime import date
+from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
 
 from fastapi import APIRouter, Depends, Request
@@ -7,6 +7,7 @@ from fastapi.responses import HTMLResponse, JSONResponse
 from pydantic import ValidationError
 from sqlalchemy.orm import Session
 
+from app.config import TIMEZONE
 from app.database import get_db
 from app.middleware import get_current_user
 from app.models import Category, RecurringBill, SinkingFund, Transaction
@@ -39,7 +40,7 @@ FREQUENCY_ANNUAL_MULTIPLIER = {
 def _active_bills(db: Session):
     return (
         db.query(RecurringBill)
-        .filter(RecurringBill.is_active == True)  # noqa: E712
+        .filter(RecurringBill.is_active == True)
         .order_by(RecurringBill.next_due_date)
         .all()
     )
@@ -48,7 +49,7 @@ def _active_bills(db: Session):
 def _expense_categories(db: Session):
     return (
         db.query(Category)
-        .filter(Category.is_deleted == False, Category.type == "expense")  # noqa: E712
+        .filter(Category.is_deleted == False, Category.type == "expense")
         .order_by(Category.name)
         .all()
     )
@@ -63,12 +64,12 @@ def _bill_context(db: Session):
     bills = _active_bills(db)
     categories = _expense_categories(db)
     total_annual = sum(
-        (_compute_annual_cost(b.amount, b.frequency) for b in bills), Decimal("0")
+        (_compute_annual_cost(b.amount, b.frequency) for b in bills), Decimal(0)
     )
     total_monthly = (total_annual / 12).quantize(Decimal("0.01"))
     bills_fund = (
         db.query(SinkingFund)
-        .filter(SinkingFund.name == "Bills", SinkingFund.is_deleted == False)  # noqa: E712
+        .filter(SinkingFund.name == "Bills", SinkingFund.is_deleted == False)
         .first()
     )
     return {
@@ -123,7 +124,7 @@ def _render_edit_row(request: Request, bill: RecurringBill, categories) -> str:
 
 
 def _render_pay_row(request: Request, bill: RecurringBill) -> str:
-    today = date.today().isoformat()
+    today = datetime.now(TIMEZONE).date().isoformat()
     return bytes(
         templates.TemplateResponse(
             request,
@@ -144,7 +145,7 @@ def _record_bill_payment(
     """Create a transaction for a bill payment, deduct Bills fund, advance next_due_date."""
     bills_fund = (
         db.query(SinkingFund)
-        .filter(SinkingFund.name == "Bills", SinkingFund.is_deleted == False)  # noqa: E712
+        .filter(SinkingFund.name == "Bills", SinkingFund.is_deleted == False)
         .first()
     )
     if not bills_fund:
@@ -219,7 +220,7 @@ async def bills_create(request: Request, db: Session = Depends(get_db)):
         .filter(
             Category.name == "Bills",
             Category.type == "expense",
-            Category.is_deleted == False,  # noqa: E712
+            Category.is_deleted == False,
         )
         .first()
     )
@@ -322,7 +323,9 @@ async def bills_pay(request: Request, bill_id: int, db: Session = Depends(get_db
             '<p class="text-red-600 text-sm">Amount must be greater than zero.</p>'
         )
 
-    payment_date = str(form.get("date") or "").strip() or date.today().isoformat()
+    payment_date = (
+        str(form.get("date") or "").strip() or datetime.now(TIMEZONE).date().isoformat()
+    )
 
     try:
         _record_bill_payment(db, bill, amount, payment_date)
@@ -542,9 +545,7 @@ async def api_pay_bill(request: Request, bill_id: int, db: Session = Depends(get
                 "id": txn.id,
                 "date": txn.date,
                 # Numeric columns may be Decimal at runtime; cast for JSON.
-                "amount": float(
-                    txn.amount
-                ),  # pyrefly: ignore[unnecessary-type-conversion]
+                "amount": float(txn.amount),  # pyrefly: ignore[unnecessary-type-conversion]
                 "description": txn.description,
             },
             "bill": bill_response.model_dump(mode="json"),

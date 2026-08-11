@@ -1,4 +1,4 @@
-from importlib.metadata import version, PackageNotFoundError
+from importlib.metadata import PackageNotFoundError, version
 
 from fastapi.templating import Jinja2Templates
 
@@ -8,7 +8,7 @@ templates = Jinja2Templates(directory="app/templates")
 def _money_format(value) -> str:
     """Format a number with commas and 2 decimal places (e.g. 10,000.00)."""
     try:
-        return "{:,.2f}".format(float(value))
+        return f"{float(value):,.2f}"
     except ValueError, TypeError:
         return "0.00"
 

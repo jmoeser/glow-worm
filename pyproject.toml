@@ -32,7 +32,7 @@ dev = [
     "pytest>=9.0.3",
     "pytest-cov>=5.0",
     "respx>=0.23.1",
-    "ruff>=0.15.13",
+    "ruff>=0.16.2",
     "types-pytz>=2026.2.0.20260506",
 ]
 
@@ -50,3 +50,7 @@ packages = ["app"]
 python-version = "3.14.0"
 preset = "legacy"
 ignore-missing-imports = ["*"]
+
+[tool.ruff.lint.flake8-bugbear]
+# FastAPI Depends() is intentionally used as a default (DI), not evaluated at definition time.
+extend-immutable-calls = ["fastapi.Depends", "fastapi.params.Depends"]

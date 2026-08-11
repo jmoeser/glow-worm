@@ -13,11 +13,11 @@ import pytest
 from app.models import (
     Budget,
     Category,
-    MonthlyUnallocatedIncome,
-    RecurringBill,
     IncomeAllocation,
     IncomeAllocationRecurringTransfer,
     IncomeAllocationToSinkingFund,
+    MonthlyUnallocatedIncome,
+    RecurringBill,
     SinkingFund,
     Transaction,
 )
@@ -27,7 +27,6 @@ from app.tasks import (
     process_due_bills,
     process_income_allocation,
 )
-
 
 # ---------------------------------------------------------------------------
 # advance_due_date
@@ -196,7 +195,7 @@ class TestProcessIncomeAllocation:
             .first()
         )
         assert income_txn is not None
-        assert Decimal(str(income_txn.amount)) == Decimal("5000")
+        assert Decimal(str(income_txn.amount)) == Decimal(5000)
         assert income_txn.type == "income"
 
         # Savings fund allocation transaction
@@ -209,14 +208,14 @@ class TestProcessIncomeAllocation:
             .all()
         )
         assert len(savings_txns) == 1
-        assert Decimal(str(savings_txns[0].amount)) == Decimal("500")
+        assert Decimal(str(savings_txns[0].amount)) == Decimal(500)
         assert savings_txns[0].type == "transfer"
         assert savings_txns[0].category_id == income_setup["transfer_cat"].id
 
         # Savings fund balance increased: 1000 + 500 = 1500
         db_session.refresh(income_setup["savings_fund"])
         assert Decimal(str(income_setup["savings_fund"].current_balance)) == Decimal(
-            "1500"
+            1500
         )
 
         # Bills fund allocation (recommended = 1200 * 12 / 12 = 1200.00)
@@ -235,9 +234,7 @@ class TestProcessIncomeAllocation:
 
         # Bills fund balance increased: 500 + 1200 = 1700
         db_session.refresh(income_setup["bills_fund"])
-        assert Decimal(str(income_setup["bills_fund"].current_balance)) == Decimal(
-            "1700"
-        )
+        assert Decimal(str(income_setup["bills_fund"].current_balance)) == Decimal(1700)
 
         # Budget row created for Groceries
         budget = (
@@ -261,7 +258,7 @@ class TestProcessIncomeAllocation:
             .first()
         )
         assert unalloc is not None
-        assert Decimal(str(unalloc.unallocated_amount)) == Decimal("2500")
+        assert Decimal(str(unalloc.unallocated_amount)) == Decimal(2500)
 
     @patch("app.tasks._today")
     def test_idempotent(self, mock_today, db_session, income_setup):
@@ -307,7 +304,7 @@ class TestProcessIncomeAllocation:
             .first()
         )
         assert bills_txn is not None
-        assert Decimal(str(bills_txn.amount)) == Decimal("900")
+        assert Decimal(str(bills_txn.amount)) == Decimal(900)
 
     @patch("app.tasks._today")
     def test_budget_carries_forward_allocated_amount(
@@ -340,7 +337,7 @@ class TestProcessIncomeAllocation:
             .first()
         )
         assert budget is not None
-        assert Decimal(str(budget.allocated_amount)) == Decimal("350")
+        assert Decimal(str(budget.allocated_amount)) == Decimal(350)
 
     @patch("app.tasks._today")
     def test_budget_defaults_to_zero_when_no_previous_month(
@@ -360,7 +357,7 @@ class TestProcessIncomeAllocation:
             .first()
         )
         assert budget is not None
-        assert Decimal(str(budget.allocated_amount)) == Decimal("0")
+        assert Decimal(str(budget.allocated_amount)) == Decimal(0)
 
     @patch("app.tasks._today")
     def test_process_income_allocation_creates_transfer_transactions(
@@ -390,7 +387,7 @@ class TestProcessIncomeAllocation:
             .all()
         )
         assert len(transfer_txns) == 1
-        assert Decimal(str(transfer_txns[0].amount)) == Decimal("200")
+        assert Decimal(str(transfer_txns[0].amount)) == Decimal(200)
         assert "Monthly transfer out" in transfer_txns[0].description
         assert transfer_txns[0].category_id == income_setup["transfer_cat"].id
 
@@ -424,7 +421,7 @@ class TestProcessIncomeAllocation:
             .first()
         )
         assert unalloc is not None
-        assert Decimal(str(unalloc.unallocated_amount)) == Decimal("2200")
+        assert Decimal(str(unalloc.unallocated_amount)) == Decimal(2200)
 
 
 # ---------------------------------------------------------------------------
@@ -463,7 +460,7 @@ class TestBudgetSurplusSweep:
         process_income_allocation(db=db_session)
 
         db_session.refresh(overflow_fund)
-        assert Decimal(str(overflow_fund.current_balance)) == Decimal("200")
+        assert Decimal(str(overflow_fund.current_balance)) == Decimal(200)
 
         sweep_txns = (
             db_session.query(Transaction)
@@ -474,7 +471,7 @@ class TestBudgetSurplusSweep:
             .all()
         )
         assert len(sweep_txns) == 1
-        assert Decimal(str(sweep_txns[0].amount)) == Decimal("200")
+        assert Decimal(str(sweep_txns[0].amount)) == Decimal(200)
         assert "surplus sweep" in sweep_txns[0].description.lower()
         assert sweep_txns[0].type == "transfer"
 
@@ -508,7 +505,7 @@ class TestBudgetSurplusSweep:
         process_income_allocation(db=db_session)
 
         db_session.refresh(overflow_fund)
-        assert Decimal(str(overflow_fund.current_balance)) == Decimal("200")
+        assert Decimal(str(overflow_fund.current_balance)) == Decimal(200)
 
     @patch("app.tasks._today")
     def test_overspent_category_triggers_shortfall_withdrawal(
@@ -542,7 +539,7 @@ class TestBudgetSurplusSweep:
         process_income_allocation(db=db_session)
 
         db_session.refresh(overflow_fund)
-        assert Decimal(str(overflow_fund.current_balance)) == Decimal("100")
+        assert Decimal(str(overflow_fund.current_balance)) == Decimal(100)
 
         withdrawal_txns = (
             db_session.query(Transaction)
@@ -553,7 +550,7 @@ class TestBudgetSurplusSweep:
             .all()
         )
         assert len(withdrawal_txns) == 1
-        assert Decimal(str(withdrawal_txns[0].amount)) == Decimal("100")
+        assert Decimal(str(withdrawal_txns[0].amount)) == Decimal(100)
 
     @patch("app.tasks._today")
     def test_overspent_category_offsets_positive_surplus(
@@ -605,7 +602,7 @@ class TestBudgetSurplusSweep:
         process_income_allocation(db=db_session)
 
         db_session.refresh(overflow_fund)
-        assert Decimal(str(overflow_fund.current_balance)) == Decimal("0")
+        assert Decimal(str(overflow_fund.current_balance)) == Decimal(0)
 
         sweep_txns = (
             db_session.query(Transaction)
@@ -667,7 +664,7 @@ class TestBudgetSurplusSweep:
         process_income_allocation(db=db_session)
 
         db_session.refresh(overflow_fund)
-        assert Decimal(str(overflow_fund.current_balance)) == Decimal("100")
+        assert Decimal(str(overflow_fund.current_balance)) == Decimal(100)
 
         sweep_txns = (
             db_session.query(Transaction)
@@ -678,7 +675,7 @@ class TestBudgetSurplusSweep:
             .all()
         )
         assert len(sweep_txns) == 1
-        assert Decimal(str(sweep_txns[0].amount)) == Decimal("100")
+        assert Decimal(str(sweep_txns[0].amount)) == Decimal(100)
 
     @patch("app.tasks._today")
     def test_shortfall_withdrawn_from_overflow_fund(
@@ -712,7 +709,7 @@ class TestBudgetSurplusSweep:
         process_income_allocation(db=db_session)
 
         db_session.refresh(overflow_fund)
-        assert Decimal(str(overflow_fund.current_balance)) == Decimal("350")
+        assert Decimal(str(overflow_fund.current_balance)) == Decimal(350)
 
         withdrawal_txns = (
             db_session.query(Transaction)
@@ -723,7 +720,7 @@ class TestBudgetSurplusSweep:
             .all()
         )
         assert len(withdrawal_txns) == 1
-        assert Decimal(str(withdrawal_txns[0].amount)) == Decimal("150")
+        assert Decimal(str(withdrawal_txns[0].amount)) == Decimal(150)
         assert withdrawal_txns[0].type == "expense"
         assert "shortfall" in withdrawal_txns[0].description.lower()
 
@@ -843,14 +840,12 @@ class TestProcessDueBills:
             .all()
         )
         assert len(txns) == 1
-        assert Decimal(str(txns[0].amount)) == Decimal("2400")
+        assert Decimal(str(txns[0].amount)) == Decimal(2400)
         assert txns[0].sinking_fund_id == bills_setup["bills_fund"].id
 
         # Fund balance decreased: 5000 - 2400 = 2600
         db_session.refresh(bills_setup["bills_fund"])
-        assert Decimal(str(bills_setup["bills_fund"].current_balance)) == Decimal(
-            "2600"
-        )
+        assert Decimal(str(bills_setup["bills_fund"].current_balance)) == Decimal(2600)
 
         # next_due_date advanced: 2026-02-01 + monthly = 2026-03-01
         db_session.refresh(bills_setup["bill_due"])

@@ -52,7 +52,7 @@ async def lifespan(app: FastAPI):
     stop_scheduler()
 
 
-from app.mcp_server import mcp  # noqa: E402
+from app.mcp_server import mcp
 
 mcp_app = mcp.http_app(transport="sse")
 

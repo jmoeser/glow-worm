@@ -469,9 +469,11 @@ class TestBufferWarning:
     ):
         # Bills fund has balance 0, bills due soon => warning
         # Set bill next_due_date to be within 30 days
-        from datetime import date, timedelta
+        from datetime import datetime, timedelta
 
-        soon = (date.today() + timedelta(days=5)).isoformat()
+        from app.config import TIMEZONE
+
+        soon = (datetime.now(TIMEZONE).date() + timedelta(days=5)).isoformat()
         for bill in sample_bills:
             bill.next_due_date = soon
         db_session.commit()
@@ -482,9 +484,11 @@ class TestBufferWarning:
     def test_no_warning_when_balance_sufficient(
         self, authed_client, db_session, sample_sinking_funds, sample_bills
     ):
-        from datetime import date, timedelta
+        from datetime import datetime, timedelta
 
-        soon = (date.today() + timedelta(days=5)).isoformat()
+        from app.config import TIMEZONE
+
+        soon = (datetime.now(TIMEZONE).date() + timedelta(days=5)).isoformat()
         for bill in sample_bills:
             bill.next_due_date = soon
         db_session.commit()

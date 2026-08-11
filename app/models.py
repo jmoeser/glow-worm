@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from sqlalchemy import ForeignKey, Numeric, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -11,7 +11,7 @@ from app.schemas import (
 
 
 def _utcnow() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 class User(Base):
@@ -25,7 +25,7 @@ class User(Base):
     created_at: Mapped[datetime] = mapped_column(default=_utcnow)
     updated_at: Mapped[datetime] = mapped_column(default=_utcnow, onupdate=_utcnow)
 
-    api_keys: Mapped[list["ApiKey"]] = relationship(back_populates="user")
+    api_keys: Mapped[list[ApiKey]] = relationship(back_populates="user")
 
 
 class Category(Base):
@@ -40,9 +40,9 @@ class Category(Base):
     is_system: Mapped[bool] = mapped_column(default=False)
     exclude_from_monthly_cost: Mapped[bool] = mapped_column(default=False)
 
-    transactions: Mapped[list["Transaction"]] = relationship(back_populates="category")
-    budgets: Mapped[list["Budget"]] = relationship(back_populates="category")
-    recurring_bills: Mapped[list["RecurringBill"]] = relationship(
+    transactions: Mapped[list[Transaction]] = relationship(back_populates="category")
+    budgets: Mapped[list[Budget]] = relationship(back_populates="category")
+    recurring_bills: Mapped[list[RecurringBill]] = relationship(
         back_populates="category"
     )
 
@@ -60,10 +60,10 @@ class SinkingFund(Base):
     created_at: Mapped[datetime] = mapped_column(default=_utcnow)
     updated_at: Mapped[datetime] = mapped_column(default=_utcnow, onupdate=_utcnow)
 
-    transactions: Mapped[list["Transaction"]] = relationship(
+    transactions: Mapped[list[Transaction]] = relationship(
         back_populates="sinking_fund"
     )
-    income_allocations: Mapped[list["IncomeAllocationToSinkingFund"]] = relationship(
+    income_allocations: Mapped[list[IncomeAllocationToSinkingFund]] = relationship(
         back_populates="sinking_fund"
     )
 
@@ -89,8 +89,8 @@ class RecurringBill(Base):
     created_at: Mapped[datetime] = mapped_column(default=_utcnow)
     updated_at: Mapped[datetime] = mapped_column(default=_utcnow, onupdate=_utcnow)
 
-    category: Mapped["Category"] = relationship(back_populates="recurring_bills")
-    transactions: Mapped[list["Transaction"]] = relationship(
+    category: Mapped[Category] = relationship(back_populates="recurring_bills")
+    transactions: Mapped[list[Transaction]] = relationship(
         back_populates="recurring_bill"
     )
 
@@ -111,8 +111,8 @@ class Budget(Base):
     created_at: Mapped[datetime] = mapped_column(default=_utcnow)
     updated_at: Mapped[datetime] = mapped_column(default=_utcnow, onupdate=_utcnow)
 
-    category: Mapped["Category"] = relationship(back_populates="budgets")
-    transactions: Mapped[list["Transaction"]] = relationship(back_populates="budget")
+    category: Mapped[Category] = relationship(back_populates="budgets")
+    transactions: Mapped[list[Transaction]] = relationship(back_populates="budget")
 
 
 class Transaction(Base):
@@ -141,14 +141,14 @@ class Transaction(Base):
     is_paid: Mapped[bool] = mapped_column(default=True)
     created_at: Mapped[datetime] = mapped_column(default=_utcnow)
 
-    category: Mapped["Category"] = relationship(back_populates="transactions")
-    sinking_fund: Mapped["SinkingFund | None"] = relationship(
+    category: Mapped[Category] = relationship(back_populates="transactions")
+    sinking_fund: Mapped[SinkingFund | None] = relationship(
         back_populates="transactions"
     )
-    recurring_bill: Mapped["RecurringBill | None"] = relationship(
+    recurring_bill: Mapped[RecurringBill | None] = relationship(
         back_populates="transactions"
     )
-    budget: Mapped["Budget | None"] = relationship(back_populates="transactions")
+    budget: Mapped[Budget | None] = relationship(back_populates="transactions")
 
 
 class IncomeAllocation(Base):
@@ -172,13 +172,13 @@ class IncomeAllocation(Base):
         ForeignKey("sinking_funds.id"), nullable=True
     )
 
-    sinking_fund_allocations: Mapped[list["IncomeAllocationToSinkingFund"]] = (
+    sinking_fund_allocations: Mapped[list[IncomeAllocationToSinkingFund]] = (
         relationship(back_populates="income_allocation", cascade="all, delete-orphan")
     )
-    recurring_transfers: Mapped[list["IncomeAllocationRecurringTransfer"]] = (
-        relationship(back_populates="income_allocation", cascade="all, delete-orphan")
+    recurring_transfers: Mapped[list[IncomeAllocationRecurringTransfer]] = relationship(
+        back_populates="income_allocation", cascade="all, delete-orphan"
     )
-    overflow_sinking_fund: Mapped["SinkingFund | None"] = relationship(
+    overflow_sinking_fund: Mapped[SinkingFund | None] = relationship(
         "SinkingFund",
         foreign_keys="[IncomeAllocation.overflow_sinking_fund_id]",
     )
@@ -196,10 +196,10 @@ class IncomeAllocationToSinkingFund(Base):
     )
     allocation_amount: Mapped[float] = mapped_column(Numeric(12, 2), nullable=False)
 
-    income_allocation: Mapped["IncomeAllocation"] = relationship(
+    income_allocation: Mapped[IncomeAllocation] = relationship(
         back_populates="sinking_fund_allocations"
     )
-    sinking_fund: Mapped["SinkingFund"] = relationship(
+    sinking_fund: Mapped[SinkingFund] = relationship(
         back_populates="income_allocations"
     )
 
@@ -214,7 +214,7 @@ class IncomeAllocationRecurringTransfer(Base):
     description: Mapped[str] = mapped_column(String(200), nullable=False)
     amount: Mapped[float] = mapped_column(Numeric(12, 2), nullable=False)
 
-    income_allocation: Mapped["IncomeAllocation"] = relationship(
+    income_allocation: Mapped[IncomeAllocation] = relationship(
         back_populates="recurring_transfers"
     )
 
@@ -232,10 +232,10 @@ class SecondaryIncomeAllocation(Base):
     created_at: Mapped[datetime] = mapped_column(default=_utcnow)
     updated_at: Mapped[datetime] = mapped_column(default=_utcnow, onupdate=_utcnow)
 
-    rules: Mapped[list["SecondaryIncomeAllocationRule"]] = relationship(
+    rules: Mapped[list[SecondaryIncomeAllocationRule]] = relationship(
         back_populates="secondary_income_allocation", cascade="all, delete-orphan"
     )
-    overflow_sinking_fund: Mapped["SinkingFund | None"] = relationship(
+    overflow_sinking_fund: Mapped[SinkingFund | None] = relationship(
         "SinkingFund",
         foreign_keys="[SecondaryIncomeAllocation.overflow_sinking_fund_id]",
     )
@@ -254,10 +254,10 @@ class SecondaryIncomeAllocationRule(Base):
     goal_amount: Mapped[float] = mapped_column(Numeric(12, 2), nullable=False)
     sort_order: Mapped[int] = mapped_column(nullable=False, default=0)
 
-    secondary_income_allocation: Mapped["SecondaryIncomeAllocation"] = relationship(
+    secondary_income_allocation: Mapped[SecondaryIncomeAllocation] = relationship(
         back_populates="rules"
     )
-    sinking_fund: Mapped["SinkingFund"] = relationship()
+    sinking_fund: Mapped[SinkingFund] = relationship()
 
 
 class ApiKey(Base):
@@ -271,7 +271,7 @@ class ApiKey(Base):
     last_used_at: Mapped[datetime | None] = mapped_column(nullable=True)
     revoked_at: Mapped[datetime | None] = mapped_column(nullable=True)
 
-    user: Mapped["User"] = relationship(back_populates="api_keys")
+    user: Mapped[User] = relationship(back_populates="api_keys")
 
 
 class MonthlyUnallocatedIncome(Base):
