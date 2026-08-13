@@ -1,9 +1,7 @@
 # ---------- build stage ----------
-# Keep tag+digest so the floating 3.14-slim minor stays identifiable.
 FROM python:3.14-slim@sha256:ce40764625a4ff50df3548277632e7f96c4e77fe75fa848aae9885476e7df5a4 AS builder
 
 # Install uv for fast, reproducible dependency resolution.
-# Pin tag+digest to match aqua.yaml (astral-sh/uv). Do not use :latest.
 COPY --from=ghcr.io/astral-sh/uv:0.12.3@sha256:2d890623d310b57771ce840f0da5eed5fc6d657da05ffaa45d82797b53fa3abc /uv /usr/local/bin/uv
 
 WORKDIR /app
