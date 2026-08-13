@@ -13,6 +13,7 @@ alembic/ @jmoeser
 # Project configuration and dependencies
 pyproject.toml @jmoeser
 uv.lock @jmoeser
+renovate.json5 @jmoeser
 alembic.ini @jmoeser
 
 # Container and deployment
