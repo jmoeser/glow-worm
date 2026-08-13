@@ -273,6 +273,8 @@ API keys are SHA-256 hashed before storage. The plaintext key is shown only once
 
 ## Development
 
+Dependency updates are batched by Renovate; CI on the PR is the gate.
+
 ### Running Tests
 
 ```bash
@@ -317,7 +319,10 @@ glow-worm/
 ├── alembic/               # Database migrations
 ├── scripts/               # Utility scripts (create_user, seed_data)
 ├── tests/                 # Test suite (includes test_cli.py)
+├── aqua.yaml              # aqua pins (uv CLI, pinact)
 ├── pyproject.toml         # Project metadata & dependencies
+├── uv.lock                # Locked Python dependencies
+├── renovate.json5         # Renovate dependency-update config
 └── alembic.ini            # Alembic configuration
 ```
 
