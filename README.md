@@ -278,7 +278,7 @@ Dependency updates are batched by Renovate; CI on the PR is the gate.
 ### Running Tests
 
 ```bash
-uv sync --extra dev
+uv sync
 uv run pytest
 ```
 

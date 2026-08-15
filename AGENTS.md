@@ -4,7 +4,7 @@ This file provides guidance to AI coding assistants (Claude, Grok, Cursor, etc.)
 
 ## Project overview
 
-A single-tenant household budgeting app. This is a Python/FastAPI project using: SQLAlchemy + SQLite/PostgreSQL, Alembic migrations, Jinja2 templates, Pydantic schemas, uv for dependency management. Always use `uv run` to execute commands (e.g., `uv run pytest`, `uv run alembic`). When syncing dependencies, use `uv sync --extra dev` to include dev dependencies (they are under `[project.optional-dependencies]`, not `[dependency-groups]`).
+A single-tenant household budgeting app. This is a Python/FastAPI project using: SQLAlchemy + SQLite/PostgreSQL, Alembic migrations, Jinja2 templates, Pydantic schemas, uv for dependency management. Always use `uv run` to execute commands (e.g., `uv run pytest`, `uv run alembic`).
 
 ## Common Commands
 - **Install Dependencies**: `uv sync`

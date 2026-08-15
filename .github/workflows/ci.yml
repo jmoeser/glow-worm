@@ -16,7 +16,7 @@ jobs:
           version: "0.12.3"
 
       - name: Install dependencies
-        run: uv sync --extra dev
+        run: uv sync --locked
 
       - name: Ruff check
         run: uv run ruff check .
@@ -42,7 +42,7 @@ jobs:
           version: "0.12.3"
 
       - name: Install dependencies
-        run: uv sync --extra dev
+        run: uv sync --locked
 
       - name: Run tests
         run: uv run pytest --cov=app --cov-report=term-missing
