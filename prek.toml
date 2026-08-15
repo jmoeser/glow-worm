@@ -1,0 +1,41 @@
+# Configuration file for `prek`, a git hook framework written in Rust.
+# See https://prek.j178.dev for more information.
+#:schema https://www.schemastore.org/prek.json
+
+[[repos]]
+repo = "https://github.com/Yelp/detect-secrets"
+rev = "v1.5.0"
+hooks = [
+  {
+    id = "detect-secrets",
+    args = [
+      "--baseline",
+      ".secrets.baseline"
+    ],
+    exclude = "^(.env.example|alembic/versions/)"
+  }
+]
+
+[[repos]]
+repo = "https://github.com/astral-sh/ruff-pre-commit"
+rev = "v0.16.2"
+hooks = [
+  {
+    id = "ruff",
+    args = ["--fix"]
+  },
+  { id = "ruff-format" }
+]
+
+[[repos]]
+repo = "https://github.com/pre-commit/pre-commit-hooks"
+rev = "v6.0.0"
+hooks = [
+  { id = "check-merge-conflict" },
+  {
+    id = "check-added-large-files",
+    args = ["--maxkb=500"]
+  },
+  { id = "end-of-file-fixer" },
+  { id = "trailing-whitespace" }
+]
