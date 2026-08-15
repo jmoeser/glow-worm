@@ -16,7 +16,7 @@
   timezone: "Australia/Brisbane",
   // No schedule:fortnightly preset exists. 1st + 15th 00:00-06:59 is the cron approximation.
   // Widened to hour 6 so a late Mend hourly job is less likely to miss the day.
-  schedule: ["* 0-6 1,15 * *"],
+  schedule: ["* * 1,15 * *"],
 
   minimumReleaseAge: "7 days",
   // Default since Renovate 42, stated so it cannot silently regress.
