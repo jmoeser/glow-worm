@@ -18,6 +18,8 @@ A single-tenant household budgeting app. This is a Python/FastAPI project using:
 - **Lint**: `uv run ruff check .`
 - **Format check**: `uv run ruff format --check .`
 - **Format fix**: `uv run ruff format .`
+- **Install git hooks**: `uv run prek install`
+- **Run git hooks**: `uv run prek run --all-files`
 - **Update secrets baseline**: `uv run detect-secrets scan > .secrets.baseline`
 - **Build container**: `container build --tag test --file Dockerfile .`
 - **Run container**: `container run --name test --rm -e SECRET_KEY=$(python3 -c "import secrets; print(secrets.token_urlsafe(48))") test`
@@ -71,8 +73,8 @@ Middleware execution order (outermost to innermost): CORS (optional) → Session
     - The net surplus formula per budget row: `allocated_amount - spent_amount + fund_balance`. All rows are summed (including negatives) before deciding whether to contribute or withdraw.
 - **Budget Overdraft Warning**: `GET /dashboard/budget-overdraft-warning?budget_id=X&amount=Y&transaction_type=...` returns an HTMX HTML fragment. Returns empty for non-`budget_expense` types, valid inputs within budget, or missing params. Used by both the Quick Expense form (dashboard) and Add Budget Transaction form (transactions page) via `hx-trigger="change"`.
 
-## Pre-commit Hooks
-Hooks run automatically on `git commit`. Install with `uv run pre-commit install` (already done). Run manually with `uv run pre-commit run --all-files`.
+## Git hooks (prek)
+Hooks run automatically on `git commit` via [prek](https://prek.j178.dev/) (config: `prek.toml`). Install with `uv run prek install` (already done). Run manually with `uv run prek run --all-files`.
 
 - **detect-secrets**: Scans staged files for secrets (API keys, passwords, tokens). `.env.example` is excluded. If a false positive is detected, update the baseline: `uv run detect-secrets scan > .secrets.baseline`. After adding a new intentional placeholder to `.env.example` or similar, regenerate the baseline the same way.
 - **ruff**: Lint with auto-fix + format check.

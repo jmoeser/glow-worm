@@ -275,6 +275,15 @@ API keys are SHA-256 hashed before storage. The plaintext key is shown only once
 
 Dependency updates are batched by Renovate; CI on the PR is the gate.
 
+### Git hooks
+
+Hooks are managed by [prek](https://prek.j178.dev/) (`prek.toml`). After `uv sync`:
+
+```bash
+uv run prek install
+uv run prek run --all-files
+```
+
 ### Running Tests
 
 ```bash
@@ -320,6 +329,7 @@ glow-worm/
 ├── scripts/               # Utility scripts (create_user, seed_data)
 ├── tests/                 # Test suite (includes test_cli.py)
 ├── aqua.yaml              # aqua pins (uv CLI, pinact)
+├── prek.toml              # prek git hook config
 ├── pyproject.toml         # Project metadata & dependencies
 ├── uv.lock                # Locked Python dependencies
 ├── renovate.json5         # Renovate dependency-update config

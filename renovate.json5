@@ -5,8 +5,6 @@
     "config:recommended",
     // Semver-classify SHA-pinned Actions; keep pinDigests=true.
     "helpers:pinGitHubActionDigestsToSemver",
-    // pre-commit manager is disabled by default (beta).
-    ":enablePreCommit",
     // Official regex managers for aqua.yaml (registry ref + packages).
     // Pin the preset; bump it via Renovate like any other dep.
     "github>aquaproj/aqua-renovate-config#2.13.0",
@@ -33,6 +31,20 @@
   lockFileMaintenance: {
     enabled: false,
   },
+
+  // prek.toml is not a Renovate manager yet. Extract hook repo + rev so
+  // ruff / detect-secrets majors still group with the matching PyPI package.
+  customManagers: [
+    {
+      customType: "regex",
+      description: "prek.toml hook revisions",
+      managerFilePatterns: ["/(^|/)prek\\.toml$/"],
+      matchStrings: [
+        "repo = \"https://github.com/(?<depName>[^\"]+)\"\\s+rev = \"(?<currentValue>[^\"]+)\"",
+      ],
+      datasourceTemplate: "github-tags",
+    },
+  ],
 
   labels: ["dependencies"],
   assignees: ["jmoeser"],
@@ -68,13 +80,13 @@
       minimumReleaseAge: null,
     },
     {
-      description: "Keep ruff the package and the pre-commit hook on the same major PR",
+      description: "Keep ruff the package and the ruff-pre-commit hook on the same major PR",
       matchPackageNames: ["ruff", "astral-sh/ruff-pre-commit"],
       matchUpdateTypes: ["major"],
       groupName: "ruff",
     },
     {
-      description: "Keep detect-secrets the package and the pre-commit hook on the same major PR",
+      description: "Keep detect-secrets the package and the detect-secrets hook on the same major PR",
       matchPackageNames: ["detect-secrets", "Yelp/detect-secrets"],
       matchUpdateTypes: ["major"],
       groupName: "detect-secrets",
