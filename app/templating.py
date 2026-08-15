@@ -1,4 +1,6 @@
+from collections.abc import MutableMapping
 from importlib.metadata import PackageNotFoundError, version
+from typing import Any, cast
 
 from fastapi.templating import Jinja2Templates
 
@@ -18,5 +20,5 @@ try:
 except PackageNotFoundError:
     _app_version = "dev"
 
-templates.env.filters.update({"money": _money_format})
-templates.env.globals.update({"app_version": _app_version})
+cast(MutableMapping[str, Any], templates.env.filters)["money"] = _money_format
+cast(MutableMapping[str, Any], templates.env.globals)["app_version"] = _app_version
