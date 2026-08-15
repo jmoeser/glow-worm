@@ -25,7 +25,10 @@
 
   automerge: false,
 
-  rangeStrategy: "bump",
+  // App, not a library. Pin so uv cannot resolve past the version Renovate chose
+  // (rangeStrategy=bump + >= ranges let uv lock sqlalchemy 2.0.52 while Renovate wanted 2.0.51).
+  // https://github.com/renovatebot/renovate/issues/41624
+  rangeStrategy: "pin",
 
   lockFileMaintenance: {
     enabled: false,
@@ -57,6 +60,12 @@
       matchManagers: ["pep621"],
       matchDepTypes: ["requires-python"],
       enabled: false,
+    },
+    {
+      // pin/pinDigest have no release timestamp; age would hold them forever.
+      description: "Do not apply minimumReleaseAge to pin / pinDigest updates",
+      matchUpdateTypes: ["pin", "pinDigest"],
+      minimumReleaseAge: null,
     },
     {
       description: "Keep ruff the package and the pre-commit hook on the same major PR",

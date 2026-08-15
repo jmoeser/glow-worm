@@ -18,5 +18,5 @@ try:
 except PackageNotFoundError:
     _app_version = "dev"
 
-templates.env.filters["money"] = _money_format
-templates.env.globals["app_version"] = _app_version
+templates.env.filters.update({"money": _money_format})
+templates.env.globals.update({"app_version": _app_version})

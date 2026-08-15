@@ -81,7 +81,8 @@ Hooks run automatically on `git commit`. Install with `uv run pre-commit install
 ## Dependency updates
 Hosted [Mend Renovate](https://github.com/apps/renovate); config is `renovate.json5`. Dependabot version updates are not used; keep the GitHub dependency graph and Dependabot alerts.
 
-- One non-major PR on the 1st and 15th 00:00–06:59 (`Australia/Brisbane`). Majors are separate PRs in the same window. Nothing automerges.
+- One non-major PR on the 1st and 15th (`Australia/Brisbane`). Majors are separate PRs in the same window. Nothing automerges.
+- Python dependencies are exact pins (`==`) so `uv lock` cannot jump past the version Renovate selected (`rangeStrategy: "pin"`).
 - uv toolchain (`aqua.yaml` `astral-sh/uv`, GHCR `ghcr.io/astral-sh/uv` image, CI `setup-uv` `version:`) is always one isolated `uv` PR (all update types, including 0.x minors and 1.x).
 - Python `3.14` → `3.15` is a **minor**, isolated as `python runtime` and Dashboard-gated. Do not merge until `requires-python` and `[tool.pyrefly] python-version` move in the same commit.
 - `minimumReleaseAge: "7 days"` where the registry publishes timestamps. The GitHub release of `astral-sh/uv` is the clock for the uv group (GHCR is timestamp-optional on that docker member only).
@@ -91,7 +92,7 @@ Hosted [Mend Renovate](https://github.com/apps/renovate); config is `renovate.js
 - When modifying Pydantic models or API responses, ensure all values are JSON-serializable. Specifically, convert Decimal objects to float before returning them in responses or error payloads.
 - FastMCP 3.x `@mcp.tool()` returns the original function directly (no `FunctionTool` wrapper). Functions are directly callable; no `.fn` accessor needed.
 - SQLite needs batch mode (`render_as_batch=True`) for ALTER TABLE operations in Alembic migrations.
-- **Exception syntax**: always use Python 3 tuple syntax — `except (ValueError, TypeError):`. Never use the Python 2 comma form `except ValueError, TypeError:` which is a `SyntaxError` in Python 3.
+- **Exception syntax**: Python 3.14 (PEP 758) allows `except ValueError, TypeError:` without parentheses. ruff-format will drop the parens. The Python 2 meaning (`except E, name`) is gone; use `except E as name` to bind.
 
 ## CLI (`glow`)
 - Entry point: `glow = "app.cli.main:app"` (defined in `[project.scripts]`).
