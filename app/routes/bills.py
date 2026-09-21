@@ -83,13 +83,12 @@ def _bill_context(db: Session):
 
 
 def _render_table_body(request: Request, db: Session, ctx: dict | None = None) -> str:
-    if ctx is None:
-        ctx = _bill_context(db)
+    context = _bill_context(db) if ctx is None else ctx
     return bytes(
         templates.TemplateResponse(
             request,
             "bills.html",
-            {**ctx, "fragment": "table_body"},
+            {**context, "fragment": "table_body"},
         ).body
     ).decode()
 
