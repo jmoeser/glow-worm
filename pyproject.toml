@@ -48,8 +48,6 @@ packages = ["app"]
 
 [tool.pyrefly]
 python-version = "3.14.0"
-preset = "legacy"
-ignore-missing-imports = ["*"]
 
 [tool.ruff.lint.flake8-bugbear]
 # FastAPI Depends() is intentionally used as a default (DI), not evaluated at definition time.
