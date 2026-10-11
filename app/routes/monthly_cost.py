@@ -83,21 +83,22 @@ def _build_monthly_cost_data(
             .all()
         )
         offset_map = {
-            r.category_id: Decimal(str(r.total_offset or 0)) for r in offset_rows
+            category_id: Decimal(str(total_offset or 0))
+            for category_id, total_offset in offset_rows
         }
 
     grand_total = Decimal(0)
     rows: list[dict] = []
-    for row in rows_raw:
-        total = Decimal(str(row.total_spent or 0))
+    for category, total_spent in rows_raw:
+        total = Decimal(str(total_spent or 0))
         if net:
-            total = total - offset_map.get(row.Category.id, Decimal(0))
+            total = total - offset_map.get(category.id, Decimal(0))
         total = total.quantize(Decimal("0.01"))
         grand_total += total
         monthly_avg = (total / months_elapsed).quantize(Decimal("0.01"))
         rows.append(
             {
-                "category": row.Category,
+                "category": category,
                 "total_spent": total,
                 "monthly_avg": monthly_avg,
             }
