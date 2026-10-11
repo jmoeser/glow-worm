@@ -175,7 +175,8 @@ async def income_save(request: Request, db: Session = Depends(get_db)):
 
     # Parse sinking fund allocations from fund_<id> keys (skip system funds — Bills is handled separately)
     system_fund_ids = {
-        row.id for row in db.query(SinkingFund.id).filter(SinkingFund.is_system == True)
+        fund_id
+        for (fund_id,) in db.query(SinkingFund.id).filter(SinkingFund.is_system == True)
     }
     fund_allocations = []
     for key in form:
