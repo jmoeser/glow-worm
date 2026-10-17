@@ -1,0 +1,232 @@
+<div id="shares-results">
+    {% for banner in page.banners %}
+    <div class="gw-warning-banner gw-section">{{ banner }}</div>
+    {% endfor %}
+
+    <div class="gw-summary-bar gw-section">
+        <div class="gw-summary-item">
+            <span class="gw-summary-label">Market value</span>
+            <span class="gw-summary-value">A${{ page.summary.value_aud|money }}</span>
+            <span class="gw-text-muted" style="font-size: 0.75rem;">US${{ page.summary.value_usd|money }}</span>
+        </div>
+        <div class="gw-summary-item">
+            <span class="gw-summary-label">Cost base</span>
+            <span class="gw-summary-value">A${{ page.summary.cost_aud|money }}</span>
+        </div>
+        <div class="gw-summary-item">
+            <span class="gw-summary-label">Unrealised</span>
+            <span class="gw-summary-value {{ 'gw-text-positive' if page.summary.unrealised_aud > 0 else 'gw-text-negative' if page.summary.unrealised_aud < 0 else '' }}">
+                {{ '+' if page.summary.unrealised_aud > 0 else '' }}A${{ page.summary.unrealised_aud|money }}
+            </span>
+            <span class="gw-text-muted" style="font-size: 0.75rem;">
+                {{ '+' if page.summary.unrealised_usd > 0 else '' }}US${{ page.summary.unrealised_usd|money }}
+                {% if page.summary.unrealised_pct is not none %}
+                · {{ '+' if page.summary.unrealised_pct > 0 else '' }}{{ page.summary.unrealised_pct|money }}%
+                {% endif %}
+            </span>
+        </div>
+        <div class="gw-summary-item">
+            <span class="gw-summary-label">Realised {{ page.summary.financial_year }}</span>
+            <span class="gw-summary-value {{ 'gw-text-positive' if page.summary.realised_fy_aud > 0 else 'gw-text-negative' if page.summary.realised_fy_aud < 0 else '' }}">
+                {{ '+' if page.summary.realised_fy_aud > 0 else '' }}A${{ page.summary.realised_fy_aud|money }}
+            </span>
+        </div>
+    </div>
+    <p class="gw-text-muted gw-section" style="font-size: 0.8rem;">
+        {% if page.price_as_of %}Prices as of {{ page.price_as_of }}{% else %}No prices stored yet{% endif %}
+        {% if page.fx %}
+        · AUD/USD {{ page.fx.rate_display }} as of {{ page.fx.rate_date }} ({{ page.fx.source_label }})
+        {% endif %}
+        {% if page.price_fetched_local %}· updated {{ page.price_fetched_local }}{% endif %}
+    </p>
+
+    <h3 class="gw-page-header" style="font-size: 1.1rem;">Holdings</h3>
+    {% if page.holdings %}
+    <div class="gw-table-wrap gw-section">
+        <table>
+            <thead>
+                <tr>
+                    <th>Ticker</th>
+                    <th class="text-right">Qty</th>
+                    <th class="text-right">Cost base</th>
+                    <th class="text-right">Last close</th>
+                    <th class="text-right">Value US$</th>
+                    <th class="text-right">Value A$</th>
+                    <th class="text-right">Unrealised</th>
+                    <th class="text-right">%</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for holding in page.holdings %}
+                <tr>
+                    <td>
+                        <a href="/shares/{{ holding.ticker }}">{{ holding.ticker }}</a>
+                        {% if holding.parcels %}
+                        <details class="gw-details" style="margin-top: 8px;">
+                            <summary>Open parcels</summary>
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>Buy date</th>
+                                        <th class="text-right">Qty</th>
+                                        <th class="text-right">Price</th>
+                                        <th class="text-right">AUD/USD</th>
+                                        <th class="text-right">Cost A$</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for parcel in holding.parcels %}
+                                    <tr>
+                                        <td>{{ parcel.buy_date }}</td>
+                                        <td class="text-right">{{ parcel.remaining_qty|qty }}</td>
+                                        <td class="text-right">{{ parcel.price|qty }}</td>
+                                        <td class="text-right">{% if parcel.fx is not none %}{{ parcel.fx }}{% else %}—{% endif %}</td>
+                                        <td class="text-right">A${{ parcel.cost_aud|money }}</td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </details>
+                        {% endif %}
+                    </td>
+                    <td class="text-right">{{ holding.quantity|qty }}</td>
+                    <td class="text-right">A${{ holding.cost_aud|money }}</td>
+                    <td class="text-right">
+                        {% if holding.price is not none %}
+                        {{ holding.price|qty }} {{ holding.currency }}
+                        <div class="gw-text-muted" style="font-size: 0.75rem;">{{ holding.price_date }} ({{ holding.price_label }})</div>
+                        {% else %}
+                        <span class="gw-text-muted">no price</span>
+                        {% endif %}
+                    </td>
+                    <td class="text-right">
+                        {% if holding.value_usd is not none %}
+                        {{ '≈ ' if holding.approx_usd else '' }}US${{ holding.value_usd|money }}
+                        {% else %}—{% endif %}
+                    </td>
+                    <td class="text-right">
+                        {% if holding.value_aud is not none %}A${{ holding.value_aud|money }}{% else %}—{% endif %}
+                    </td>
+                    <td class="text-right {{ 'gw-text-positive' if holding.unrealised_aud is not none and holding.unrealised_aud > 0 else 'gw-text-negative' if holding.unrealised_aud is not none and holding.unrealised_aud < 0 else '' }}">
+                        {% if holding.unrealised_aud is not none %}
+                        {{ '+' if holding.unrealised_aud > 0 else '' }}A${{ holding.unrealised_aud|money }}
+                        <div class="gw-text-muted" style="font-size: 0.75rem;">
+                            {% if holding.unrealised_usd is not none %}
+                            {{ '≈ ' if holding.approx_usd else '' }}{{ '+' if holding.unrealised_usd > 0 else '' }}US${{ holding.unrealised_usd|money }}
+                            {% endif %}
+                        </div>
+                        {% else %}—{% endif %}
+                    </td>
+                    <td class="text-right {{ 'gw-text-positive' if holding.pct is not none and holding.pct > 0 else 'gw-text-negative' if holding.pct is not none and holding.pct < 0 else '' }}">
+                        {% if holding.pct is not none %}{{ '+' if holding.pct > 0 else '' }}{{ holding.pct|money }}%{% else %}—{% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <p class="gw-text-muted gw-section">No open holdings yet. Add a buy to start tracking.</p>
+    {% endif %}
+
+    <h3 class="gw-page-header" style="font-size: 1.1rem;">Realised gains</h3>
+    <p class="gw-text-muted" style="font-size: 0.75rem; margin-bottom: 8px;">Indicative only; uses the broker FX rate on each trade date; not tax advice.</p>
+    {% if page.realised_groups %}
+    {% for group in page.realised_groups %}
+    <div class="gw-table-wrap gw-section">
+        <table>
+            <thead>
+                <tr>
+                    <th>Sell date</th>
+                    <th>Ticker</th>
+                    <th class="text-right">Qty</th>
+                    <th>Buy date</th>
+                    <th class="text-right">Proceeds A$</th>
+                    <th class="text-right">Cost A$</th>
+                    <th class="text-right">Gain A$</th>
+                    <th>≥12m</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in group.rows %}
+                <tr>
+                    <td>{{ row.sell_date }}</td>
+                    <td><a href="/shares/{{ row.ticker }}">{{ row.ticker }}</a></td>
+                    <td class="text-right">{{ row.quantity|qty }}</td>
+                    <td>{{ row.buy_date }}</td>
+                    <td class="text-right">A${{ row.proceeds_aud|money }}</td>
+                    <td class="text-right">A${{ row.cost_aud|money }}</td>
+                    <td class="text-right {{ 'gw-text-positive' if row.gain_aud > 0 else 'gw-text-negative' if row.gain_aud < 0 else '' }}">
+                        {{ '+' if row.gain_aud > 0 else '' }}A${{ row.gain_aud|money }}
+                        <div class="gw-text-muted" style="font-size: 0.75rem;">{{ '+' if row.gain_ccy > 0 else '' }}{{ row.currency }}${{ row.gain_ccy|money }}</div>
+                    </td>
+                    <td>{% if row.held_over_12_months %}<span class="gw-badge gw-badge--paid">≥12m</span>{% else %}<span class="gw-text-muted">no</span>{% endif %}</td>
+                </tr>
+                {% endfor %}
+                <tr>
+                    <td colspan="6"><strong>{{ group.financial_year }} total</strong></td>
+                    <td class="text-right"><strong>{{ '+' if group.total_aud > 0 else '' }}A${{ group.total_aud|money }}</strong></td>
+                    <td></td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+    {% endfor %}
+    {% else %}
+    <p class="gw-text-muted gw-section">No realised gains yet.</p>
+    {% endif %}
+
+    <h3 class="gw-page-header" style="font-size: 1.1rem;">Trades</h3>
+    {% if page.trades %}
+    <div class="gw-table-wrap gw-section">
+        <table>
+            <thead>
+                <tr>
+                    <th>Date</th>
+                    <th>Ticker</th>
+                    <th>Type</th>
+                    <th class="text-right">Qty</th>
+                    <th class="text-right">Price</th>
+                    <th class="text-right">Fee</th>
+                    <th>FX</th>
+                    <th>Notes</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for trade in page.trades %}
+                <tr id="trade-row-{{ trade.id }}">
+                    <td>{{ trade.trade_date }}</td>
+                    <td><a href="/shares/{{ trade.ticker }}">{{ trade.ticker }}</a></td>
+                    <td>{{ trade.trade_type }}</td>
+                    <td class="text-right">{{ trade.quantity|qty }}</td>
+                    <td class="text-right">{{ trade.price|qty }} {{ trade.currency }}</td>
+                    <td class="text-right">{{ trade.fee|money }} {{ trade.fee_currency }}</td>
+                    <td>
+                        {% if trade.fx_rate_aud_usd is not none %}
+                        {{ trade.fx_rate_input|qty }} {{ trade.fx_input_convention }}
+                        <div class="gw-text-muted" style="font-size: 0.75rem;">stored {{ trade.fx_rate_aud_usd }}</div>
+                        {% else %}—{% endif %}
+                    </td>
+                    <td class="gw-text-muted">{{ trade.notes or "" }}</td>
+                    <td>
+                        <button hx-get="/shares/trades/{{ trade.id }}/edit"
+                                hx-target="#trade-row-{{ trade.id }}"
+                                hx-swap="outerHTML"
+                                class="gw-action-edit">Edit</button>
+                        <button hx-delete="/shares/trades/{{ trade.id }}"
+                                hx-target="#shares-results"
+                                hx-swap="outerHTML"
+                                hx-confirm="Delete this trade?"
+                                hx-on::after-request="if(!event.detail.successful){ document.getElementById('shares-message').innerHTML=event.detail.xhr.responseText; }"
+                                class="gw-action-delete">Delete</button>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <p class="gw-text-muted gw-section">No trades yet.</p>
+    {% endif %}
+</div>
