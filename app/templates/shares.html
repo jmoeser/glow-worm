@@ -1,0 +1,182 @@
+{% if fragment == "holdings_and_realised" %}
+{% include "_shares_results.html" %}
+
+{% elif fragment == "trade_edit_row" %}
+<tr class="gw-edit-row" id="trade-row-{{ trade.id }}">
+    <td colspan="9">
+        <form id="edit-trade-{{ trade.id }}"
+              hx-post="/shares/trades/{{ trade.id }}"
+              hx-target="#shares-results"
+              hx-swap="outerHTML"
+              class="gw-grid-2">
+            <div>
+                <label class="gw-label">Ticker</label>
+                <input type="text" name="ticker" value="{{ trade.ticker }}" required class="gw-input" style="text-transform: uppercase;">
+            </div>
+            <div>
+                <label class="gw-label">Type</label>
+                <select name="trade_type" class="gw-select">
+                    <option value="buy" {{ 'selected' if trade.trade_type == 'buy' else '' }}>Buy</option>
+                    <option value="sell" {{ 'selected' if trade.trade_type == 'sell' else '' }}>Sell</option>
+                </select>
+            </div>
+            <div>
+                <label class="gw-label">Date</label>
+                <input type="date" name="trade_date" value="{{ trade.trade_date }}" required class="gw-input">
+            </div>
+            <div>
+                <label class="gw-label">Quantity</label>
+                <input type="number" name="quantity" value="{{ trade.quantity|qty }}" step="any" min="0" required class="gw-input">
+            </div>
+            <div>
+                <label class="gw-label">Price per share</label>
+                <input type="number" name="price" value="{{ trade.price|qty }}" step="any" min="0" required class="gw-input">
+            </div>
+            <div>
+                <label class="gw-label">Fee (optional)</label>
+                <div style="display: flex; gap: 8px;">
+                    <input type="number" name="fee" value="{{ trade.fee|qty }}" step="0.01" min="0" class="gw-input" style="flex: 1;">
+                    <select name="fee_currency" class="gw-select" style="width: 90px;">
+                        <option value="USD" {{ 'selected' if trade.fee_currency == 'USD' else '' }}>USD</option>
+                        <option value="AUD" {{ 'selected' if trade.fee_currency == 'AUD' else '' }}>AUD</option>
+                    </select>
+                </div>
+            </div>
+            <div>
+                <label class="gw-label">Broker FX rate</label>
+                <input type="number" name="fx_rate" value="{{ trade.fx_rate_input|qty if trade.fx_rate_input is not none else '' }}" step="any" min="0" class="gw-input">
+            </div>
+            <div>
+                <label class="gw-label">FX convention</label>
+                <select name="fx_input_convention" class="gw-select">
+                    <option value="AUD/USD" {{ 'selected' if trade.fx_input_convention != 'USD/AUD' else '' }}>AUD/USD</option>
+                    <option value="USD/AUD" {{ 'selected' if trade.fx_input_convention == 'USD/AUD' else '' }}>USD/AUD</option>
+                </select>
+            </div>
+            <div style="grid-column: 1 / -1;">
+                <label class="gw-label">Notes</label>
+                <input type="text" name="notes" value="{{ trade.notes or '' }}" maxlength="500" class="gw-input">
+            </div>
+            <div>
+                <button type="submit" class="gw-btn gw-btn-primary gw-btn-sm">Save</button>
+                <button type="button" class="gw-btn gw-btn-ghost gw-btn-sm" onclick="location.reload();">Cancel</button>
+            </div>
+        </form>
+    </td>
+</tr>
+
+{% else %}
+{% extends "base.html" %}
+{% block title %}Shares — Glow Worm{% endblock %}
+{% block content %}
+<div style="max-width: 1100px;">
+    <h2 class="gw-page-header">Shares</h2>
+    <p class="gw-text-muted gw-section" style="font-size: 0.85rem;">
+        US stocks held outside the household budget. Buys and sells are matched FIFO.
+        Prices update after the US close on weekdays. Amounts in AUD, with USD alongside.
+    </p>
+
+    <div id="shares-message" style="margin-bottom: 16px;"></div>
+
+    {% include "_shares_results.html" %}
+
+    <details class="gw-details gw-section gw-add-form" open>
+        <summary>Add trade</summary>
+        <form id="share-trade-form"
+              hx-post="/shares/trades"
+              hx-target="#shares-results"
+              hx-swap="outerHTML"
+              autocomplete="off"
+              class="gw-grid-2"
+              style="margin-top: 16px;">
+            <div>
+                <label for="share-ticker" class="gw-label">Ticker</label>
+                <input type="text" id="share-ticker" name="ticker" required class="gw-input"
+                       placeholder="AAPL" style="text-transform: uppercase;"
+                       oninput="gwSharesSyncFx()">
+            </div>
+            <div>
+                <label for="share-type" class="gw-label">Type</label>
+                <select id="share-type" name="trade_type" class="gw-select">
+                    <option value="buy">Buy</option>
+                    <option value="sell">Sell</option>
+                </select>
+            </div>
+            <div>
+                <label for="share-date" class="gw-label">Date</label>
+                <input type="date" id="share-date" name="trade_date" required class="gw-input" value="{{ page.today }}">
+            </div>
+            <div>
+                <label for="share-qty" class="gw-label">Quantity</label>
+                <input type="number" id="share-qty" name="quantity" step="any" min="0" required class="gw-input" placeholder="10">
+            </div>
+            <div>
+                <label for="share-price" class="gw-label">Price per share (USD)</label>
+                <input type="number" id="share-price" name="price" step="any" min="0" required class="gw-input" placeholder="100.00">
+            </div>
+            <div>
+                <label for="share-fee" class="gw-label">Fee (optional, usually 0)</label>
+                <div style="display: flex; gap: 8px;">
+                    <input type="number" id="share-fee" name="fee" step="0.01" min="0" value="0" class="gw-input" style="flex: 1;">
+                    <select id="share-fee-currency" name="fee_currency" class="gw-select" style="width: 90px;">
+                        <option value="USD" selected>USD</option>
+                        <option value="AUD">AUD</option>
+                    </select>
+                </div>
+                <p class="gw-text-muted" style="font-size: 0.75rem; margin-top: 4px;">CMC Markets fees default to USD.</p>
+            </div>
+            <div class="js-share-fx">
+                <label for="share-fx" class="gw-label">Broker FX rate</label>
+                <input type="number" id="share-fx" name="fx_rate" step="any" min="0" class="gw-input" placeholder="0.6500">
+                <p class="gw-text-muted" style="font-size: 0.75rem; margin-top: 4px;">The rate the broker charged, not a mid-market rate.</p>
+            </div>
+            <div class="js-share-fx">
+                <label for="share-fx-convention" class="gw-label">FX convention</label>
+                <select id="share-fx-convention" name="fx_input_convention" class="gw-select">
+                    <option value="AUD/USD" selected>AUD/USD (USD per 1 AUD)</option>
+                    <option value="USD/AUD">USD/AUD (AUD per 1 USD)</option>
+                </select>
+            </div>
+            <div style="grid-column: 1 / -1;">
+                <label for="share-notes" class="gw-label">Notes</label>
+                <input type="text" id="share-notes" name="notes" maxlength="500" class="gw-input" placeholder="Optional broker reference">
+            </div>
+            <div id="fx-preview"
+                 style="grid-column: 1 / -1;"
+                 hx-get="/shares/fx-preview"
+                 hx-trigger="change from:#share-trade-form, keyup delay:400ms from:#share-trade-form"
+                 hx-include="#share-trade-form"
+                 hx-target="this"
+                 hx-swap="innerHTML"></div>
+            <div style="grid-column: 1 / -1;">
+                <button type="submit" class="gw-btn gw-btn-primary">Add trade</button>
+            </div>
+        </form>
+    </details>
+</div>
+<script>
+function gwSharesSyncFx() {
+    var ticker = (document.getElementById("share-ticker").value || "").toUpperCase();
+    var aud = ticker.endsWith(".AX") || ticker.endsWith(".AUS");
+    document.querySelectorAll(".js-share-fx").forEach(function (el) {
+        el.style.display = aud ? "none" : "";
+    });
+    var feeCcy = document.getElementById("share-fee-currency");
+    if (feeCcy && aud) {
+        feeCcy.value = "AUD";
+    }
+}
+document.body.addEventListener("gwShareTradeSuccess", function () {
+    var form = document.getElementById("share-trade-form");
+    if (form) {
+        form.reset();
+        gwSharesSyncFx();
+    }
+    var message = document.getElementById("shares-message");
+    if (message) {
+        message.innerHTML = "";
+    }
+});
+</script>
+{% endblock %}
+{% endif %}

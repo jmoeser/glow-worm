@@ -7,6 +7,7 @@ An opinionated, single-tenant household budgeting app built with Python and Fast
 - **Income Allocation** -- Configure how your monthly income is automatically distributed across budgets, sinking funds, bills, and recurring transfers on the 1st of each month. Includes a live Sankey diagram showing the breakdown.
 - **Monthly Budgets** -- Track spending against allocated amounts for repeating categories (Groceries, Eating Out, etc.) with color-coded progress bars. Any unspent surplus is automatically swept into your overflow sinking fund at month-end; net overspend is automatically withdrawn from it so your fund balances always reflect reality. Advisory **budget suggestions** compare each category's allocation to its average spend over the last few completed months (shown on the budgets page and as a dashboard teaser).
 - **Sinking Funds** -- Savings pots (Bills, Savings, Emergency, etc.) that accumulate a balance over time via monthly contributions.
+- **Shares** -- Record US share buys and sells (CMC Markets style: USD price, optional fee, broker FX as AUD/USD or USD/AUD). FIFO realised gains are shown in AUD, with unrealised gains in AUD and USD and a portfolio total. Daily closes come from Alpha Vantage; the AUD/USD rate comes from Frankfurter, with Alpha Vantage FX as a fallback. Informational only — share trades are not household budget transactions.
 - **Recurring Bills** -- Manage bills with flexible frequencies (monthly, quarterly, yearly, every 28 days). Bills are automatically generated as unpaid transactions when due.
 - **Recurring Transfers** -- Define fixed monthly outflows (e.g. an allowance, an external savings transfer) that are processed automatically as part of income allocation and deducted from the unallocated remainder.
 - **Category Management** -- Create and manage transaction categories (income, expense, transfer). System categories required for income allocation are protected from deletion.
@@ -121,6 +122,15 @@ All configuration is via environment variables (see `.env.example`):
 | `SECURE_COOKIES` | Set to `false` for local HTTP development | `true` |
 | `ALLOWED_ORIGINS` | Comma-separated CORS origins (leave empty to disable) | -- |
 | `TIMEZONE` | Timezone for date calculations and scheduling | `Australia/Brisbane` |
+| `ALPHA_VANTAGE_API_KEY` | Alpha Vantage key for US share prices (and FX fallback). Leave empty to record trades without live prices | -- |
+| `SHARES_UPDATE_TIME` | Weekday clock time for the daily price and FX job (`HH:MM`) | `18:00` |
+| `SHARES_UPDATE_TIMEZONE` | Timezone for that job | `America/New_York` |
+| `SHARES_UPDATE_DAYS` | APScheduler `day_of_week` for the job | `mon-fri` |
+| `SHARES_AV_MAX_REQUESTS_PER_RUN` | Alpha Vantage calls allowed in one run (1–25) | `20` |
+| `SHARES_AV_MIN_INTERVAL_SECONDS` | Minimum seconds between those calls (at least 12) | `13` |
+| `SHARES_PRICE_UPSERT_DAYS` | Recent daily closes rewritten on a routine update | `10` |
+| `SHARES_CATCHUP_ON_STARTUP` | Run the job about a minute after startup when the last run is older than 20 hours (`true` / `false`) | `true` |
+| `SHARES_FRANKFURTER_BASE_URL` | Frankfurter host for the daily AUD/USD rate | `https://api.frankfurter.dev` |
 
 ## MCP Server
 
@@ -317,7 +327,7 @@ glow-worm/
 │   ├── mcp_server.py      # MCP tool definitions
 │   ├── templating.py      # Jinja2 template helpers
 │   ├── routes/            # Route modules (auth, dashboard, bills, etc.)
-│   ├── services/          # Domain logic (e.g. budget recommendations)
+│   ├── services/          # Domain logic (budget recommendations, shares FIFO, market data)
 │   ├── templates/         # Jinja2 HTML templates
 │   ├── static/            # CSS, logo, static assets
 │   └── cli/               # glow CLI (pipx-installable)

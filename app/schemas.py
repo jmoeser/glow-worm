@@ -41,6 +41,21 @@ class BillType(str, Enum):
     variable = "variable"
 
 
+class ShareTradeType(str, Enum):
+    buy = "buy"
+    sell = "sell"
+
+
+class FxConvention(str, Enum):
+    aud_usd = "AUD/USD"
+    usd_aud = "USD/AUD"
+
+
+class ShareCurrency(str, Enum):
+    USD = "USD"
+    AUD = "AUD"
+
+
 # --- User Schemas ---
 
 
@@ -460,6 +475,54 @@ class BudgetTransferRequest(BaseModel):
     sinking_fund_id: int
     budget_id: int
     amount: Decimal = Field(..., gt=Decimal(0))
+
+
+class ShareTradeCreate(BaseModel):
+    ticker: str = Field(..., min_length=1, max_length=20)
+    trade_type: ShareTradeType
+    trade_date: str = Field(..., pattern=r"^\d{4}-\d{2}-\d{2}$")
+    quantity: Decimal = Field(..., gt=Decimal(0))
+    price: Decimal = Field(..., gt=Decimal(0))
+    fee: Decimal = Field(default=Decimal(0), ge=Decimal(0))
+    fee_currency: ShareCurrency = ShareCurrency.USD
+    fx_rate: Decimal | None = Field(default=None, gt=Decimal(0))
+    fx_input_convention: FxConvention | None = None
+    notes: str | None = Field(default=None, max_length=500)
+
+
+class ShareTradeUpdate(ShareTradeCreate):
+    """A full replacement of a trade. FIFO is rechecked by the route."""
+
+
+class SharesHoldingResponse(BaseModel):
+    ticker: str
+    quantity: float
+    currency: str
+    cost_aud: float
+    value_usd: float | None = None
+    value_aud: float | None = None
+    unrealised_aud: float | None = None
+    unrealised_usd: float | None = None
+    pct: float | None = None
+    price: float | None = None
+    price_date: str | None = None
+
+
+class SharesSummaryResponse(BaseModel):
+    financial_year: str
+    cost_aud: float
+    value_aud: float
+    value_usd: float
+    unrealised_aud: float
+    unrealised_usd: float
+    realised_aud: float
+    unpriced_count: int
+    fx_rate: float | None = None
+    fx_date: str | None = None
+    fx_source: str | None = None
+    price_as_of: str | None = None
+    holdings: list[SharesHoldingResponse]
+    realised_by_fy: dict[str, float]
 
 
 class DashboardSummary(BaseModel):
