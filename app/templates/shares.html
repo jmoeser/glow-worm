@@ -154,6 +154,7 @@
         </form>
     </details>
 </div>
+<script src="https://d3js.org/d3.v7.min.js"></script>
 <script>
 function gwSharesSyncFx() {
     var ticker = (document.getElementById("share-ticker").value || "").toUpperCase();
@@ -176,7 +177,172 @@ document.body.addEventListener("gwShareTradeSuccess", function () {
     if (message) {
         message.innerHTML = "";
     }
+    gwDrawSharesChart();
 });
+
+function gwParseISO(iso) {
+    var parts = iso.split("-");
+    return new Date(Date.UTC(+parts[0], +parts[1] - 1, +parts[2]));
+}
+
+function gwAddMonths(iso, months) {
+    var parts = iso.split("-");
+    var monthIndex = (+parts[1] - 1) + months;
+    var year = +parts[0] + Math.floor(monthIndex / 12);
+    var month = ((monthIndex % 12) + 12) % 12;
+    var last = new Date(Date.UTC(year, month + 1, 0)).getUTCDate();
+    var day = Math.min(+parts[2], last);
+    var mm = String(month + 1).padStart(2, "0");
+    var dd = String(day).padStart(2, "0");
+    return year + "-" + mm + "-" + dd;
+}
+
+function gwFilterSharesChart(payload, label) {
+    var points = payload.points || [];
+    var months = { "1M": 1, "3M": 3, "6M": 6, "1Y": 12 };
+    if (!Object.prototype.hasOwnProperty.call(months, label)) {
+        return points;
+    }
+    var start = gwAddMonths(payload.today, -months[label]);
+    return points.filter(function (point) { return point.date >= start; });
+}
+
+function gwAud(amount, digits) {
+    var formatted = Number(amount).toLocaleString("en-AU", {
+        minimumFractionDigits: digits,
+        maximumFractionDigits: digits
+    });
+    return "A$" + formatted;
+}
+
+function gwDrawSharesChart() {
+    var plot = document.getElementById("shares-chart-plot");
+    var dataNode = document.getElementById("shares-chart-data");
+    if (!plot || !dataNode || typeof d3 === "undefined") {
+        return;
+    }
+    var payload;
+    try {
+        payload = JSON.parse(dataNode.textContent);
+    } catch (error) {
+        return;
+    }
+    var active = document.querySelector("#shares-chart .gw-chart-ranges .is-active");
+    var label = active ? active.getAttribute("data-range") : "All";
+    var points = gwFilterSharesChart(payload, label);
+    plot.innerHTML = "";
+    if (points.length < 2) {
+        plot.innerHTML = '<p class="gw-chart-empty">No history in this range.</p>';
+        return;
+    }
+
+    var width = Math.max(plot.clientWidth || 640, 320);
+    var height = 280;
+    var margin = { top: 16, right: 16, bottom: 32, left: 84 };
+    var innerW = width - margin.left - margin.right;
+    var innerH = height - margin.top - margin.bottom;
+    var parsed = points.map(function (point) {
+        return {
+            date: gwParseISO(point.date),
+            label: point.date,
+            value: Number(point.value_aud),
+            cost: Number(point.cost_aud)
+        };
+    });
+    var values = parsed.flatMap(function (point) { return [point.value, point.cost]; });
+    var min = d3.min(values);
+    var max = d3.max(values);
+    if (min === max) {
+        min -= 1;
+        max += 1;
+    }
+    var pad = (max - min) * 0.08;
+    var x = d3.scaleUtc().domain(d3.extent(parsed, function (point) { return point.date; })).range([0, innerW]);
+    var y = d3.scaleLinear().domain([min - pad, max + pad]).nice().range([innerH, 0]);
+    var svg = d3.select(plot).append("svg")
+        .attr("viewBox", "0 0 " + width + " " + height)
+        .attr("role", "img")
+        .attr("aria-label", "Portfolio market value and cost base in Australian dollars");
+    var root = svg.append("g").attr("transform", "translate(" + margin.left + "," + margin.top + ")");
+    root.append("g")
+        .call(d3.axisLeft(y).ticks(5).tickFormat(function (value) { return gwAud(value, 0); }).tickSize(-innerW))
+        .call(function (axis) { axis.select(".domain").remove(); })
+        .selectAll("text").attr("fill", "#9aa0ab");
+    root.selectAll(".tick line").attr("stroke", "rgba(255,255,255,0.06)");
+    var spanDays = (x.domain()[1] - x.domain()[0]) / 86400000;
+    var xFormat = spanDays > 400 ? "%b %Y" : "%d %b";
+    root.append("g")
+        .attr("transform", "translate(0," + innerH + ")")
+        .call(d3.axisBottom(x).ticks(Math.min(6, parsed.length)).tickFormat(d3.utcFormat(xFormat)))
+        .call(function (axis) { axis.select(".domain").attr("stroke", "rgba(255,255,255,0.12)"); })
+        .selectAll("text").attr("fill", "#9aa0ab");
+    root.selectAll(".tick line").attr("stroke", "rgba(255,255,255,0.06)");
+
+    function drawLine(key, colour) {
+        root.append("path")
+            .datum(parsed)
+            .attr("fill", "none")
+            .attr("stroke", colour)
+            .attr("stroke-width", 2)
+            .attr("d", d3.line()
+                .x(function (point) { return x(point.date); })
+                .y(function (point) { return y(point[key]); }));
+    }
+    drawLine("cost", "#2dd4bf");
+    drawLine("value", "#facc15");
+
+    var focus = root.append("g").style("display", "none");
+    focus.append("line")
+        .attr("y1", 0)
+        .attr("y2", innerH)
+        .attr("stroke", "rgba(255,255,255,0.35)");
+    var tip = d3.select(plot).append("div").attr("class", "gw-chart-tip").style("display", "none");
+    svg.append("rect")
+        .attr("x", margin.left)
+        .attr("y", margin.top)
+        .attr("width", innerW)
+        .attr("height", innerH)
+        .attr("fill", "transparent")
+        .on("mouseenter", function () { focus.style("display", null); tip.style("display", null); })
+        .on("mouseleave", function () { focus.style("display", "none"); tip.style("display", "none"); })
+        .on("mousemove", function (event) {
+            var pointer = d3.pointer(event, root.node());
+            var when = x.invert(pointer[0]);
+            var nearest = parsed.reduce(function (best, point) {
+                var distance = Math.abs(point.date - when);
+                return distance < best.distance ? { point: point, distance: distance } : best;
+            }, { point: parsed[0], distance: Infinity });
+            var point = nearest.point;
+            focus.attr("transform", "translate(" + x(point.date) + ",0)");
+            tip.html(
+                "<strong>" + point.label + "</strong>" +
+                "<span>Value " + gwAud(point.value, 2) + "</span>" +
+                "<span>Cost " + gwAud(point.cost, 2) + "</span>"
+            );
+            var left = margin.left + x(point.date) + 12;
+            if (left > width - 140) {
+                left = margin.left + x(point.date) - 132;
+            }
+            tip.style("left", left + "px").style("top", (margin.top + 8) + "px");
+        });
+}
+
+document.body.addEventListener("click", function (event) {
+    var button = event.target.closest("#shares-chart [data-range]");
+    if (!button) {
+        return;
+    }
+    document.querySelectorAll("#shares-chart [data-range]").forEach(function (other) {
+        other.classList.toggle("is-active", other === button);
+    });
+    gwDrawSharesChart();
+});
+
+window.addEventListener("resize", function () {
+    gwDrawSharesChart();
+});
+
+gwDrawSharesChart();
 </script>
 {% endblock %}
 {% endif %}

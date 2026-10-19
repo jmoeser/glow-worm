@@ -1,4 +1,31 @@
 <div id="shares-results">
+    <section class="gw-chart gw-section" id="shares-chart" aria-label="Portfolio value over time">
+        <div class="gw-chart-head">
+            <div>
+                <h3 class="gw-chart-title">Portfolio value</h3>
+                <div class="gw-chart-legend">
+                    <span><i class="gw-chart-swatch gw-chart-swatch-value"></i>Market value</span>
+                    <span><i class="gw-chart-swatch gw-chart-swatch-cost"></i>Cost base</span>
+                </div>
+            </div>
+            {% if page.chart_ready %}
+            <div class="gw-chart-ranges" role="group" aria-label="Date range">
+                <button type="button" class="gw-btn gw-btn-ghost gw-btn-sm" data-range="1M">1M</button>
+                <button type="button" class="gw-btn gw-btn-ghost gw-btn-sm" data-range="3M">3M</button>
+                <button type="button" class="gw-btn gw-btn-ghost gw-btn-sm" data-range="6M">6M</button>
+                <button type="button" class="gw-btn gw-btn-ghost gw-btn-sm" data-range="1Y">1Y</button>
+                <button type="button" class="gw-btn gw-btn-ghost gw-btn-sm is-active" data-range="All">All</button>
+            </div>
+            {% endif %}
+        </div>
+        {% if page.chart_ready %}
+        <div class="gw-chart-plot" id="shares-chart-plot"></div>
+        <script type="application/json" id="shares-chart-data">{{ page.chart_json | safe }}</script>
+        {% else %}
+        <p class="gw-chart-empty">Not enough price history yet. The chart needs two valued days — a stored close for each open holding, and an AUD/USD rate for US stocks.</p>
+        {% endif %}
+    </section>
+
     {% for banner in page.banners %}
     <div class="gw-warning-banner gw-section">{{ banner }}</div>
     {% endfor %}

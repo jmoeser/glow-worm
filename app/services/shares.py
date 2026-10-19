@@ -10,6 +10,7 @@ A sell recorded before a same-day buy is an oversell.
 from __future__ import annotations
 
 import calendar
+import json
 import re
 from collections import defaultdict, deque
 from dataclasses import dataclass, field
@@ -554,6 +555,156 @@ def preview_message(
 
 
 # ---------------------------------------------------------------------------
+# Portfolio history for the value chart
+# ---------------------------------------------------------------------------
+
+_RANGE_MONTHS = {"1M": 1, "3M": 3, "6M": 6, "1Y": 12}
+
+
+@dataclass(frozen=True)
+class PortfolioPoint:
+    day: date
+    value_aud: Decimal
+    cost_aud: Decimal
+
+
+def _on_or_before(series: list[tuple[date, Decimal]], day: date) -> Decimal | None:
+    """Last positive observation on or before `day`. `series` may be unsorted."""
+    found: Decimal | None = None
+    found_day: date | None = None
+    for observed, amount in series:
+        if observed > day or amount <= 0:
+            continue
+        if found_day is None or observed >= found_day:
+            found_day = observed
+            found = amount
+    return found
+
+
+def build_portfolio_series(
+    trades_by_ticker: dict[str, list[TradeIn]],
+    prices: dict[str, list[tuple[date, Decimal]]],
+    fx_rates: list[tuple[date, Decimal]],
+    *,
+    as_of: date | None = None,
+) -> list[PortfolioPoint]:
+    """Daily portfolio market value and FIFO cost base, in AUD.
+
+    A point is emitted only when every open holding has a close on or
+    before that day. US holdings also need an AUD/USD rate; the last
+    stored close and rate carry forward across gaps. Dates after
+    `as_of` are ignored. After the book is fully sold, one zero point
+    marks the flat day and later price-only dates stay off the line.
+    """
+    grouped: dict[str, list[TradeIn]] = {}
+    for ticker, trades in trades_by_ticker.items():
+        kept = [trade for trade in trades if as_of is None or trade.trade_date <= as_of]
+        if kept:
+            grouped[ticker] = kept
+
+    price_series = {
+        ticker: [
+            (observed, amount)
+            for observed, amount in rows
+            if amount > 0 and (as_of is None or observed <= as_of)
+        ]
+        for ticker, rows in prices.items()
+        if ticker in grouped
+    }
+    fx_series = [
+        (observed, amount)
+        for observed, amount in fx_rates
+        if amount > 0 and (as_of is None or observed <= as_of)
+    ]
+
+    days: set[date] = set()
+    for trades in grouped.values():
+        days.update(trade.trade_date for trade in trades)
+    for rows in price_series.values():
+        days.update(observed for observed, _amount in rows)
+    days.update(observed for observed, _amount in fx_series)
+
+    points: list[PortfolioPoint] = []
+    for day in sorted(days):
+        total_cost = Decimal(0)
+        total_value = Decimal(0)
+        any_open = False
+        complete = True
+        needs_fx = False
+        valued: list[tuple[Decimal, Decimal, str]] = []
+        for ticker, trades in grouped.items():
+            so_far = [trade for trade in trades if trade.trade_date <= day]
+            if not so_far:
+                continue
+            result = match_fifo(so_far)
+            quantity = sum(
+                (parcel.remaining_qty for parcel in result.open_parcels),
+                Decimal(0),
+            )
+            if quantity <= 0:
+                continue
+            any_open = True
+            close = _on_or_before(price_series.get(ticker, []), day)
+            if close is None:
+                complete = False
+                break
+            cost = sum(
+                (parcel.remaining_cost_aud for parcel in result.open_parcels),
+                Decimal(0),
+            )
+            if result.currency == "USD":
+                needs_fx = True
+            valued.append((cost, quantity * close, result.currency))
+        if not any_open:
+            if points and (points[-1].value_aud != 0 or points[-1].cost_aud != 0):
+                points.append(PortfolioPoint(day, Decimal(0), Decimal(0)))
+            continue
+        if not complete:
+            continue
+        fx = _on_or_before(fx_series, day) if needs_fx else None
+        if needs_fx and fx is None:
+            continue
+        for cost, value_ccy, currency in valued:
+            total_cost += cost
+            if currency == "USD":
+                assert fx is not None
+                total_value += value_ccy / fx
+            else:
+                total_value += value_ccy
+        points.append(PortfolioPoint(day, q2(total_value), q2(total_cost)))
+    return points
+
+
+def filter_portfolio_series(
+    points: list[PortfolioPoint],
+    *,
+    as_of: date,
+    range_label: str,
+) -> list[PortfolioPoint]:
+    """Keep points inside 1M, 3M, 6M, 1Y, or All. Unknown labels keep everything."""
+    months = _RANGE_MONTHS.get(range_label.strip())
+    if months is None:
+        return list(points)
+    start = _add_months(as_of, -months)
+    return [point for point in points if point.day >= start]
+
+
+def portfolio_chart_json(points: list[PortfolioPoint], *, today: date) -> str:
+    payload = {
+        "today": today.isoformat(),
+        "points": [
+            {
+                "date": point.day.isoformat(),
+                "value_aud": format(point.value_aud, "f"),
+                "cost_aud": format(point.cost_aud, "f"),
+            }
+            for point in points
+        ],
+    }
+    return json.dumps(payload, separators=(",", ":"))
+
+
+# ---------------------------------------------------------------------------
 # Persistence adapters and the page view model
 # ---------------------------------------------------------------------------
 
@@ -776,6 +927,8 @@ class SharesPage:
     api_key_configured: bool = False
     today: str = ""
     has_usd_holding: bool = False
+    chart_json: str = "{}"
+    chart_ready: bool = False
 
 
 def _as_utc(moment: datetime) -> datetime:
@@ -883,6 +1036,12 @@ def build_shares_page(db: Session, *, today: date | None = None) -> SharesPage:
         .order_by(ShareTrade.trade_date.desc(), ShareTrade.id.desc())
         .all()
     )
+    chart_points = build_portfolio_series(
+        grouped,
+        _load_price_series(db),
+        _load_fx_series(db),
+        as_of=today,
+    )
     return SharesPage(
         holdings=holdings,
         realised_groups=groups,
@@ -905,7 +1064,33 @@ def build_shares_page(db: Session, *, today: date | None = None) -> SharesPage:
         api_key_configured=bool(ALPHA_VANTAGE_API_KEY),
         today=today.isoformat(),
         has_usd_holding=any(holding.currency == "USD" for holding in holdings),
+        chart_json=portfolio_chart_json(chart_points, today=today),
+        chart_ready=len(chart_points) >= 2,
     )
+
+
+def _load_price_series(db: Session) -> dict[str, list[tuple[date, Decimal]]]:
+    from app.models import SharePrice
+
+    rows = db.query(SharePrice).order_by(SharePrice.price_date, SharePrice.id).all()
+    series: dict[str, list[tuple[date, Decimal]]] = {}
+    for row in rows:
+        series.setdefault(row.ticker, []).append(
+            (date.fromisoformat(row.price_date), _as_decimal(row.close))
+        )
+    return series
+
+
+def _load_fx_series(db: Session) -> list[tuple[date, Decimal]]:
+    from app.models import FxRate
+
+    rows = (
+        db.query(FxRate)
+        .filter(FxRate.base == "AUD", FxRate.quote == "USD")
+        .order_by(FxRate.rate_date, FxRate.id)
+        .all()
+    )
+    return [(date.fromisoformat(row.rate_date), _as_decimal(row.rate)) for row in rows]
 
 
 def _present_holding(holding: HoldingValuation) -> HoldingView:
