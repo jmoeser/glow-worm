@@ -26,13 +26,15 @@ A single-tenant household budgeting app. This is a Python/FastAPI project using:
 - **Run CLI (dev)**: `uv run glow --help`
 - **Install CLI via pipx**: `pipx install .`
 - **Run process income allocation manually**: `uv run python -c "from app.tasks import process_income_allocation; process_income_allocation()"`
+- **Run share price and FX update manually**: `uv run python -c "from app.tasks import process_share_market_data; process_share_market_data()"`
 
 ## Architecture & Money Flow
-The app manages four distinct, separated systems:
+The app manages four distinct, separated money systems, plus an informational shares ledger that does not post household transactions:
 1. **Income Allocation**: Automated distribution on the 1st of the month based on `IncomeAllocation` config.
 2. **Monthly Budget**: Repeating monthly categories (Groceries, etc.). Funded via income; tracks `spent_amount` vs `allocated_amount`.
 3. **Sinking Funds**: Savings pots (Bills, Savings, etc.) with `current_balance`.
 4. **Recurring Bills**: Managed within the "Bills" Sinking Fund.
+5. **Shares** (informational): US share trades, FIFO cost base, and daily prices. Stored on `share_trades`, `share_prices`, `fx_rates`, and `market_data_runs`. Not linked to `Transaction`, budgets, or sinking funds.
 
 ## Code Style & Standards
 - **Backend**: Python 3.14+, FastAPI (async routes), Pydantic (validation), SQLAlchemy (ORM).
@@ -64,7 +66,8 @@ Middleware execution order (outermost to innermost): CORS (optional) → Session
 - **Budget Funding**: The "Monthly Budget Allocation" is the **sum** of all individual category `allocated_amount` targets.
 - **Budget Recommendations**: Advisory only (no auto-apply). `app/services/budget_recommendations.py` compares each current-month budget's `allocated_amount` to the **average** of `spent_amount` over up to the last **6 completed months** (min 2 months of history). Emits raise/lower suggestions only when `|delta| >= max($20, 10% of allocated)`. Shown on `/budgets` (current month panel) and as a dashboard teaser. Uses `Budget` history rows, not raw transactions.
 - **Recurring Transfers**: Defined on `IncomeAllocation` via the `IncomeAllocationRecurringTransfer` model. Each has a `description` and `amount`. During `process_income_allocation()`, one `expense`/`income_allocation` transaction is created per transfer (using the transfer category). The amount is deducted from `total_allocated`, reducing the unallocated remainder. No sinking fund balance is updated — the money leaves the household budget entirely. Configured via the `/income` page.
-- **Scheduler**: Use `APScheduler`. Handle Leap Years by defaulting to the last day of the month for invalid February dates (e.g., Feb 29th -> Feb 28th).
+- **Scheduler**: Use `APScheduler`. Handle Leap Years by defaulting to the last day of the month for invalid February dates (e.g., Feb 29th -> Feb 28th). Jobs: income allocation, bill processing, and `share_market_data` (default 18:00 `America/New_York`, Mon–Fri, `max_instances=1`, `coalesce=True`, `misfire_grace_time=3600`). When `SHARES_CATCHUP_ON_STARTUP` is true, a one-shot catch-up is scheduled 60 seconds after startup if the newest market-data run is older than 20 hours (or there is no run) and there is an open holding or no stored AUD/USD row.
+- **Shares**: FIFO only, ordered by `(trade_date, id)`. Cost base and proceeds for USD trades are converted with the broker FX rate stored as AUD per USD. Frankfurter is the primary daily AUD/USD source; Alpha Vantage `FX_DAILY` is the fallback. US prices use Alpha Vantage `TIME_SERIES_DAILY` when `ALPHA_VANTAGE_API_KEY` is set. The key is redacted from logs and run messages. A missing key skips prices and still fetches FX. Failed price calls keep the last good close and its `as of` date. Hard-deleting a buy that would make a later sell an oversell is rejected. `.AX` / `.AUS` tickers are accepted as AUD instruments (no FX, fee currency forced to AUD) so the provider interface can grow; v1 does not price ASX symbols. `/shares` charts portfolio market value and FIFO cost base in AUD (`build_portfolio_series`). A point is drawn only when every open holding has a stored close on or before that day, carrying the last close and AUD/USD rate across gaps. The 1M/3M/6M/1Y/All toggle filters that series in the browser with the same calendar-month window as `filter_portfolio_series`. The chart reuses D3, already loaded from `d3js.org` for the income Sankey. Fewer than two valued days shows an empty state.
 - **Overspending**: Use `budget_transfer` type to move money from "Short Term Savings" sinking fund to a budget category's `fund_balance`.
 - **Month-end Budget Reconciliation**: During `process_income_allocation()`, the prior month's net budget surplus/shortfall is reconciled against the configured overflow sinking fund:
     - **Net positive** (unspent money): creates a `contribution`/`transfer` transaction into the overflow fund and increments its balance.
@@ -94,7 +97,9 @@ Hosted [Mend Renovate](https://github.com/apps/renovate); config is `renovate.js
 - When modifying Pydantic models or API responses, ensure all values are JSON-serializable. Specifically, convert Decimal objects to float before returning them in responses or error payloads.
 - FastMCP 3.x `@mcp.tool()` returns the original function directly (no `FunctionTool` wrapper). Functions are directly callable; no `.fn` accessor needed.
 - SQLite needs batch mode (`render_as_batch=True`) for ALTER TABLE operations in Alembic migrations.
-- **Exception syntax**: Python 3.14 (PEP 758) allows `except ValueError, TypeError:` without parentheses. ruff-format will drop the parens. The Python 2 meaning (`except E, name`) is gone; use `except E as name` to bind.
+- **Exception syntax**: Python 3.14 (PEP 758) allows `except ValueError, TypeError:` without parentheses. ruff-format will drop the parens. The Python 2 meaning (`except E, name`) is gone; use `except E as name` to bind. Binding a name still requires parentheses: `except (ValueError, TypeError) as exc`.
+- **pyrefly and SQLAlchemy rows**: pyrefly rejects attribute access on multi-column `Row` results. Unpack tuples (`ticker, price_date = row`) instead of `row.ticker`.
+- **Alpha Vantage**: never log request URLs. `httpx` and `httpcore` loggers are set to WARNING in `app/services/market_data.py`, and `redact()` strips the configured key and `apikey=` query values. Log market-data failures with `logger.error` and a redacted traceback so `exc_info` does not put the request URL back into the log.
 
 ## CLI (`glow`)
 - Entry point: `glow = "app.cli.main:app"` (defined in `[project.scripts]`).
@@ -119,4 +124,4 @@ After any feature addition or significant change, update:
 
 ## API Routes
 - Keep `/api/` prefix for JSON-returning routes.
-- 37 API endpoints across: `/api/keys`, `/api/bills`, `/api/users`, `/api/dashboard`, `/api/budgets`, `/api/categories`, `/api/transactions`, `/api/sinking-funds`, `/api/income`, `/api/monthly-cost`.
+- 38 API endpoints across: `/api/keys`, `/api/bills`, `/api/users`, `/api/dashboard`, `/api/budgets`, `/api/categories`, `/api/transactions`, `/api/sinking-funds`, `/api/income`, `/api/monthly-cost`, `/api/shares`.

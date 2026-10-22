@@ -1,4 +1,5 @@
 from collections.abc import MutableMapping
+from decimal import Decimal, InvalidOperation
 from importlib.metadata import PackageNotFoundError, version
 from typing import Any, cast
 
@@ -15,10 +16,22 @@ def _money_format(value) -> str:
         return "0.00"
 
 
+def _qty_format(value) -> str:
+    """Trim trailing zeros from a share quantity or price."""
+    try:
+        text = format(Decimal(str(value)), "f")
+    except InvalidOperation, ValueError, TypeError:
+        return str(value)
+    if "." in text:
+        text = text.rstrip("0").rstrip(".")
+    return text or "0"
+
+
 try:
     _app_version = version("glow-worm")
 except PackageNotFoundError:
     _app_version = "dev"
 
 cast(MutableMapping[str, Any], templates.env.filters)["money"] = _money_format
+cast(MutableMapping[str, Any], templates.env.filters)["qty"] = _qty_format
 cast(MutableMapping[str, Any], templates.env.globals)["app_version"] = _app_version

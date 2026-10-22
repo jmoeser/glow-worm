@@ -1,0 +1,348 @@
+{% if fragment == "holdings_and_realised" %}
+{% include "_shares_results.html" %}
+
+{% elif fragment == "trade_edit_row" %}
+<tr class="gw-edit-row" id="trade-row-{{ trade.id }}">
+    <td colspan="9">
+        <form id="edit-trade-{{ trade.id }}"
+              hx-post="/shares/trades/{{ trade.id }}"
+              hx-target="#shares-results"
+              hx-swap="outerHTML"
+              class="gw-grid-2">
+            <div>
+                <label class="gw-label">Ticker</label>
+                <input type="text" name="ticker" value="{{ trade.ticker }}" required class="gw-input" style="text-transform: uppercase;">
+            </div>
+            <div>
+                <label class="gw-label">Type</label>
+                <select name="trade_type" class="gw-select">
+                    <option value="buy" {{ 'selected' if trade.trade_type == 'buy' else '' }}>Buy</option>
+                    <option value="sell" {{ 'selected' if trade.trade_type == 'sell' else '' }}>Sell</option>
+                </select>
+            </div>
+            <div>
+                <label class="gw-label">Date</label>
+                <input type="date" name="trade_date" value="{{ trade.trade_date }}" required class="gw-input">
+            </div>
+            <div>
+                <label class="gw-label">Quantity</label>
+                <input type="number" name="quantity" value="{{ trade.quantity|qty }}" step="any" min="0" required class="gw-input">
+            </div>
+            <div>
+                <label class="gw-label">Price per share</label>
+                <input type="number" name="price" value="{{ trade.price|qty }}" step="any" min="0" required class="gw-input">
+            </div>
+            <div>
+                <label class="gw-label">Fee (optional)</label>
+                <div style="display: flex; gap: 8px;">
+                    <input type="number" name="fee" value="{{ trade.fee|qty }}" step="0.01" min="0" class="gw-input" style="flex: 1;">
+                    <select name="fee_currency" class="gw-select" style="width: 90px;">
+                        <option value="USD" {{ 'selected' if trade.fee_currency == 'USD' else '' }}>USD</option>
+                        <option value="AUD" {{ 'selected' if trade.fee_currency == 'AUD' else '' }}>AUD</option>
+                    </select>
+                </div>
+            </div>
+            <div>
+                <label class="gw-label">Broker FX rate</label>
+                <input type="number" name="fx_rate" value="{{ trade.fx_rate_input|qty if trade.fx_rate_input is not none else '' }}" step="any" min="0" class="gw-input">
+            </div>
+            <div>
+                <label class="gw-label">FX convention</label>
+                <select name="fx_input_convention" class="gw-select">
+                    <option value="AUD/USD" {{ 'selected' if trade.fx_input_convention != 'USD/AUD' else '' }}>AUD/USD</option>
+                    <option value="USD/AUD" {{ 'selected' if trade.fx_input_convention == 'USD/AUD' else '' }}>USD/AUD</option>
+                </select>
+            </div>
+            <div style="grid-column: 1 / -1;">
+                <label class="gw-label">Notes</label>
+                <input type="text" name="notes" value="{{ trade.notes or '' }}" maxlength="500" class="gw-input">
+            </div>
+            <div>
+                <button type="submit" class="gw-btn gw-btn-primary gw-btn-sm">Save</button>
+                <button type="button" class="gw-btn gw-btn-ghost gw-btn-sm" onclick="location.reload();">Cancel</button>
+            </div>
+        </form>
+    </td>
+</tr>
+
+{% else %}
+{% extends "base.html" %}
+{% block title %}Shares — Glow Worm{% endblock %}
+{% block content %}
+<div style="max-width: 1100px;">
+    <h2 class="gw-page-header">Shares</h2>
+    <p class="gw-text-muted gw-section" style="font-size: 0.85rem;">
+        US stocks held outside the household budget. Buys and sells are matched FIFO.
+        Prices update after the US close on weekdays. Amounts in AUD, with USD alongside.
+    </p>
+
+    <div id="shares-message" style="margin-bottom: 16px;"></div>
+
+    {% include "_shares_results.html" %}
+
+    <details class="gw-details gw-section gw-add-form" open>
+        <summary>Add trade</summary>
+        <form id="share-trade-form"
+              hx-post="/shares/trades"
+              hx-target="#shares-results"
+              hx-swap="outerHTML"
+              autocomplete="off"
+              class="gw-grid-2"
+              style="margin-top: 16px;">
+            <div>
+                <label for="share-ticker" class="gw-label">Ticker</label>
+                <input type="text" id="share-ticker" name="ticker" required class="gw-input"
+                       placeholder="AAPL" style="text-transform: uppercase;"
+                       oninput="gwSharesSyncFx()">
+            </div>
+            <div>
+                <label for="share-type" class="gw-label">Type</label>
+                <select id="share-type" name="trade_type" class="gw-select">
+                    <option value="buy">Buy</option>
+                    <option value="sell">Sell</option>
+                </select>
+            </div>
+            <div>
+                <label for="share-date" class="gw-label">Date</label>
+                <input type="date" id="share-date" name="trade_date" required class="gw-input" value="{{ page.today }}">
+            </div>
+            <div>
+                <label for="share-qty" class="gw-label">Quantity</label>
+                <input type="number" id="share-qty" name="quantity" step="any" min="0" required class="gw-input" placeholder="10">
+            </div>
+            <div>
+                <label for="share-price" class="gw-label">Price per share (USD)</label>
+                <input type="number" id="share-price" name="price" step="any" min="0" required class="gw-input" placeholder="100.00">
+            </div>
+            <div>
+                <label for="share-fee" class="gw-label">Fee (optional, usually 0)</label>
+                <div style="display: flex; gap: 8px;">
+                    <input type="number" id="share-fee" name="fee" step="0.01" min="0" value="0" class="gw-input" style="flex: 1;">
+                    <select id="share-fee-currency" name="fee_currency" class="gw-select" style="width: 90px;">
+                        <option value="USD" selected>USD</option>
+                        <option value="AUD">AUD</option>
+                    </select>
+                </div>
+                <p class="gw-text-muted" style="font-size: 0.75rem; margin-top: 4px;">CMC Markets fees default to USD.</p>
+            </div>
+            <div class="js-share-fx">
+                <label for="share-fx" class="gw-label">Broker FX rate</label>
+                <input type="number" id="share-fx" name="fx_rate" step="any" min="0" class="gw-input" placeholder="0.6500">
+                <p class="gw-text-muted" style="font-size: 0.75rem; margin-top: 4px;">The rate the broker charged, not a mid-market rate.</p>
+            </div>
+            <div class="js-share-fx">
+                <label for="share-fx-convention" class="gw-label">FX convention</label>
+                <select id="share-fx-convention" name="fx_input_convention" class="gw-select">
+                    <option value="AUD/USD" selected>AUD/USD (USD per 1 AUD)</option>
+                    <option value="USD/AUD">USD/AUD (AUD per 1 USD)</option>
+                </select>
+            </div>
+            <div style="grid-column: 1 / -1;">
+                <label for="share-notes" class="gw-label">Notes</label>
+                <input type="text" id="share-notes" name="notes" maxlength="500" class="gw-input" placeholder="Optional broker reference">
+            </div>
+            <div id="fx-preview"
+                 style="grid-column: 1 / -1;"
+                 hx-get="/shares/fx-preview"
+                 hx-trigger="change from:#share-trade-form, keyup delay:400ms from:#share-trade-form"
+                 hx-include="#share-trade-form"
+                 hx-target="this"
+                 hx-swap="innerHTML"></div>
+            <div style="grid-column: 1 / -1;">
+                <button type="submit" class="gw-btn gw-btn-primary">Add trade</button>
+            </div>
+        </form>
+    </details>
+</div>
+<script src="https://d3js.org/d3.v7.min.js"></script>
+<script>
+function gwSharesSyncFx() {
+    var ticker = (document.getElementById("share-ticker").value || "").toUpperCase();
+    var aud = ticker.endsWith(".AX") || ticker.endsWith(".AUS");
+    document.querySelectorAll(".js-share-fx").forEach(function (el) {
+        el.style.display = aud ? "none" : "";
+    });
+    var feeCcy = document.getElementById("share-fee-currency");
+    if (feeCcy && aud) {
+        feeCcy.value = "AUD";
+    }
+}
+document.body.addEventListener("gwShareTradeSuccess", function () {
+    var form = document.getElementById("share-trade-form");
+    if (form) {
+        form.reset();
+        gwSharesSyncFx();
+    }
+    var message = document.getElementById("shares-message");
+    if (message) {
+        message.innerHTML = "";
+    }
+    gwDrawSharesChart();
+});
+
+function gwParseISO(iso) {
+    var parts = iso.split("-");
+    return new Date(Date.UTC(+parts[0], +parts[1] - 1, +parts[2]));
+}
+
+function gwAddMonths(iso, months) {
+    var parts = iso.split("-");
+    var monthIndex = (+parts[1] - 1) + months;
+    var year = +parts[0] + Math.floor(monthIndex / 12);
+    var month = ((monthIndex % 12) + 12) % 12;
+    var last = new Date(Date.UTC(year, month + 1, 0)).getUTCDate();
+    var day = Math.min(+parts[2], last);
+    var mm = String(month + 1).padStart(2, "0");
+    var dd = String(day).padStart(2, "0");
+    return year + "-" + mm + "-" + dd;
+}
+
+function gwFilterSharesChart(payload, label) {
+    var points = payload.points || [];
+    var months = { "1M": 1, "3M": 3, "6M": 6, "1Y": 12 };
+    if (!Object.prototype.hasOwnProperty.call(months, label)) {
+        return points;
+    }
+    var start = gwAddMonths(payload.today, -months[label]);
+    return points.filter(function (point) { return point.date >= start; });
+}
+
+function gwAud(amount, digits) {
+    var formatted = Number(amount).toLocaleString("en-AU", {
+        minimumFractionDigits: digits,
+        maximumFractionDigits: digits
+    });
+    return "A$" + formatted;
+}
+
+function gwDrawSharesChart() {
+    var plot = document.getElementById("shares-chart-plot");
+    var dataNode = document.getElementById("shares-chart-data");
+    if (!plot || !dataNode || typeof d3 === "undefined") {
+        return;
+    }
+    var payload;
+    try {
+        payload = JSON.parse(dataNode.textContent);
+    } catch (error) {
+        return;
+    }
+    var active = document.querySelector("#shares-chart .gw-chart-ranges .is-active");
+    var label = active ? active.getAttribute("data-range") : "All";
+    var points = gwFilterSharesChart(payload, label);
+    plot.innerHTML = "";
+    if (points.length < 2) {
+        plot.innerHTML = '<p class="gw-chart-empty">No history in this range.</p>';
+        return;
+    }
+
+    var width = Math.max(plot.clientWidth || 640, 320);
+    var height = 280;
+    var margin = { top: 16, right: 16, bottom: 32, left: 84 };
+    var innerW = width - margin.left - margin.right;
+    var innerH = height - margin.top - margin.bottom;
+    var parsed = points.map(function (point) {
+        return {
+            date: gwParseISO(point.date),
+            label: point.date,
+            value: Number(point.value_aud),
+            cost: Number(point.cost_aud)
+        };
+    });
+    var values = parsed.flatMap(function (point) { return [point.value, point.cost]; });
+    var min = d3.min(values);
+    var max = d3.max(values);
+    if (min === max) {
+        min -= 1;
+        max += 1;
+    }
+    var pad = (max - min) * 0.08;
+    var x = d3.scaleUtc().domain(d3.extent(parsed, function (point) { return point.date; })).range([0, innerW]);
+    var y = d3.scaleLinear().domain([min - pad, max + pad]).nice().range([innerH, 0]);
+    var svg = d3.select(plot).append("svg")
+        .attr("viewBox", "0 0 " + width + " " + height)
+        .attr("role", "img")
+        .attr("aria-label", "Portfolio market value and cost base in Australian dollars");
+    var root = svg.append("g").attr("transform", "translate(" + margin.left + "," + margin.top + ")");
+    root.append("g")
+        .call(d3.axisLeft(y).ticks(5).tickFormat(function (value) { return gwAud(value, 0); }).tickSize(-innerW))
+        .call(function (axis) { axis.select(".domain").remove(); })
+        .selectAll("text").attr("fill", "#9aa0ab");
+    root.selectAll(".tick line").attr("stroke", "rgba(255,255,255,0.06)");
+    var spanDays = (x.domain()[1] - x.domain()[0]) / 86400000;
+    var xFormat = spanDays > 400 ? "%b %Y" : "%d %b";
+    root.append("g")
+        .attr("transform", "translate(0," + innerH + ")")
+        .call(d3.axisBottom(x).ticks(Math.min(6, parsed.length)).tickFormat(d3.utcFormat(xFormat)))
+        .call(function (axis) { axis.select(".domain").attr("stroke", "rgba(255,255,255,0.12)"); })
+        .selectAll("text").attr("fill", "#9aa0ab");
+    root.selectAll(".tick line").attr("stroke", "rgba(255,255,255,0.06)");
+
+    function drawLine(key, colour) {
+        root.append("path")
+            .datum(parsed)
+            .attr("fill", "none")
+            .attr("stroke", colour)
+            .attr("stroke-width", 2)
+            .attr("d", d3.line()
+                .x(function (point) { return x(point.date); })
+                .y(function (point) { return y(point[key]); }));
+    }
+    drawLine("cost", "#2dd4bf");
+    drawLine("value", "#facc15");
+
+    var focus = root.append("g").style("display", "none");
+    focus.append("line")
+        .attr("y1", 0)
+        .attr("y2", innerH)
+        .attr("stroke", "rgba(255,255,255,0.35)");
+    var tip = d3.select(plot).append("div").attr("class", "gw-chart-tip").style("display", "none");
+    svg.append("rect")
+        .attr("x", margin.left)
+        .attr("y", margin.top)
+        .attr("width", innerW)
+        .attr("height", innerH)
+        .attr("fill", "transparent")
+        .on("mouseenter", function () { focus.style("display", null); tip.style("display", null); })
+        .on("mouseleave", function () { focus.style("display", "none"); tip.style("display", "none"); })
+        .on("mousemove", function (event) {
+            var pointer = d3.pointer(event, root.node());
+            var when = x.invert(pointer[0]);
+            var nearest = parsed.reduce(function (best, point) {
+                var distance = Math.abs(point.date - when);
+                return distance < best.distance ? { point: point, distance: distance } : best;
+            }, { point: parsed[0], distance: Infinity });
+            var point = nearest.point;
+            focus.attr("transform", "translate(" + x(point.date) + ",0)");
+            tip.html(
+                "<strong>" + point.label + "</strong>" +
+                "<span>Value " + gwAud(point.value, 2) + "</span>" +
+                "<span>Cost " + gwAud(point.cost, 2) + "</span>"
+            );
+            var left = margin.left + x(point.date) + 12;
+            if (left > width - 140) {
+                left = margin.left + x(point.date) - 132;
+            }
+            tip.style("left", left + "px").style("top", (margin.top + 8) + "px");
+        });
+}
+
+document.body.addEventListener("click", function (event) {
+    var button = event.target.closest("#shares-chart [data-range]");
+    if (!button) {
+        return;
+    }
+    document.querySelectorAll("#shares-chart [data-range]").forEach(function (other) {
+        other.classList.toggle("is-active", other === button);
+    });
+    gwDrawSharesChart();
+});
+
+window.addEventListener("resize", function () {
+    gwDrawSharesChart();
+});
+
+gwDrawSharesChart();
+</script>
+{% endblock %}
+{% endif %}

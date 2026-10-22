@@ -1145,6 +1145,111 @@ input[type="color"] {
     border-bottom: none;
 }
 
+/* --- Shares value chart --- */
+.gw-chart {
+    background: var(--surface-1);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-md);
+    padding: 16px 16px 8px;
+}
+
+.gw-chart-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin-bottom: 4px;
+}
+
+.gw-chart-title {
+    font-family: var(--font-display);
+    font-size: 1.05rem;
+    font-weight: 600;
+    margin: 0 0 6px;
+}
+
+.gw-chart-legend {
+    display: flex;
+    gap: 16px;
+    font-size: 0.78rem;
+    color: var(--text-secondary);
+}
+
+.gw-chart-swatch {
+    display: inline-block;
+    width: 18px;
+    height: 3px;
+    border-radius: 2px;
+    margin-right: 6px;
+    vertical-align: middle;
+}
+
+.gw-chart-swatch-value { background: var(--glow-400); }
+.gw-chart-swatch-cost { background: var(--teal-400); }
+
+.gw-chart-ranges {
+    display: flex;
+    gap: 4px;
+}
+
+.gw-chart-ranges .is-active {
+    background: var(--glow-400);
+    color: #0a0c10;
+    border-color: var(--glow-400);
+}
+
+.gw-chart-plot {
+    position: relative;
+    width: 100%;
+    min-height: 160px;
+}
+
+.gw-chart-plot svg {
+    display: block;
+    width: 100%;
+    height: auto;
+}
+
+.gw-chart-plot .tick text,
+.gw-chart-plot text {
+    font-family: var(--font-body);
+    font-size: 11px;
+}
+
+.gw-chart-empty {
+    margin: 0;
+    min-height: 140px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+    padding: 24px 12px;
+}
+
+.gw-chart-tip {
+    position: absolute;
+    z-index: 2;
+    pointer-events: none;
+    background: var(--surface-3);
+    border: 1px solid var(--border-mid);
+    border-radius: var(--radius-sm);
+    padding: 8px 10px;
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 120px;
+}
+
+.gw-chart-tip strong {
+    color: var(--text-primary);
+    font-weight: 600;
+}
+
 /* --- Sankey Chart --- */
 .gw-sankey-wrap {
     background: var(--surface-1);

@@ -19,6 +19,7 @@ from app.routes.categories import router as categories_router
 from app.routes.dashboard import router as dashboard_router
 from app.routes.income import router as income_router
 from app.routes.monthly_cost import router as monthly_cost_router
+from app.routes.shares import router as shares_router
 from app.routes.sinking_funds import router as sinking_funds_router
 from app.routes.spending_history import router as spending_history_router
 from app.routes.transactions import router as transactions_router
@@ -132,6 +133,7 @@ app.include_router(income_router)
 app.include_router(sinking_funds_router)
 app.include_router(monthly_cost_router)
 app.include_router(spending_history_router)
+app.include_router(shares_router)
 app.include_router(transactions_router)
 app.include_router(users_router)
 app.include_router(api_keys_router)
