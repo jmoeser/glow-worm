@@ -1,8 +1,8 @@
 # ---------- build stage ----------
-FROM python:3.14-slim@sha256:ce40764625a4ff50df3548277632e7f96c4e77fe75fa848aae9885476e7df5a4 AS builder
+FROM python:3.14-slim@sha256:0514bc76712d64f8bb48adcb95b1ab0d88c69fee95d62fe4c18ee948bee9b1e1 AS builder
 
 # Install uv for fast, reproducible dependency resolution.
-COPY --from=ghcr.io/astral-sh/uv:0.13.1@sha256:4a1f3666816dafadd20ceb71eac9a7d56d7ef30279f7d64048519ab901ada336 /uv /usr/local/bin/uv
+COPY --from=ghcr.io/astral-sh/uv:0.13.5@sha256:32a7bb39b496babbd997b0a39a4d66c126bdaf5661b302bf6f06abda8deca6ff /uv /usr/local/bin/uv
 
 WORKDIR /app
 
@@ -23,7 +23,11 @@ RUN uv sync --frozen --no-dev
 
 
 # ---------- runtime stage ----------
-FROM python:3.14-slim@sha256:ce40764625a4ff50df3548277632e7f96c4e77fe75fa848aae9885476e7df5a4
+FROM python:3.14-slim@sha256:0514bc76712d64f8bb48adcb95b1ab0d88c69fee95d62fe4c18ee948bee9b1e1
+
+# pip vendors certifi and ignores the system trust store, so an older pip
+# still trusts the compromised emSign CA. Official 3.14.9 bundles pip 26.2.2.
+RUN /usr/local/bin/python -c "from importlib.metadata import version; v=tuple(int(p) for p in version('pip').split('.')[:3]); assert v>=(26,2,2), version('pip')"
 
 RUN groupadd --system appuser && useradd --system --gid appuser --no-create-home appuser && \
     mkdir -p /data && chown appuser:appuser /data
