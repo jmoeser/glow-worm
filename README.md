@@ -103,7 +103,7 @@ docker run -p 8000:8000 \
   glow-worm
 ```
 
-The SQLite database is stored in the `/data` volume so it persists across container restarts. For PostgreSQL, set `DATABASE_URL=postgresql://user:password@host/dbname` (psycopg v3, the SQLAlchemy 2.1 default). `postgresql+psycopg2://user:password@host/dbname` also works.  <!-- pragma: allowlist secret -->
+The SQLite database is stored in the `/data` volume so it persists across container restarts. For PostgreSQL, set `DATABASE_URL=postgresql://user:password@host/dbname`.  <!-- pragma: allowlist secret -->
 
 To create your user account inside the container:
 
