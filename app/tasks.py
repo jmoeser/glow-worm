@@ -2,22 +2,31 @@
 
 import calendar
 import logging
-from datetime import date, datetime, timedelta
+import threading
+import traceback
+from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 
+import httpx
 from sqlalchemy.orm import Session
 
+import app.config as app_config
 from app.config import TIMEZONE
 from app.database import SessionLocal
 from app.models import (
     Budget,
     Category,
+    FxRate,
     IncomeAllocation,
+    MarketDataRun,
     MonthlyUnallocatedIncome,
     RecurringBill,
+    SharePrice,
+    ShareTrade,
     SinkingFund,
     Transaction,
 )
+from app.services.market_data import FxProvider, PriceProvider, RequestGate
 
 logger = logging.getLogger(__name__)
 
@@ -576,4 +585,408 @@ def process_due_bills(db: Session | None = None) -> None:
         raise
     finally:
         if _managed:
+            db.close()
+
+
+# ---------------------------------------------------------------------------
+# Share prices and AUD/USD
+# ---------------------------------------------------------------------------
+
+_market_data_stop = threading.Event()
+
+
+class _Unset:
+    """Sentinel: build the default price provider instead of using the argument."""
+
+
+_UNSET = _Unset()
+
+
+def market_data_sleep(seconds: float) -> None:
+    """Sleep that returns early when the scheduler is stopping."""
+    _market_data_stop.wait(timeout=seconds)
+
+
+def request_market_data_stop() -> None:
+    _market_data_stop.set()
+
+
+def clear_market_data_stop() -> None:
+    _market_data_stop.clear()
+
+
+def market_data_stop_requested() -> bool:
+    return _market_data_stop.is_set()
+
+
+def _aware_utc(moment: datetime) -> datetime:
+    if moment.tzinfo is None:
+        return moment.replace(tzinfo=UTC)
+    return moment.astimezone(UTC)
+
+
+def _sweep_market_data_runs(db: Session) -> None:
+    now = datetime.now(UTC)
+    stale_before = now - timedelta(hours=1)
+    for row in db.query(MarketDataRun).filter(MarketDataRun.status == "running").all():
+        if _aware_utc(row.started_at) < stale_before:
+            row.status = "failed"
+            row.finished_at = now
+            row.message = "Run did not finish (treated as failed after 1 hour)."
+    keep_after = now - timedelta(days=90)
+    for row in db.query(MarketDataRun).all():
+        if _aware_utc(row.started_at) < keep_after:
+            db.delete(row)
+    db.commit()
+
+
+def _upsert_price(
+    db: Session, ticker: str, price_date: str, close: Decimal, currency: str
+) -> None:
+    row = (
+        db.query(SharePrice)
+        .filter(SharePrice.ticker == ticker, SharePrice.price_date == price_date)
+        .one_or_none()
+    )
+    now = datetime.now(UTC)
+    if row is None:
+        db.add(
+            SharePrice(
+                ticker=ticker,
+                price_date=price_date,
+                close=close,
+                currency=currency,
+                source="alphavantage",
+                fetched_at=now,
+            )
+        )
+        return
+    if row.close != close or row.source != "alphavantage":
+        row.close = close
+        row.currency = currency
+        row.source = "alphavantage"
+        row.fetched_at = now
+
+
+def _upsert_fx(db: Session, obs: object) -> None:
+    from app.services.market_data import FxObservation
+
+    if not isinstance(obs, FxObservation):
+        raise TypeError("Expected an FxObservation.")
+    row = (
+        db.query(FxRate)
+        .filter(
+            FxRate.base == obs.base,
+            FxRate.quote == obs.quote,
+            FxRate.rate_date == obs.rate_date.isoformat(),
+        )
+        .one_or_none()
+    )
+    now = datetime.now(UTC)
+    if row is None:
+        db.add(
+            FxRate(
+                base=obs.base,
+                quote=obs.quote,
+                rate_date=obs.rate_date.isoformat(),
+                rate=obs.rate,
+                source=obs.source,
+                fetched_at=now,
+            )
+        )
+        return
+    # Alpha Vantage wins over Frankfurter for the same date, never the reverse.
+    if row.source == "alphavantage" and obs.source != "alphavantage":
+        return
+    if row.rate != obs.rate or row.source != obs.source:
+        row.rate = obs.rate
+        row.source = obs.source
+        row.fetched_at = now
+
+
+def _stalest_first(db: Session, tickers: list[str]) -> list[str]:
+    def sort_key(ticker: str) -> tuple[int, str]:
+        row = (
+            db.query(SharePrice)
+            .filter(SharePrice.ticker == ticker)
+            .order_by(SharePrice.price_date.desc())
+            .first()
+        )
+        if row is None:
+            return (0, "")
+        return (1, row.price_date)
+
+    return sorted(tickers, key=sort_key)
+
+
+def _catchup_due(db: Session) -> bool:
+    latest = (
+        db.query(MarketDataRun)
+        .order_by(MarketDataRun.started_at.desc(), MarketDataRun.id.desc())
+        .first()
+    )
+    if latest is not None:
+        age = datetime.now(UTC) - _aware_utc(latest.started_at)
+        if age < timedelta(hours=20):
+            return False
+    from app.services.shares import held_tickers
+
+    held = held_tickers(db)
+    fx_exists = (
+        db.query(FxRate).filter(FxRate.base == "AUD", FxRate.quote == "USD").first()
+        is not None
+    )
+    return bool(held) or not fx_exists
+
+
+def process_share_market_data_if_stale(
+    db: Session | None = None,
+    *,
+    price_provider: PriceProvider | None | _Unset = _UNSET,
+    fx_providers: list[FxProvider] | None = None,
+    gate: RequestGate | None = None,
+) -> None:
+    """Startup catch-up. Skips when a run started within the last 20 hours."""
+    managed = db is None
+    if db is None:
+        db = SessionLocal()
+    assert db is not None
+    try:
+        if not _catchup_due(db):
+            return
+        process_share_market_data(
+            db,
+            price_provider=price_provider,
+            fx_providers=fx_providers,
+            gate=gate,
+        )
+    finally:
+        if managed:
+            db.close()
+
+
+def process_share_market_data(
+    db: Session | None = None,
+    *,
+    price_provider: PriceProvider | None | _Unset = _UNSET,
+    fx_providers: list[FxProvider] | None = None,
+    gate: RequestGate | None = None,
+) -> None:
+    """Fetch AUD/USD and daily closes for open holdings.
+
+    Frankfurter is the primary FX source. Alpha Vantage prices are skipped
+    when the key is missing or when Alpha Vantage reports a rate limit.
+    Failures keep the last good stored price. The error is not re-raised.
+    """
+    from app.services.market_data import (
+        BudgetExhaustedError,
+        MarketDataError,
+        ProviderResponseError,
+        RateLimitedError,
+        SymbolNotFoundError,
+        build_fx_providers,
+        build_price_provider,
+        make_client,
+        redact,
+    )
+    from app.services.shares import held_tickers
+
+    managed = db is None
+    if db is None:
+        db = SessionLocal()
+    assert db is not None
+    client: httpx.Client | None = None
+    run_id: int | None = None
+    tickers_updated = 0
+    active_gate = gate
+    try:
+        _sweep_market_data_runs(db)
+        run = MarketDataRun(
+            status="running",
+            started_at=datetime.now(UTC),
+            av_requests=0,
+            tickers_updated=0,
+        )
+        db.add(run)
+        db.commit()
+        run_id = run.id
+
+        trade_count = db.query(ShareTrade).count()
+        held = held_tickers(db) if trade_count else []
+        fx_exists = (
+            db.query(FxRate).filter(FxRate.base == "AUD", FxRate.quote == "USD").first()
+            is not None
+        )
+        if trade_count == 0 or (not held and fx_exists):
+            run.status = "skipped"
+            run.finished_at = datetime.now(UTC)
+            run.message = (
+                "No trades."
+                if trade_count == 0
+                else "No open holdings; FX rate already stored."
+            )
+            db.commit()
+            return
+
+        if active_gate is None:
+            active_gate = RequestGate(
+                max_requests=app_config.SHARES_AV_MAX_REQUESTS_PER_RUN,
+                min_interval_s=app_config.SHARES_AV_MIN_INTERVAL_SECONDS,
+                sleep=market_data_sleep,
+            )
+        if isinstance(price_provider, _Unset) or fx_providers is None:
+            client = make_client()
+        resolved_prices: PriceProvider | None
+        if isinstance(price_provider, _Unset):
+            assert client is not None
+            resolved_prices = build_price_provider(client, active_gate)
+        else:
+            resolved_prices = price_provider
+        if fx_providers is None:
+            assert client is not None
+            resolved_fx = build_fx_providers(client, active_gate)
+        else:
+            resolved_fx = fx_providers
+
+        fx_source: str | None = None
+        av_blocked = False
+        problems: list[str] = []
+        skipped: list[str] = []
+
+        for provider in resolved_fx:
+            name = getattr(provider, "name", "fx")
+            try:
+                observations = provider.aud_usd()
+            except RateLimitedError as exc:
+                av_blocked = True
+                problems.append(redact(str(exc))[:200])
+                logger.warning(
+                    "FX provider %s rate limited: %s", name, redact(str(exc))
+                )
+                continue
+            except (ProviderResponseError, MarketDataError) as exc:
+                problems.append(f"{name} failed")
+                logger.warning("FX provider %s failed: %s", name, redact(str(exc)))
+                continue
+            for observation in list(observations)[:10]:
+                _upsert_fx(db, observation)
+            db.commit()
+            fx_source = str(name)
+            break
+
+        if held and resolved_prices is None:
+            if app_config.ALPHA_VANTAGE_API_KEY:
+                problems.append("Share prices were not fetched.")
+            else:
+                logger.warning("ALPHA_VANTAGE_API_KEY not set; skipping share prices")
+                problems.append("ALPHA_VANTAGE_API_KEY not set; skipping share prices")
+        elif resolved_prices is not None and held and not av_blocked:
+            ordered = _stalest_first(db, held)
+            for index, ticker in enumerate(ordered):
+                if market_data_stop_requested():
+                    skipped = ordered[index:]
+                    problems.append("Stopped early.")
+                    break
+                if not resolved_prices.supports(ticker):
+                    problems.append(f"{ticker} is not supported for pricing")
+                    continue
+                try:
+                    closes = resolved_prices.daily_closes(ticker)
+                except BudgetExhaustedError:
+                    skipped = ordered[index:]
+                    logger.warning(
+                        "Alpha Vantage budget exhausted; skipped %s",
+                        ", ".join(skipped),
+                    )
+                    break
+                except RateLimitedError as exc:
+                    av_blocked = True
+                    skipped = ordered[index:]
+                    problems.append(redact(str(exc))[:200])
+                    logger.warning(
+                        "Alpha Vantage rate limited; skipped %s",
+                        ", ".join(skipped),
+                    )
+                    break
+                except SymbolNotFoundError:
+                    logger.warning("No price for %s (symbol not found)", ticker)
+                    problems.append(f"No price for {ticker}")
+                    continue
+                except ProviderResponseError as exc:
+                    logger.warning(
+                        "Price fetch failed for %s: %s", ticker, redact(str(exc))
+                    )
+                    problems.append(f"Price fetch failed for {ticker}")
+                    continue
+                existing = (
+                    db.query(SharePrice).filter(SharePrice.ticker == ticker).first()
+                )
+                limit = (
+                    len(closes)
+                    if existing is None
+                    else app_config.SHARES_PRICE_UPSERT_DAYS
+                )
+                for close in list(closes)[:limit]:
+                    _upsert_price(
+                        db,
+                        close.ticker,
+                        close.price_date.isoformat(),
+                        close.close,
+                        close.currency,
+                    )
+                db.commit()
+                tickers_updated += 1
+
+        prices_complete = not held or (
+            resolved_prices is not None
+            and not av_blocked
+            and not skipped
+            and tickers_updated == len(held)
+        )
+        if fx_source and prices_complete:
+            status = "success"
+        elif fx_source or tickers_updated:
+            status = "partial"
+        else:
+            status = "failed"
+
+        parts: list[str] = []
+        if fx_source:
+            parts.append(f"FX from {fx_source}")
+        else:
+            parts.append("FX unavailable")
+        parts.append(f"prices updated {tickers_updated}/{len(held)}")
+        if skipped:
+            parts.append("skipped " + ", ".join(skipped))
+        if problems:
+            parts.append("; ".join(problems))
+        message = redact(" — ".join(parts))[:1000]
+
+        run.status = status
+        run.finished_at = datetime.now(UTC)
+        run.av_requests = active_gate.used
+        run.tickers_updated = tickers_updated
+        run.fx_source = fx_source
+        run.message = message
+        db.commit()
+    except Exception as exc:  # noqa: BLE001 — the job must not re-raise
+        db.rollback()
+        from app.services.market_data import redact
+
+        safe = redact(traceback.format_exc())
+        logger.error("Share market data run failed\n%s", safe)
+        if run_id is not None:
+            failed = db.get(MarketDataRun, run_id)
+            if failed is not None:
+                failed.status = "failed"
+                failed.finished_at = datetime.now(UTC)
+                failed.message = redact(str(exc))[:1000]
+                failed.tickers_updated = tickers_updated
+                if active_gate is not None:
+                    failed.av_requests = active_gate.used
+                db.commit()
+    finally:
+        if client is not None:
+            client.close()
+        if managed:
             db.close()

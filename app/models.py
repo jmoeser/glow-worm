@@ -1,6 +1,7 @@
 from datetime import UTC, datetime
+from decimal import Decimal
 
-from sqlalchemy import ForeignKey, Numeric, String, UniqueConstraint
+from sqlalchemy import ForeignKey, Index, Numeric, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -272,6 +273,76 @@ class ApiKey(Base):
     revoked_at: Mapped[datetime | None] = mapped_column(nullable=True)
 
     user: Mapped[User] = relationship(back_populates="api_keys")
+
+
+class ShareTrade(Base):
+    __tablename__ = "share_trades"
+    __table_args__ = (Index("ix_share_trades_ticker_date", "ticker", "trade_date"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    ticker: Mapped[str] = mapped_column(String(20), nullable=False, index=True)
+    trade_type: Mapped[str] = mapped_column(String(4), nullable=False)
+    trade_date: Mapped[str] = mapped_column(String(10), nullable=False)
+    quantity: Mapped[Decimal] = mapped_column(Numeric(18, 6), nullable=False)
+    price: Mapped[Decimal] = mapped_column(Numeric(18, 6), nullable=False)
+    currency: Mapped[str] = mapped_column(String(3), nullable=False)
+    fee: Mapped[Decimal] = mapped_column(
+        Numeric(12, 2), nullable=False, default=Decimal(0)
+    )
+    fee_currency: Mapped[str] = mapped_column(String(3), nullable=False, default="USD")
+    fx_rate_aud_usd: Mapped[Decimal | None] = mapped_column(
+        Numeric(18, 10), nullable=True
+    )
+    fx_rate_input: Mapped[Decimal | None] = mapped_column(
+        Numeric(18, 10), nullable=True
+    )
+    fx_input_convention: Mapped[str | None] = mapped_column(String(7), nullable=True)
+    notes: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(default=_utcnow)
+    updated_at: Mapped[datetime] = mapped_column(default=_utcnow, onupdate=_utcnow)
+
+
+class SharePrice(Base):
+    __tablename__ = "share_prices"
+    __table_args__ = (
+        UniqueConstraint("ticker", "price_date", name="uq_share_prices_ticker_date"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    ticker: Mapped[str] = mapped_column(String(20), nullable=False)
+    price_date: Mapped[str] = mapped_column(String(10), nullable=False)
+    close: Mapped[Decimal] = mapped_column(Numeric(18, 6), nullable=False)
+    currency: Mapped[str] = mapped_column(String(3), nullable=False)
+    source: Mapped[str] = mapped_column(String(30), nullable=False)
+    fetched_at: Mapped[datetime] = mapped_column(default=_utcnow)
+
+
+class FxRate(Base):
+    __tablename__ = "fx_rates"
+    __table_args__ = (
+        UniqueConstraint("base", "quote", "rate_date", name="uq_fx_rates_pair_date"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    base: Mapped[str] = mapped_column(String(3), nullable=False)
+    quote: Mapped[str] = mapped_column(String(3), nullable=False)
+    rate_date: Mapped[str] = mapped_column(String(10), nullable=False)
+    rate: Mapped[Decimal] = mapped_column(Numeric(18, 10), nullable=False)
+    source: Mapped[str] = mapped_column(String(30), nullable=False)
+    fetched_at: Mapped[datetime] = mapped_column(default=_utcnow)
+
+
+class MarketDataRun(Base):
+    __tablename__ = "market_data_runs"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    started_at: Mapped[datetime] = mapped_column(default=_utcnow)
+    finished_at: Mapped[datetime | None] = mapped_column(nullable=True)
+    status: Mapped[str] = mapped_column(String(10), nullable=False, default="running")
+    av_requests: Mapped[int] = mapped_column(default=0)
+    tickers_updated: Mapped[int] = mapped_column(default=0)
+    fx_source: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    message: Mapped[str | None] = mapped_column(String(1000), nullable=True)
 
 
 class MonthlyUnallocatedIncome(Base):

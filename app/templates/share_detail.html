@@ -1,0 +1,163 @@
+{% extends "base.html" %}
+{% block title %}{{ ticker }} — Shares — Glow Worm{% endblock %}
+{% block content %}
+<div style="max-width: 1100px;">
+    <p class="gw-text-muted" style="margin-bottom: 8px;"><a href="/shares">← Shares</a></p>
+    <h2 class="gw-page-header">{{ ticker }}</h2>
+    <div id="shares-message" style="margin-bottom: 16px;"></div>
+
+    {% if holding %}
+    <div class="gw-summary-bar gw-section">
+        <div class="gw-summary-item">
+            <span class="gw-summary-label">Quantity</span>
+            <span class="gw-summary-value">{{ holding.quantity|qty }}</span>
+        </div>
+        <div class="gw-summary-item">
+            <span class="gw-summary-label">Cost base</span>
+            <span class="gw-summary-value">A${{ holding.cost_aud|money }}</span>
+        </div>
+        <div class="gw-summary-item">
+            <span class="gw-summary-label">Value</span>
+            <span class="gw-summary-value">
+                {% if holding.value_aud is not none %}A${{ holding.value_aud|money }}{% else %}—{% endif %}
+            </span>
+            {% if holding.value_usd is not none %}
+            <span class="gw-text-muted" style="font-size: 0.75rem;">{{ '≈ ' if holding.approx_usd else '' }}US${{ holding.value_usd|money }}</span>
+            {% endif %}
+        </div>
+        <div class="gw-summary-item">
+            <span class="gw-summary-label">Unrealised</span>
+            <span class="gw-summary-value {{ 'gw-text-positive' if holding.unrealised_aud is not none and holding.unrealised_aud > 0 else 'gw-text-negative' if holding.unrealised_aud is not none and holding.unrealised_aud < 0 else '' }}">
+                {% if holding.unrealised_aud is not none %}{{ '+' if holding.unrealised_aud > 0 else '' }}A${{ holding.unrealised_aud|money }}{% else %}—{% endif %}
+            </span>
+        </div>
+    </div>
+
+    <h3 class="gw-page-header" style="font-size: 1.1rem;">Open parcels</h3>
+    <div class="gw-table-wrap gw-section">
+        <table>
+            <thead>
+                <tr>
+                    <th>Buy date</th>
+                    <th class="text-right">Remaining</th>
+                    <th class="text-right">Price</th>
+                    <th class="text-right">AUD/USD</th>
+                    <th class="text-right">Cost A$</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for parcel in holding.parcels %}
+                <tr>
+                    <td>{{ parcel.buy_date }}</td>
+                    <td class="text-right">{{ parcel.remaining_qty|qty }}</td>
+                    <td class="text-right">{{ parcel.price|qty }}</td>
+                    <td class="text-right">{% if parcel.fx is not none %}{{ parcel.fx }}{% else %}—{% endif %}</td>
+                    <td class="text-right">A${{ parcel.cost_aud|money }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <p class="gw-text-muted gw-section">This ticker is fully sold. Realised matches are below.</p>
+    {% endif %}
+
+    <h3 class="gw-page-header" style="font-size: 1.1rem;">Realised matches</h3>
+    {% if realised %}
+    <div class="gw-table-wrap gw-section">
+        <table>
+            <thead>
+                <tr>
+                    <th>Sell date</th>
+                    <th>Buy date</th>
+                    <th class="text-right">Qty</th>
+                    <th class="text-right">Proceeds A$</th>
+                    <th class="text-right">Cost A$</th>
+                    <th class="text-right">Gain A$</th>
+                    <th>≥12m</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in realised %}
+                <tr>
+                    <td>{{ row.sell_date }}</td>
+                    <td>{{ row.buy_date }}</td>
+                    <td class="text-right">{{ row.quantity|qty }}</td>
+                    <td class="text-right">A${{ row.proceeds_aud|money }}</td>
+                    <td class="text-right">A${{ row.cost_aud|money }}</td>
+                    <td class="text-right {{ 'gw-text-positive' if row.gain_aud > 0 else 'gw-text-negative' if row.gain_aud < 0 else '' }}">
+                        {{ '+' if row.gain_aud > 0 else '' }}A${{ row.gain_aud|money }}
+                    </td>
+                    <td>{% if row.held_over_12_months %}<span class="gw-badge gw-badge--paid">≥12m</span>{% else %}no{% endif %}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <p class="gw-text-muted gw-section">No realised matches.</p>
+    {% endif %}
+
+    <h3 class="gw-page-header" style="font-size: 1.1rem;">Trades</h3>
+    <div class="gw-table-wrap gw-section">
+        <table>
+            <thead>
+                <tr>
+                    <th>Date</th>
+                    <th>Type</th>
+                    <th class="text-right">Qty</th>
+                    <th class="text-right">Price</th>
+                    <th class="text-right">Fee</th>
+                    <th>FX stored</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for trade in trades %}
+                <tr id="detail-trade-{{ trade.id }}">
+                    <td>{{ trade.trade_date }}</td>
+                    <td>{{ trade.trade_type }}</td>
+                    <td class="text-right">{{ trade.quantity|qty }}</td>
+                    <td class="text-right">{{ trade.price|qty }} {{ trade.currency }}</td>
+                    <td class="text-right">{{ trade.fee|money }} {{ trade.fee_currency }}</td>
+                    <td>{% if trade.fx_rate_aud_usd is not none %}{{ trade.fx_rate_aud_usd }}{% else %}—{% endif %}</td>
+                    <td>
+                        <button hx-delete="/shares/trades/{{ trade.id }}"
+                                hx-swap="none"
+                                hx-confirm="Delete this trade?"
+                                hx-on::after-request="if(event.detail.successful){ window.location.reload(); } else { document.getElementById('shares-message').innerHTML=event.detail.xhr.responseText; }"
+                                class="gw-action-delete">Delete</button>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <h3 class="gw-page-header" style="font-size: 1.1rem;">Recent closes</h3>
+    {% if history %}
+    <div class="gw-table-wrap gw-section">
+        <table>
+            <thead>
+                <tr>
+                    <th>Date</th>
+                    <th class="text-right">Close</th>
+                    <th>Source</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in history %}
+                <tr>
+                    <td>{{ row.price_date }}</td>
+                    <td class="text-right">{{ row.close|qty }} {{ row.currency }}</td>
+                    <td class="gw-text-muted">{{ row.source }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <p class="gw-text-muted gw-section">No stored closes yet.</p>
+    {% endif %}
+</div>
+{% endblock %}
