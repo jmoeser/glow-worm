@@ -22,6 +22,7 @@ dependencies = [
     "typer==0.27.3",
     "httpx==0.28.1",
     "psycopg2-binary==2.9.13",
+    "psycopg[binary]==3.3.6",
 ]
 
 [dependency-groups]

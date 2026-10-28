@@ -39,7 +39,7 @@ The app manages four distinct, separated money systems, plus an informational sh
 ## Code Style & Standards
 - **Backend**: Python 3.14+, FastAPI (async routes), Pydantic (validation), SQLAlchemy (ORM).
 - **Frontend**: Jinja2 templates + HTMX for SPA-like feel. Tailwind CSS via CDN.
-- **Database**: SQLite (default/dev) or PostgreSQL (production). Set via `DATABASE_URL` env var. Use **Soft Deletes** (`is_deleted=True`) for Categories and SinkingFunds to preserve history. System categories (`is_system=True`) cannot be deleted — these are required for income allocation (the first `income`-type and the `transfer`-type category) and bill tracking (the `Bills` expense category).
+- **Database**: SQLite (default/dev) or PostgreSQL (production). Set via `DATABASE_URL` env var. SQLAlchemy 2.1 resolves a bare `postgresql://` URL to psycopg v3 (`psycopg[binary]`); `postgresql+psycopg2://` still uses `psycopg2-binary`. Both drivers are installed, because Alembic imports the engine at startup and the dialect imports its driver immediately. Use **Soft Deletes** (`is_deleted=True`) for Categories and SinkingFunds to preserve history. System categories (`is_system=True`) cannot be deleted — these are required for income allocation (the first `income`-type and the `transfer`-type category) and bill tracking (the `Bills` expense category).
 - **Typing**: Use PEP 604 union syntax — `str | None`, `int | str`, etc. Do **not** use `Optional[T]`, `Union[T, None]`, or `Union[...]` from `typing`. Prefer built-in generics (`list[str]`, `dict[str, int]`) over `typing.List` / `typing.Dict`.
 - **Dates**: Store as ISO 8601 strings (`YYYY-MM-DD`). Use `pytz` for timezone handling (`Australia/Brisbane`).
 - **TDD**: Write tests in `tests/` before implementation. Aim for >80% coverage.
@@ -100,6 +100,7 @@ Hosted [Mend Renovate](https://github.com/apps/renovate); config is `renovate.js
 - **Exception syntax**: Python 3.14 (PEP 758) allows `except ValueError, TypeError:` without parentheses. ruff-format will drop the parens. The Python 2 meaning (`except E, name`) is gone; use `except E as name` to bind. Binding a name still requires parentheses: `except (ValueError, TypeError) as exc`.
 - **pyrefly and SQLAlchemy rows**: pyrefly rejects attribute access on multi-column `Row` results. Unpack tuples (`ticker, price_date = row`) instead of `row.ticker`.
 - **Alpha Vantage**: never log request URLs. `httpx` and `httpcore` loggers are set to WARNING in `app/services/market_data.py`, and `redact()` strips the configured key and `apikey=` query values. Log market-data failures with `logger.error` and a redacted traceback so `exc_info` does not put the request URL back into the log.
+- **PostgreSQL driver**: a `postgresql://` URL (no `+driver`) imports `psycopg`, not `psycopg2`. Dropping `psycopg[binary]` makes `alembic upgrade` crash on container start with `ModuleNotFoundError: No module named 'psycopg'`.
 
 ## CLI (`glow`)
 - Entry point: `glow = "app.cli.main:app"` (defined in `[project.scripts]`).
