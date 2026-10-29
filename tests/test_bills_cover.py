@@ -14,7 +14,7 @@ from app.models import (
     SinkingFund,
     Transaction,
 )
-from app.services.bills_cover import compute_bills_cover
+from app.services.bills_cover import BillsCoverResult, compute_bills_cover
 from app.tasks import advance_due_date
 
 
@@ -634,6 +634,98 @@ class TestUnpaidGeneratedBills:
         assert result.obligations == Decimal("10.00") * len(expected_dates)
 
 
+def _cover(**overrides) -> BillsCoverResult:
+    fields = {
+        "horizon_months": 3,
+        "horizon_end": date(2027, 1, 29),
+        "obligations": Decimal("920.00"),
+        "without_cash": Decimal("100.00"),
+        "with_cash": Decimal("1700.00"),
+        "short_without": Decimal("820.00"),
+        "short_with": Decimal("0.00"),
+        "projected_count": 4,
+        "unpaid_count": 0,
+        "has_secondary_goal": True,
+        "bills_fund_found": True,
+        "fund_balance": Decimal("100.00"),
+        "primary_in": Decimal("0.00"),
+    }
+    fields.update(overrides)
+    return BillsCoverResult(**fields)
+
+
+class TestBannerCopy:
+    def test_example_shortfall_with_room_if_the_goal_is_met(self):
+        result = _cover()
+        assert result.headline == "Bills fund may run short in the next 3 months"
+        assert result.summary_line == (
+            "$920 of bills due by 29 January 2027, and the Bills fund has $100."
+        )
+        assert result.outlook_line == (
+            "Without secondary income you'll be $820 short. "
+            "If secondary income reaches the Bills goal, you'll be covered with "
+            "$780 to spare."
+        )
+
+    def test_one_month_uses_the_singular(self):
+        result = _cover(horizon_months=1, horizon_end=date(2026, 11, 29))
+        assert result.headline == "Bills fund may run short in the next 1 month"
+        assert "29 November 2026" in result.summary_line
+
+    def test_regular_contributions_are_mentioned_only_when_they_add_cash(self):
+        quiet = _cover()
+        assert "regular contributions" not in quiet.summary_line
+        with_primary = _cover(
+            fund_balance=Decimal("100.00"),
+            primary_in=Decimal("300.00"),
+            without_cash=Decimal("400.00"),
+        )
+        assert with_primary.summary_line == (
+            "$920 of bills due by 29 January 2027, "
+            "and the Bills fund has $100 plus $300 in regular contributions."
+        )
+
+    def test_cents_keep_the_usual_format(self):
+        result = _cover(
+            obligations=Decimal("10.50"),
+            fund_balance=Decimal("1.25"),
+            without_cash=Decimal("1.25"),
+            with_cash=Decimal("1.25"),
+            short_without=Decimal("9.25"),
+            short_with=Decimal("9.25"),
+            has_secondary_goal=False,
+        )
+        assert "$10.50 of bills" in result.summary_line
+        assert "has $1.25." in result.summary_line
+        assert "you'll be $9.25 short." in result.outlook_line
+
+    def test_still_short_when_the_goal_does_not_cover(self):
+        result = _cover(
+            with_cash=Decimal("400.00"),
+            short_with=Decimal("520.00"),
+        )
+        assert result.outlook_line.endswith(
+            "If secondary income reaches the Bills goal, you'll still be $520 short."
+        )
+
+    def test_exact_cover_does_not_invent_spare_cash(self):
+        result = _cover(with_cash=Decimal("920.00"), short_with=Decimal("0.00"))
+        assert result.outlook_line.endswith(
+            "If secondary income reaches the Bills goal, you'll be covered."
+        )
+
+    def test_no_goal_says_so_in_plain_language(self):
+        result = _cover(
+            has_secondary_goal=False,
+            with_cash=Decimal("100.00"),
+            short_with=Decimal("820.00"),
+        )
+        assert result.outlook_line == (
+            "Without secondary income you'll be $820 short. "
+            "No secondary income goal is set for the Bills fund."
+        )
+
+
 class TestDashboardBanner:
     def test_dashboard_shows_both_figures_only_when_short(
         self, authed_client, db_session, sample_category, sample_sinking_funds
@@ -651,14 +743,19 @@ class TestDashboardBanner:
             frequency="quarterly",
             next_due=due,
         )
+        cover = compute_bills_cover(db_session)
         short = authed_client.get("/")
-        assert 'id="bills-cover-banner"' in short.text
-        assert "Bills cover (next 3 months)" in short.text
-        assert "obligations $500.00" in short.text
-        assert "Without secondary: $0.00 — short $500.00" in short.text
-        assert "With secondary goals met: $0.00 — short $500.00" in short.text
-        assert "No Bills secondary goal." in short.text
-        assert "Secondary income is not guaranteed." not in short.text
+        visible = short.text.replace("&#39;", "'")
+        assert 'id="bills-cover-banner"' in visible
+        assert cover.headline in visible
+        assert cover.summary_line in visible
+        assert cover.outlook_line in visible
+        assert 'href="/bills"' in short.text
+        assert "See upcoming bills" in short.text
+        assert "obligations" not in short.text
+        assert "not guaranteed" not in short.text
+        assert "projected bill" not in short.text
+        assert "No secondary income goal is set for the Bills fund." in short.text
 
         funds = authed_client.get("/sinking-funds")
         assert "Buffer Warning" not in funds.text
@@ -696,11 +793,15 @@ class TestDashboardBanner:
         )
         db_session.commit()
 
+        cover = compute_bills_cover(db_session)
         response = authed_client.get("/")
-        assert "Without secondary: $0.00 — short $100.00" in response.text
-        assert "(OK)" in response.text
-        assert "Secondary income is not guaranteed." in response.text
-        assert "No Bills secondary goal." not in response.text
+        visible = response.text.replace("&#39;", "'")
+        assert cover.outlook_line in visible
+        assert "you'll be covered with" in visible
+        assert "to spare." in response.text
+        assert "(OK)" not in response.text
+        assert "not guaranteed" not in response.text
+        assert "No secondary income goal is set" not in response.text
 
     def test_no_banner_without_a_bills_fund(
         self, authed_client, db_session, sample_category

@@ -34,6 +34,18 @@ def _money(value: object) -> Decimal:
     return Decimal(str(value or 0)).quantize(_CENT)
 
 
+def _dollars(value: Decimal) -> str:
+    """Whole dollars when the amount has no cents, otherwise the usual cents format."""
+    amount = _money(value)
+    sign = "-" if amount < 0 else ""
+    amount = abs(amount)
+    if amount == amount.to_integral_value():
+        body = f"{int(amount):,}"
+    else:
+        body = f"{amount:,.2f}"
+    return f"{sign}${body}"
+
+
 def _add_months(current: date, months: int) -> date:
     """Add calendar months, clamping the day the way relativedelta does."""
     month_index = current.month - 1 + months
@@ -62,11 +74,54 @@ class BillsCoverResult:
     unpaid_count: int
     has_secondary_goal: bool
     bills_fund_found: bool
+    fund_balance: Decimal
+    primary_in: Decimal
 
     @property
     def show_banner(self) -> bool:
         """Banner is only for a shortfall on the path that ignores secondary income."""
         return self.bills_fund_found and self.short_without > 0
+
+    @property
+    def headline(self) -> str:
+        unit = "month" if self.horizon_months == 1 else "months"
+        return f"Bills fund may run short in the next {self.horizon_months} {unit}"
+
+    @property
+    def summary_line(self) -> str:
+        due = (
+            f"{self.horizon_end.day} {calendar.month_name[self.horizon_end.month]} "
+            f"{self.horizon_end.year}"
+        )
+        line = (
+            f"{_dollars(self.obligations)} of bills due by {due}, "
+            f"and the Bills fund has {_dollars(self.fund_balance)}"
+        )
+        if self.primary_in > 0:
+            line += f" plus {_dollars(self.primary_in)} in regular contributions"
+        return line + "."
+
+    @property
+    def outlook_line(self) -> str:
+        short = (
+            f"Without secondary income you'll be {_dollars(self.short_without)} short."
+        )
+        if not self.has_secondary_goal:
+            return short + " No secondary income goal is set for the Bills fund."
+        if self.short_with > 0:
+            return (
+                short
+                + " If secondary income reaches the Bills goal, you'll still be "
+                + f"{_dollars(self.short_with)} short."
+            )
+        spare = _money(self.with_cash - self.obligations)
+        if spare > 0:
+            return (
+                short
+                + " If secondary income reaches the Bills goal, you'll be covered with "
+                + f"{_dollars(spare)} to spare."
+            )
+        return short + " If secondary income reaches the Bills goal, you'll be covered."
 
 
 def _bills_fund(db: Session) -> SinkingFund | None:
@@ -317,6 +372,8 @@ def _empty(horizon_months: int, horizon_end: date) -> BillsCoverResult:
         unpaid_count=0,
         has_secondary_goal=False,
         bills_fund_found=False,
+        fund_balance=zero,
+        primary_in=zero,
     )
 
 
@@ -369,4 +426,6 @@ def compute_bills_cover(
         unpaid_count=unpaid_count,
         has_secondary_goal=goal > 0,
         bills_fund_found=True,
+        fund_balance=balance,
+        primary_in=primary,
     )

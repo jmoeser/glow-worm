@@ -495,8 +495,9 @@ class TestBufferWarningRemoved:
 
         dashboard = authed_client.get("/")
         assert 'id="bills-cover-banner"' in dashboard.text
-        assert "Without secondary" in dashboard.text
-        assert "With secondary goals met" in dashboard.text
+        assert "Bills fund may run short in the next 3 months" in dashboard.text
+        assert "of bills due by" in dashboard.text
+        assert "See upcoming bills" in dashboard.text
         funds = authed_client.get("/sinking-funds")
         assert "Buffer Warning" not in funds.text
 
