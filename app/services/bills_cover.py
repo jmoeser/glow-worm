@@ -23,36 +23,12 @@ from app.models import (
     SinkingFund,
     Transaction,
 )
+from app.services.money import add_months as _add_months
+from app.services.money import dollars as _dollars
+from app.services.money import money as _money
 from app.tasks import _compute_bills_recommended, iter_bill_due_dates
 
 logger = logging.getLogger(__name__)
-
-_CENT = Decimal("0.01")
-
-
-def _money(value: object) -> Decimal:
-    return Decimal(str(value or 0)).quantize(_CENT)
-
-
-def _dollars(value: Decimal) -> str:
-    """Whole dollars when the amount has no cents, otherwise the usual cents format."""
-    amount = _money(value)
-    sign = "-" if amount < 0 else ""
-    amount = abs(amount)
-    if amount == amount.to_integral_value():
-        body = f"{int(amount):,}"
-    else:
-        body = f"{amount:,.2f}"
-    return f"{sign}${body}"
-
-
-def _add_months(current: date, months: int) -> date:
-    """Add calendar months, clamping the day the way relativedelta does."""
-    month_index = current.month - 1 + months
-    year = current.year + month_index // 12
-    month = month_index % 12 + 1
-    day = min(current.day, calendar.monthrange(year, month)[1])
-    return date(year, month, day)
 
 
 def _clamp_horizon(months: int) -> int:

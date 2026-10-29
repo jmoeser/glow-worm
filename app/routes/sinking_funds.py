@@ -14,6 +14,7 @@ from app.database import get_db
 from app.middleware import get_current_user
 from app.models import RecurringBill, SinkingFund, Transaction
 from app.schemas import SinkingFundCreate, SinkingFundResponse, SinkingFundUpdate
+from app.services.fund_runway import compute_fund_runway
 from app.tasks import generate_bills_forecast
 from app.templating import templates
 
@@ -443,6 +444,7 @@ async def sinking_fund_detail(
             "total_income": income.quantize(Decimal("0.01")),
             "total_expenses": expenses.quantize(Decimal("0.01")),
             "net": net,
+            "runway": compute_fund_runway(db, fund),
         },
     )
 
