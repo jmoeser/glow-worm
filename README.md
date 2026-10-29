@@ -152,6 +152,8 @@ Glow-worm exposes an [MCP](https://modelcontextprotocol.io/) server at `/mcp` us
 | `update_bill` | Update fields on an existing bill |
 | `delete_bill` | Deactivate a recurring bill (soft delete) |
 
+Creating, updating, or deleting a transaction through these tools updates the linked sinking-fund balance, and a budget's fund balance for budget transfers, using the same rules as the transactions page and `/api/transactions`.
+
 ### API Authentication
 
 MCP and API endpoints use Bearer token authentication via API keys. You can manage keys from the web UI at `/api-keys`, or via the API:
@@ -328,7 +330,7 @@ glow-worm/
 │   ├── mcp_server.py      # MCP tool definitions
 │   ├── templating.py      # Jinja2 template helpers
 │   ├── routes/            # Route modules (auth, dashboard, bills, etc.)
-│   ├── services/          # Domain logic (budget recommendations, shares FIFO, market data)
+│   ├── services/          # Domain logic (transaction balances, budget recommendations, shares, market data)
 │   ├── templates/         # Jinja2 HTML templates
 │   ├── static/            # CSS, logo, static assets
 │   └── cli/               # glow CLI (pipx-installable)
