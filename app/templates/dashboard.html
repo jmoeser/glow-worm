@@ -2,6 +2,15 @@
 {% block content %}
 <h2 class="gw-page-header">{{ month_name }} {{ year }}</h2>
 
+{% if bills_cover.show_banner %}
+<div class="gw-warning-banner gw-section" id="bills-cover-banner">
+    <p><strong>{{ bills_cover.headline }}</strong></p>
+    <p>{{ bills_cover.summary_line }}</p>
+    <p>{{ bills_cover.outlook_line }}</p>
+    <p><a href="/bills">See upcoming bills</a></p>
+</div>
+{% endif %}
+
 <!-- Total Net Worth -->
 <div class="gw-card gw-section gw-animate-in" style="text-align: center; padding: 24px;">
     <p class="gw-stat-label">Total Net Worth</p>

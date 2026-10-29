@@ -75,12 +75,6 @@
 
     <div id="funds-message" style="margin-bottom: 16px;"></div>
 
-    {% if buffer_warning %}
-    <div class="gw-warning-banner gw-section">
-        <strong>Buffer Warning:</strong> Your Bills fund balance is less than the ${{ bills_due_30|money }} in bills due within the next 30 days.
-    </div>
-    {% endif %}
-
     <!-- Add New Fund (collapsible) -->
     <details class="gw-details gw-section gw-add-form">
         <summary>Add New Fund</summary>

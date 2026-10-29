@@ -869,6 +869,20 @@ h1, h2, h3, h4 {
     font-size: 0.875rem;
 }
 
+.gw-warning-banner p {
+    margin: 0 0 6px;
+}
+
+.gw-warning-banner p:last-child {
+    margin-bottom: 0;
+}
+
+.gw-warning-banner a {
+    color: inherit;
+    font-weight: 600;
+    text-decoration: underline;
+}
+
 /* --- Message Flash --- */
 .gw-msg-success {
     color: var(--positive);

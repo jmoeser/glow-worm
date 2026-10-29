@@ -4,6 +4,7 @@ import calendar
 import logging
 import threading
 import traceback
+from collections.abc import Iterator
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 
@@ -72,6 +73,23 @@ def advance_due_date(current: date, frequency: str) -> date:
         return date(year, current.month, day)
 
     return current + timedelta(days=30)
+
+
+def iter_bill_due_dates(
+    next_due_date: str, frequency: str, horizon_end: date
+) -> Iterator[date]:
+    """Yield due dates from ``next_due_date`` through ``horizon_end`` inclusive.
+
+    Steps with :func:`advance_due_date` so every caller shares one frequency
+    implementation. Stops if a step does not move forward.
+    """
+    current_due = date.fromisoformat(next_due_date)
+    while current_due <= horizon_end:
+        yield current_due
+        nxt = advance_due_date(current_due, frequency)
+        if nxt <= current_due:
+            break
+        current_due = nxt
 
 
 def _compute_bills_recommended(db: Session) -> Decimal:
@@ -146,21 +164,22 @@ def generate_bills_forecast(db: Session, months: int = 12) -> list[dict]:
     # Project each bill's payment dates forward into monthly buckets
     monthly_bills: dict[tuple[int, int], list[dict]] = {}
     for bill in active_bills:
-        current_due = date.fromisoformat(bill.next_due_date)
-        while current_due <= horizon_end:
+        amount = Decimal(str(bill.amount))
+        for current_due in iter_bill_due_dates(
+            bill.next_due_date, bill.frequency, horizon_end
+        ):
             ym = (current_due.year, current_due.month)
             monthly_bills.setdefault(ym, []).append(
                 {
                     "id": bill.id,
                     "name": bill.name,
-                    "amount": Decimal(str(bill.amount)),
+                    "amount": amount,
                     "bill_type": bill.bill_type,
                     "due_date": current_due,
                     "foreign_amount": bill.foreign_amount,
                     "foreign_currency": bill.foreign_currency,
                 }
             )
-            current_due = advance_due_date(current_due, bill.frequency)
 
     # Build forecast rows
     result = []

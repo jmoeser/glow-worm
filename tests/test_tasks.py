@@ -24,6 +24,7 @@ from app.models import (
 from app.tasks import (
     advance_due_date,
     generate_bills_forecast,
+    iter_bill_due_dates,
     process_due_bills,
     process_income_allocation,
 )
@@ -70,6 +71,33 @@ class TestAdvanceDueDate:
 
     def test_28_days_crosses_month(self):
         assert advance_due_date(date(2026, 1, 15), "28_days") == date(2026, 2, 12)
+
+
+class TestIterBillDueDates:
+    def test_walks_with_advance_due_date(self):
+        horizon_end = date(2026, 4, 15)
+        walked = list(iter_bill_due_dates("2026-01-15", "28_days", horizon_end))
+        expected = []
+        current = date(2026, 1, 15)
+        while current <= horizon_end:
+            expected.append(current)
+            current = advance_due_date(current, "28_days")
+        assert walked == expected
+        assert walked[0] == date(2026, 1, 15)
+        assert walked[-1] <= horizon_end
+
+    def test_includes_horizon_end_and_stops_after(self):
+        assert list(
+            iter_bill_due_dates("2026-01-15", "quarterly", date(2026, 4, 15))
+        ) == [
+            date(2026, 1, 15),
+            date(2026, 4, 15),
+        ]
+        assert list(
+            iter_bill_due_dates("2026-01-15", "quarterly", date(2026, 4, 14))
+        ) == [
+            date(2026, 1, 15),
+        ]
 
 
 # ---------------------------------------------------------------------------
