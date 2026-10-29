@@ -119,3 +119,29 @@ SHARES_FRANKFURTER_BASE_URL = (
     os.getenv("SHARES_FRANKFURTER_BASE_URL", "https://api.frankfurter.dev").strip()
     or "https://api.frankfurter.dev"
 )
+
+
+def bills_cover_horizon_months() -> int:
+    """Calendar months for the dashboard Bills cover check.
+
+    Reads ``BILLS_COVER_HORIZON_MONTHS`` on each call. Blank or non-integer
+    values use 3. Integers outside 1–12 are clamped to that range.
+    """
+    default = 3
+    raw = os.getenv("BILLS_COVER_HORIZON_MONTHS")
+    if raw is None or raw.strip() == "":
+        return default
+    try:
+        value = int(raw.strip())
+    except ValueError:
+        logger.warning("Invalid BILLS_COVER_HORIZON_MONTHS=%r; using %s", raw, default)
+        return default
+    if value < 1 or value > 12:
+        clamped = min(12, max(1, value))
+        logger.warning(
+            "BILLS_COVER_HORIZON_MONTHS=%s is outside 1-12; using %s",
+            value,
+            clamped,
+        )
+        return clamped
+    return value

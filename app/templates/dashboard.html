@@ -2,6 +2,22 @@
 {% block content %}
 <h2 class="gw-page-header">{{ month_name }} {{ year }}</h2>
 
+{% if bills_cover.show_banner %}
+<div class="gw-warning-banner gw-section" id="bills-cover-banner">
+    <p>
+        <strong>Bills cover (next {{ bills_cover.horizon_months }} month{% if bills_cover.horizon_months != 1 %}s{% endif %}):</strong>
+        obligations ${{ bills_cover.obligations|money }}.
+        Without secondary: ${{ bills_cover.without_cash|money }} — short ${{ bills_cover.short_without|money }}.
+        With secondary goals met: ${{ bills_cover.with_cash|money }}{% if bills_cover.short_with > 0 %} — short ${{ bills_cover.short_with|money }}.{% else %} (OK). Secondary income is not guaranteed.{% endif %}
+        {% if not bills_cover.has_secondary_goal %}No Bills secondary goal.{% endif %}
+    </p>
+    <p class="gw-text-dim" style="font-size: 0.75rem; margin-top: 6px;">
+        Includes {{ bills_cover.projected_count }} projected bill{% if bills_cover.projected_count != 1 %}s{% endif %}
+        and {{ bills_cover.unpaid_count }} unpaid generated bill{% if bills_cover.unpaid_count != 1 %}s{% endif %}.
+    </p>
+</div>
+{% endif %}
+
 <!-- Total Net Worth -->
 <div class="gw-card gw-section gw-animate-in" style="text-align: center; padding: 24px;">
     <p class="gw-stat-label">Total Net Worth</p>

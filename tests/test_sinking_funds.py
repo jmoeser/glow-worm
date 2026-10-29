@@ -463,25 +463,8 @@ class TestBillsRecommendedAllocation:
         assert "2,489.00" in response.text
 
 
-class TestBufferWarning:
-    def test_warning_shown_when_balance_low(
-        self, authed_client, db_session, sample_sinking_funds, sample_bills
-    ):
-        # Bills fund has balance 0, bills due soon => warning
-        # Set bill next_due_date to be within 30 days
-        from datetime import datetime, timedelta
-
-        from app.config import TIMEZONE
-
-        soon = (datetime.now(TIMEZONE).date() + timedelta(days=5)).isoformat()
-        for bill in sample_bills:
-            bill.next_due_date = soon
-        db_session.commit()
-
-        response = authed_client.get("/sinking-funds")
-        assert "Buffer Warning" in response.text
-
-    def test_no_warning_when_balance_sufficient(
+class TestBufferWarningRemoved:
+    def test_sinking_funds_page_has_no_30_day_banner(
         self, authed_client, db_session, sample_sinking_funds, sample_bills
     ):
         from datetime import datetime, timedelta
@@ -491,15 +474,31 @@ class TestBufferWarning:
         soon = (datetime.now(TIMEZONE).date() + timedelta(days=5)).isoformat()
         for bill in sample_bills:
             bill.next_due_date = soon
-        db_session.commit()
-
-        # Set Bills fund balance high enough
-        bills_fund = sample_sinking_funds[0]  # "Bills"
-        bills_fund.current_balance = 10000
         db_session.commit()
 
         response = authed_client.get("/sinking-funds")
         assert "Buffer Warning" not in response.text
+        assert "bills due within the next 30 days" not in response.text
+
+    def test_low_balance_is_reported_on_the_dashboard(
+        self, authed_client, db_session, sample_sinking_funds, sample_bills
+    ):
+        from datetime import datetime, timedelta
+
+        from app.config import TIMEZONE
+
+        soon = (datetime.now(TIMEZONE).date() + timedelta(days=5)).isoformat()
+        for bill in sample_bills:
+            bill.next_due_date = soon
+        sample_sinking_funds[0].current_balance = 0
+        db_session.commit()
+
+        dashboard = authed_client.get("/")
+        assert 'id="bills-cover-banner"' in dashboard.text
+        assert "Without secondary" in dashboard.text
+        assert "With secondary goals met" in dashboard.text
+        funds = authed_client.get("/sinking-funds")
+        assert "Buffer Warning" not in funds.text
 
 
 class TestSystemFundProtection:

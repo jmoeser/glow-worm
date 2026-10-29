@@ -1,7 +1,7 @@
 import calendar
 import re
 from collections import defaultdict
-from datetime import date, datetime, timedelta
+from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
 
 from fastapi import APIRouter, Depends, Request
@@ -51,43 +51,17 @@ def _compute_bills_recommended(db: Session) -> Decimal:
     return (total_annual / 12).quantize(Decimal("0.01"))
 
 
-def _bills_due_next_30_days(db: Session) -> Decimal:
-    today = datetime.now(TIMEZONE).date()
-    cutoff = today + timedelta(days=30)
-    today_str = today.isoformat()
-    cutoff_str = cutoff.isoformat()
-    bills = (
-        db.query(RecurringBill)
-        .filter(
-            RecurringBill.is_active == True,
-            RecurringBill.next_due_date >= today_str,
-            RecurringBill.next_due_date <= cutoff_str,
-        )
-        .all()
-    )
-    return sum((Decimal(str(b.amount)) for b in bills), Decimal(0))
-
-
 def _fund_context(db: Session):
     funds = _active_funds(db)
     total_balance = sum(
         (Decimal(str(f.current_balance)) for f in funds), Decimal(0)
     ).quantize(Decimal("0.01"))
     bills_recommended = _compute_bills_recommended(db)
-    bills_due_30 = _bills_due_next_30_days(db)
-
-    # Find the Bills fund to check buffer warning
-    bills_fund = next((f for f in funds if f.name == "Bills"), None)
-    buffer_warning = False
-    if bills_fund and bills_due_30 > 0:
-        buffer_warning = Decimal(str(bills_fund.current_balance)) < bills_due_30
 
     return {
         "funds": funds,
         "total_balance": total_balance,
         "bills_recommended": bills_recommended,
-        "buffer_warning": buffer_warning,
-        "bills_due_30": bills_due_30,
     }
 
 
