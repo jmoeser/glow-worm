@@ -5,11 +5,13 @@ Authentication is handled at the HTTP middleware layer (Bearer token).
 """
 
 import logging
+import warnings
 from decimal import Decimal
 from typing import Any
 
 from fastmcp import FastMCP
 from pydantic import ValidationError
+from pydantic.json_schema import PydanticJsonSchemaWarning
 
 from app.config import TIMEZONE
 from app.database import SessionLocal
@@ -23,8 +25,24 @@ from app.schemas import (
     TransactionResponse,
     TransactionUpdate,
 )
+from app.services.transaction_balances import (
+    apply_transaction_balance_effects,
+    replace_transaction_balance_effects,
+)
 
 logger = logging.getLogger(__name__)
+
+
+class _Omit:
+    """Sentinel so an omitted MCP id stays unchanged and null clears the link.
+
+    The default is not JSON-serializable, so FastMCP leaves it out of the tool
+    schema. Clients omit the argument to keep the current value, or pass null
+    to clear it.
+    """
+
+
+_OMIT = _Omit()
 
 mcp = FastMCP(
     name="glow-worm",
@@ -185,6 +203,14 @@ def create_transaction(
             is_paid=data.is_paid,
         )
         db.add(txn)
+        apply_transaction_balance_effects(
+            db,
+            sinking_fund_id=txn.sinking_fund_id,
+            txn_type=txn.type,
+            amount=float(data.amount),
+            budget_id=txn.budget_id,
+            transaction_type=txn.transaction_type,
+        )
         db.commit()
         db.refresh(txn)
 
@@ -200,6 +226,15 @@ def create_transaction(
         db.close()
 
 
+# _OMIT is not JSON-serializable, so the tool schema omits that default.
+# Silence the resulting pydantic warning; null still clears the link.
+warnings.filterwarnings(
+    "ignore",
+    category=PydanticJsonSchemaWarning,
+    message=r"Default value .* is not JSON serializable",
+)
+
+
 @mcp.tool()
 def update_transaction(
     transaction_id: int,
@@ -209,26 +244,27 @@ def update_transaction(
     type: str | None = None,
     description: str | None = None,
     transaction_type: str | None = None,
-    sinking_fund_id: int | None = None,
+    sinking_fund_id: int | None = _OMIT,  # pyrefly: ignore[bad-function-definition]
     recurring_bill_id: int | None = None,
-    budget_id: int | None = None,
+    budget_id: int | None = _OMIT,  # pyrefly: ignore[bad-function-definition]
     is_paid: bool | None = None,
 ) -> dict | str:
     """Update an existing transaction.
 
     Only the provided fields will be updated; omitted fields remain unchanged.
+    Pass null for sinking_fund_id or budget_id to clear that link.
 
     Args:
         transaction_id: The ID of the transaction to update.
         date: New date in YYYY-MM-DD format.
         amount: New positive monetary amount.
         category_id: New category ID.
-        type: New type ('income' or 'expense').
+        type: New type ('income', 'expense', or 'transfer').
         description: New description text.
         transaction_type: New transaction type.
-        sinking_fund_id: New linked sinking fund ID.
+        sinking_fund_id: New linked sinking fund ID. Null clears the link.
         recurring_bill_id: New linked recurring bill ID.
-        budget_id: New linked budget ID.
+        budget_id: New linked budget ID. Null clears the link.
         is_paid: New paid status.
 
     Returns:
@@ -247,11 +283,11 @@ def update_transaction(
         update_data["description"] = description
     if transaction_type is not None:
         update_data["transaction_type"] = transaction_type
-    if sinking_fund_id is not None:
+    if sinking_fund_id is not _OMIT:
         update_data["sinking_fund_id"] = sinking_fund_id
     if recurring_bill_id is not None:
         update_data["recurring_bill_id"] = recurring_bill_id
-    if budget_id is not None:
+    if budget_id is not _OMIT:
         update_data["budget_id"] = budget_id
     if is_paid is not None:
         update_data["is_paid"] = is_paid
@@ -267,12 +303,31 @@ def update_transaction(
         if not txn:
             return f"Transaction {transaction_id} not found."
 
+        old_sf_id = txn.sinking_fund_id
+        old_type = txn.type
+        old_txn_type = txn.transaction_type
+        old_budget_id = txn.budget_id
+        old_amount = txn.amount
+
         for field, value in data.model_dump(exclude_unset=True).items():
             if field in ("type", "transaction_type") and value is not None:
                 setattr(txn, field, value.value if hasattr(value, "value") else value)
             else:
                 setattr(txn, field, value)
 
+        replace_transaction_balance_effects(
+            db,
+            old_sinking_fund_id=old_sf_id,
+            old_type=old_type,
+            old_amount=old_amount,
+            old_budget_id=old_budget_id,
+            old_transaction_type=old_txn_type,
+            new_sinking_fund_id=txn.sinking_fund_id,
+            new_type=txn.type,
+            new_amount=txn.amount,
+            new_budget_id=txn.budget_id,
+            new_transaction_type=txn.transaction_type,
+        )
         db.commit()
         db.refresh(txn)
 
@@ -308,6 +363,15 @@ def delete_transaction(transaction_id: int) -> str:
         if not txn:
             return f"Transaction {transaction_id} not found."
 
+        apply_transaction_balance_effects(
+            db,
+            sinking_fund_id=txn.sinking_fund_id,
+            txn_type=txn.type,
+            amount=txn.amount,
+            budget_id=txn.budget_id,
+            transaction_type=txn.transaction_type,
+            reverse=True,
+        )
         db.delete(txn)
         db.commit()
 
