@@ -95,5 +95,17 @@ jobs:
 
       - name: Sign container image
         run: |
-          cosign sign --yes \
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ steps.build.outputs.digest }}
+          # Rekor sometimes answers a successful upload slowly. Cosign's HTTP
+          # client then retries the same entry and treats the resulting 409
+          # (already in the log) as fatal. A new invocation mints fresh keys.
+          for attempt in 1 2 3; do
+            if cosign sign --yes \
+              ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ steps.build.outputs.digest }}; then
+              exit 0
+            fi
+            echo "cosign sign attempt ${attempt} failed"
+            if [ "$attempt" -lt 3 ]; then
+              sleep 15
+            fi
+          done
+          exit 1
