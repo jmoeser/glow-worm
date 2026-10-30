@@ -24,6 +24,18 @@
         <a href="/sinking-funds/{{ fund.id }}/history" style="padding: 6px 14px; font-size: 0.875rem; color: var(--text-secondary); text-decoration: none;">History</a>
     </div>
 
+    {% if runway.state != "hidden" %}
+    <div id="fund-runway" aria-label="Fund runway"
+         class="{% if runway.is_warning %}gw-warning-banner{% else %}gw-card{% endif %} gw-section">
+        {% if runway.state == "bills" %}
+        <p>Bills come in lumps, so runway isn't shown here. See <a href="/sinking-funds/{{ fund.id }}/forecast">Forecast</a> for what's ahead.</p>
+        {% else %}
+        <p>{{ runway.headline }}</p>
+        {% endif %}
+        {% if runway.detail %}<p class="gw-text-muted" style="font-size:0.8rem;">{{ runway.detail }}</p>{% endif %}
+    </div>
+    {% endif %}
+
     <!-- Month navigation -->
     <div class="gw-month-nav gw-section">
         <a href="/sinking-funds/{{ fund.id }}?month={{ prev_month }}&year={{ prev_year }}">&larr; Previous</a>

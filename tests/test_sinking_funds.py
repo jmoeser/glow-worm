@@ -1,3 +1,7 @@
+import re
+from datetime import date, datetime, timedelta
+
+from app.config import TIMEZONE
 from app.models import SinkingFund, Transaction
 
 
@@ -923,3 +927,135 @@ class TestSinkingFundHistory:
         assert response.status_code == 200
         # Expandable row for March 2026 should link to the detail page
         assert f"/sinking-funds/{fund.id}?month=3&year=2026" in response.text
+
+
+def _runway_block(html: str) -> str:
+    match = re.search(r'<div id="fund-runway".*?</div>', html, re.DOTALL)
+    assert match is not None
+    return match.group(0)
+
+
+def _age_fund(db_session, fund, balance):
+    fund.created_at = datetime(2020, 1, 1)
+    fund.current_balance = balance
+    db_session.commit()
+
+
+def _flow(db_session, fund, category_id, *, amount, txn_type):
+    today = datetime.now(TIMEZONE).date()
+    previous_end = date(today.year, today.month, 1) - timedelta(days=1)
+    when = date(previous_end.year, previous_end.month, 15).isoformat()
+    db_session.add(
+        Transaction(
+            date=when,
+            description="Runway row",
+            amount=amount,
+            category_id=category_id,
+            type=txn_type,
+            transaction_type="regular" if txn_type == "expense" else "contribution",
+            sinking_fund_id=fund.id,
+        )
+    )
+    db_session.commit()
+
+
+class TestFundRunwayPage:
+    def test_running_down_warning_and_card(
+        self, authed_client, db_session, sample_sinking_funds, sample_category
+    ):
+        short = sample_sinking_funds[1]
+        _age_fund(db_session, short, 400)
+        _flow(
+            db_session,
+            short,
+            sample_category.id,
+            amount=1200,
+            txn_type="expense",
+        )
+        response = authed_client.get(f"/sinking-funds/{short.id}")
+        block = _runway_block(response.text)
+        assert response.text.index('id="fund-runway"') < response.text.index(
+            "gw-month-nav"
+        )
+        assert 'aria-label="Fund runway"' in block
+        assert "gw-warning-banner" in block
+        assert "gw-card" not in block
+        assert "At recent spending, this fund runs out in about 2 months" in block
+
+        long = SinkingFund(
+            name="Car",
+            color="#2255AA",
+            current_balance=1800,
+            created_at=datetime(2020, 1, 1),
+        )
+        db_session.add(long)
+        db_session.commit()
+        _flow(db_session, long, sample_category.id, amount=600, txn_type="expense")
+        calm = authed_client.get(f"/sinking-funds/{long.id}")
+        calm_block = _runway_block(calm.text)
+        assert 'class="gw-card gw-section"' in calm_block
+        assert "gw-warning-banner" not in calm_block
+        assert "runs out in about" in calm_block
+
+    def test_payoff_uses_the_card_and_stuck_debt_uses_the_warning(
+        self, authed_client, db_session, sample_category
+    ):
+        paying = SinkingFund(
+            name="Loan",
+            color="#884400",
+            current_balance=-500,
+            created_at=datetime(2020, 1, 1),
+        )
+        stuck = SinkingFund(
+            name="Family",
+            color="#440088",
+            current_balance=-1500,
+            created_at=datetime(2020, 1, 1),
+        )
+        db_session.add_all([paying, stuck])
+        db_session.commit()
+        _flow(
+            db_session,
+            paying,
+            sample_category.id,
+            amount=1200,
+            txn_type="transfer",
+        )
+
+        payoff = _runway_block(authed_client.get(f"/sinking-funds/{paying.id}").text)
+        assert "back to zero in about" in payoff
+        assert 'class="gw-card gw-section"' in payoff
+        assert "gw-warning-banner" not in payoff
+
+        warning = _runway_block(authed_client.get(f"/sinking-funds/{stuck.id}").text)
+        assert "in the red" in warning
+        assert "being paid down" in warning
+        assert "gw-warning-banner" in warning
+        assert "gw-card" not in warning
+
+    def test_runway_ignores_the_viewed_month(
+        self, authed_client, db_session, sample_sinking_funds, sample_category
+    ):
+        fund = sample_sinking_funds[1]
+        _age_fund(db_session, fund, 400)
+        _flow(db_session, fund, sample_category.id, amount=1200, txn_type="expense")
+        january = authed_client.get(f"/sinking-funds/{fund.id}?month=1&year=2024")
+        august = authed_client.get(f"/sinking-funds/{fund.id}?month=8&year=2026")
+        assert _runway_block(january.text) == _runway_block(august.text)
+
+    def test_bills_fund_points_at_forecast(self, authed_client, sample_sinking_funds):
+        bills = next(fund for fund in sample_sinking_funds if fund.name == "Bills")
+        block = _runway_block(authed_client.get(f"/sinking-funds/{bills.id}").text)
+        assert "Bills come in lumps, so runway isn't shown here." in block
+        assert f'href="/sinking-funds/{bills.id}/forecast"' in block
+        assert ">Forecast</a>" in block
+        assert "runs out" not in block
+        assert "in the red" not in block
+
+    def test_list_and_dashboard_omit_runway(self, authed_client, sample_sinking_funds):
+        listing = authed_client.get("/sinking-funds")
+        dashboard = authed_client.get("/")
+        assert listing.status_code == 200
+        assert dashboard.status_code == 200
+        assert "fund-runway" not in listing.text
+        assert "fund-runway" not in dashboard.text
