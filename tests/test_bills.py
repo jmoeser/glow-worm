@@ -646,3 +646,127 @@ class TestApiBillsPay:
         )
         assert response.status_code == 400
         assert "Bills sinking fund not found" in response.json()["detail"]
+
+
+class TestPaidWith:
+    def _method(self, db, **kwargs):
+        from app.models import PaymentMethod
+
+        values = {
+            "nickname": "Everyday Visa",
+            "kind": "card",
+            "last4": "4321",
+            "expiry_month": 10,
+            "expiry_year": 2026,
+            "owner": "Jordan",
+        }
+        values.update(kwargs)
+        method = PaymentMethod(**values)
+        db.add(method)
+        db.commit()
+        db.refresh(method)
+        return method
+
+    def test_column_badge_and_sort_map(self, authed_client, db_session, sample_bills):
+        method = self._method(db_session)
+        sample_bills[0].payment_method_id = method.id
+        db_session.commit()
+        page = authed_client.get("/bills")
+        assert "Paid with" in page.text
+        assert "Everyday Visa ending 4321" in page.text
+        assert "Expired" in page.text
+        assert "Not set" in page.text
+        assert "paid_with: 2" in page.text
+        assert "next_due_date: 6" in page.text
+        assert "No payment method: 1" in page.text
+
+    def test_edit_keeps_link_when_key_missing_and_blank_clears(
+        self, authed_client, db_session, sample_bills
+    ):
+        method = self._method(
+            db_session, kind="manual", last4=None, expiry_month=None, expiry_year=None
+        )
+        bill = sample_bills[0]
+        bill.payment_method_id = method.id
+        db_session.commit()
+        kept = authed_client.post(
+            f"/bills/{bill.id}",
+            data={"name": "Rent"},
+            headers={"x-csrftoken": authed_client.csrf_token},
+        )
+        assert kept.status_code == 200
+        db_session.refresh(bill)
+        assert bill.payment_method_id == method.id
+        cleared = authed_client.post(
+            f"/bills/{bill.id}",
+            data={"name": "Rent", "payment_method_id": ""},
+            headers={"x-csrftoken": authed_client.csrf_token},
+        )
+        assert cleared.status_code == 200
+        db_session.refresh(bill)
+        assert bill.payment_method_id is None
+
+    def test_picker_filter_and_api_clear(self, authed_client, db_session, sample_bills):
+        from app.services.payment_methods import start
+
+        current = self._method(
+            db_session,
+            nickname="Current",
+            kind="manual",
+            last4=None,
+            expiry_month=None,
+            expiry_year=None,
+        )
+        outgoing = self._method(
+            db_session,
+            nickname="Outgoing",
+            kind="manual",
+            last4=None,
+            expiry_month=None,
+            expiry_year=None,
+        )
+        incoming = self._method(
+            db_session,
+            nickname="Incoming",
+            kind="manual",
+            last4=None,
+            expiry_month=None,
+            expiry_year=None,
+        )
+        visible = self._method(
+            db_session,
+            nickname="Visible",
+            kind="manual",
+            last4=None,
+            expiry_month=None,
+            expiry_year=None,
+        )
+        current.is_archived = True
+        sample_bills[0].payment_method_id = current.id
+        sample_bills[1].payment_method_id = outgoing.id
+        db_session.commit()
+        start(db_session, outgoing.id, new_id=incoming.id)
+        db_session.commit()
+        edit = authed_client.get(f"/bills/{sample_bills[0].id}/edit")
+        assert "Current" in edit.text
+        assert "Visible" in edit.text
+        assert "Outgoing" not in edit.text
+
+        filtered = authed_client.get("/bills?payment_method=none")
+        assert "No payment method: 0" in filtered.text
+        assert ">Rent<" not in filtered.text
+        all_page = authed_client.get("/bills")
+        assert "No payment method: 0" in all_page.text
+
+        set_method = authed_client.put(
+            f"/api/bills/{sample_bills[0].id}",
+            json={"payment_method_id": visible.id},
+        )
+        assert set_method.status_code == 200
+        assert set_method.json()["payment_method_id"] == visible.id
+        cleared = authed_client.put(
+            f"/api/bills/{sample_bills[0].id}",
+            json={"payment_method_id": None},
+        )
+        assert cleared.status_code == 200
+        assert cleared.json()["payment_method_id"] is None

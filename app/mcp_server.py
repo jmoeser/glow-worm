@@ -1,6 +1,6 @@
 """MCP server exposing budget tool operations via FastMCP.
 
-Tools are scoped to transactions and recurring bills CRUD only.
+Tools cover transactions, recurring bills, and payment methods.
 Authentication is handled at the HTTP middleware layer (Bearer token).
 """
 
@@ -16,14 +16,28 @@ from pydantic.json_schema import PydanticJsonSchemaWarning
 from app.config import TIMEZONE
 from app.database import SessionLocal
 from app.middleware import get_current_user_context
-from app.models import Category, RecurringBill, Transaction
+from app.models import Category, PaymentMethod, RecurringBill, Transaction
 from app.schemas import (
+    PaymentMethodCreate,
+    PaymentMethodResponse,
+    PaymentMethodUpdate,
     RecurringBillCreate,
     RecurringBillResponse,
     RecurringBillUpdate,
     TransactionCreate,
     TransactionResponse,
     TransactionUpdate,
+    public_validation_errors,
+)
+from app.services.payment_methods import (
+    PaymentMethodError,
+    apply_payment_method,
+    archive_method,
+    assign_payment_method,
+    merge_payment_method,
+    prepare_payment_method,
+    replacement_payload,
+    unarchive_method,
 )
 from app.services.transaction_balances import (
     apply_transaction_balance_effects,
@@ -48,9 +62,10 @@ mcp = FastMCP(
     name="glow-worm",
     instructions=(
         "Glow-worm is a household budgeting app. Use these tools to manage "
-        "transactions and recurring bills. Transactions track individual income "
-        "and expense events. Recurring bills track repeating charges like rent, "
-        "utilities, and subscriptions."
+        "transactions, recurring bills, and payment methods. Transactions track "
+        "individual income and expense events. Recurring bills track repeating "
+        "charges like rent, utilities, and subscriptions. Payment methods record "
+        "which card or account pays a bill. Only the last 4 digits are stored."
     ),
 )
 
@@ -454,6 +469,7 @@ def create_bill(
     next_due_date: str,
     end_date: str | None = None,
     is_active: bool = True,
+    payment_method_id: int | None = None,
 ) -> dict | str:
     """Create a new recurring bill.
 
@@ -467,6 +483,7 @@ def create_bill(
         next_due_date: Next payment date in YYYY-MM-DD format.
         end_date: Optional end date in YYYY-MM-DD format.
         is_active: Whether the bill is active. Defaults to True.
+        payment_method_id: Optional payment method id. Null leaves it unset.
 
     Returns:
         The created bill object, or an error message.
@@ -482,6 +499,7 @@ def create_bill(
             next_due_date=next_due_date,
             end_date=end_date,
             is_active=is_active,
+            payment_method_id=payment_method_id,
         )
     except (ValidationError, ValueError, TypeError) as exc:
         return f"Validation error: {exc}"
@@ -504,6 +522,9 @@ def create_bill(
             is_active=data.is_active,
         )
         db.add(bill)
+        db.flush()
+        if data.payment_method_id is not None:
+            assign_payment_method(db, bill, data.payment_method_id)
         db.commit()
         db.refresh(bill)
 
@@ -514,6 +535,9 @@ def create_bill(
             bill.name,
         )
         return RecurringBillResponse.model_validate(bill).model_dump(mode="json")
+    except PaymentMethodError as exc:
+        db.rollback()
+        return exc.message
     except Exception:
         logger.exception("MCP [user=%s]: error creating bill", _audit_username())
         db.rollback()
@@ -532,6 +556,7 @@ def update_bill(
     end_date: str | None = None,
     is_active: bool | None = None,
     next_due_date: str | None = None,
+    payment_method_id: int | None = _OMIT,  # pyrefly: ignore[bad-function-definition]
 ) -> dict | str:
     """Update an existing recurring bill.
 
@@ -546,6 +571,7 @@ def update_bill(
         end_date: New end date in YYYY-MM-DD format.
         is_active: New active status.
         next_due_date: New next due date in YYYY-MM-DD format.
+        payment_method_id: New payment method id. Null clears the link.
 
     Returns:
         The updated bill object, or an error message.
@@ -565,6 +591,8 @@ def update_bill(
         update_data["is_active"] = is_active
     if next_due_date is not None:
         update_data["next_due_date"] = next_due_date
+    if payment_method_id is not _OMIT:
+        update_data["payment_method_id"] = payment_method_id
 
     try:
         data = RecurringBillUpdate(**update_data)
@@ -577,7 +605,12 @@ def update_bill(
         if not bill:
             return f"Bill {bill_id} not found."
 
-        for field, value in data.model_dump(exclude_unset=True).items():
+        updates = data.model_dump(exclude_unset=True)
+        payment_set = "payment_method_id" in updates
+        payment_id = updates.pop("payment_method_id", None)
+        if payment_set:
+            assign_payment_method(db, bill, payment_id)
+        for field, value in updates.items():
             if field == "frequency" and value is not None:
                 setattr(bill, field, value.value if hasattr(value, "value") else value)
             else:
@@ -588,6 +621,9 @@ def update_bill(
 
         logger.info("MCP [user=%s]: updated bill id=%d", _audit_username(), bill.id)
         return RecurringBillResponse.model_validate(bill).model_dump(mode="json")
+    except PaymentMethodError as exc:
+        db.rollback()
+        return exc.message
     except Exception:
         logger.exception(
             "MCP [user=%s]: error updating bill id=%d", _audit_username(), bill_id
@@ -628,5 +664,289 @@ def delete_bill(bill_id: int) -> str:
         )
         db.rollback()
         return "Internal error deactivating bill."
+    finally:
+        db.close()
+
+
+def _payment_validation(exc: ValidationError) -> dict:
+    """Same shape as the bills API. The submitted value is not included."""
+    return {"detail": public_validation_errors(exc)}
+
+
+# ---------------------------------------------------------------------------
+# Payment method tools
+# ---------------------------------------------------------------------------
+
+
+@mcp.tool()
+def list_payment_methods(include_archived: bool = False) -> list[dict]:
+    """List payment methods.
+
+    Args:
+        include_archived: Include archived methods. Defaults to False.
+
+    Returns:
+        Payment method objects. Full card numbers are never stored.
+    """
+    db = SessionLocal()
+    try:
+        query = db.query(PaymentMethod)
+        if not include_archived:
+            query = query.filter(PaymentMethod.is_archived == False)
+        methods = query.order_by(PaymentMethod.owner, PaymentMethod.nickname).all()
+        return [
+            PaymentMethodResponse.model_validate(method).model_dump(mode="json")
+            for method in methods
+        ]
+    finally:
+        db.close()
+
+
+@mcp.tool()
+def get_payment_method(payment_method_id: int) -> dict | str:
+    """Get one payment method, including open replacement progress.
+
+    Args:
+        payment_method_id: The payment method id.
+
+    Returns:
+        The payment method. ``replacement`` is null when none is open.
+    """
+    db = SessionLocal()
+    try:
+        method = db.get(PaymentMethod, payment_method_id)
+        if method is None:
+            return f"Payment method {payment_method_id} not found."
+        data = PaymentMethodResponse.model_validate(method).model_dump(mode="json")
+        data["replacement"] = replacement_payload(db, method)
+        db.commit()
+        return data
+    finally:
+        db.close()
+
+
+@mcp.tool()
+def create_payment_method(
+    nickname: str,
+    kind: str,
+    owner: str,
+    last4: str | None = None,
+    expiry_month: int | None = None,
+    expiry_year: int | None = None,
+) -> dict | str:
+    """Add a payment method. Store only the last 4 digits of a card or account.
+
+    Args:
+        nickname: Short name, such as Everyday Visa.
+        kind: ``card``, ``bank``, or ``manual``.
+        owner: Who the method belongs to.
+        last4: Last 4 digits. Required for a card. Not used for manual.
+        expiry_month: 1–12. Cards only.
+        expiry_year: Four-digit year from 2000 to 2100. Cards only.
+
+    Returns:
+        The created payment method, or an error that does not repeat the input.
+    """
+    try:
+        parsed = PaymentMethodCreate(
+            nickname=nickname,
+            kind=kind,
+            owner=owner,
+            last4=last4,
+            expiry_month=expiry_month,
+            expiry_year=expiry_year,
+        )
+        values = prepare_payment_method(
+            {
+                "nickname": parsed.nickname,
+                "kind": parsed.kind.value,
+                "last4": parsed.last4,
+                "expiry_month": parsed.expiry_month,
+                "expiry_year": parsed.expiry_year,
+                "owner": parsed.owner,
+            },
+            explicit_last4=last4 is not None and last4 != "",
+            explicit_expiry=expiry_month is not None or expiry_year is not None,
+        )
+    except ValidationError as exc:
+        return _payment_validation(exc)
+    except PaymentMethodError as exc:
+        return exc.message
+
+    db = SessionLocal()
+    try:
+        method = PaymentMethod(**values)
+        db.add(method)
+        db.commit()
+        db.refresh(method)
+        logger.info(
+            "MCP [user=%s]: created payment method id=%d",
+            _audit_username(),
+            method.id,
+        )
+        return PaymentMethodResponse.model_validate(method).model_dump(mode="json")
+    except Exception:
+        logger.exception(
+            "MCP [user=%s]: error creating payment method", _audit_username()
+        )
+        db.rollback()
+        return "Internal error creating payment method."
+    finally:
+        db.close()
+
+
+# _OMIT is not JSON-serializable, so the tool schema omits that default.
+# Silence the resulting pydantic warning; null still clears the link.
+warnings.filterwarnings(
+    "ignore",
+    category=PydanticJsonSchemaWarning,
+    message=r"Default value .* is not JSON serializable",
+)
+
+
+@mcp.tool()
+def update_payment_method(
+    payment_method_id: int,
+    nickname: str | None = None,
+    kind: str | None = None,
+    last4: str | None = _OMIT,  # pyrefly: ignore[bad-function-definition]
+    expiry_month: int | None = _OMIT,  # pyrefly: ignore[bad-function-definition]
+    expiry_year: int | None = _OMIT,  # pyrefly: ignore[bad-function-definition]
+    owner: str | None = None,
+) -> dict | str:
+    """Update a payment method. Omitted fields stay as they are.
+
+    Pass null for last4, expiry_month, or expiry_year to clear that value
+    when the type allows it. A card still needs last 4 digits and an expiry.
+
+    Args:
+        payment_method_id: The payment method to update.
+        nickname: New nickname.
+        kind: ``card``, ``bank``, or ``manual``.
+        last4: New last 4 digits. Null clears it when the type allows that.
+        expiry_month: New expiry month. Null clears it when the type allows that.
+        expiry_year: New four-digit expiry year.
+        owner: New owner.
+
+    Returns:
+        The updated payment method, or an error that does not repeat the input.
+    """
+    patch: dict[str, Any] = {}
+    if nickname is not None:
+        patch["nickname"] = nickname
+    if kind is not None:
+        patch["kind"] = kind
+    if owner is not None:
+        patch["owner"] = owner
+    if last4 is not _OMIT:
+        patch["last4"] = last4
+    if expiry_month is not _OMIT:
+        patch["expiry_month"] = expiry_month
+    if expiry_year is not _OMIT:
+        patch["expiry_year"] = expiry_year
+    explicit_last4 = last4 is not _OMIT and last4 is not None
+    explicit_expiry = (expiry_month is not _OMIT and expiry_month is not None) or (
+        expiry_year is not _OMIT and expiry_year is not None
+    )
+
+    db = SessionLocal()
+    try:
+        method = db.get(PaymentMethod, payment_method_id)
+        if method is None:
+            return f"Payment method {payment_method_id} not found."
+        try:
+            parsed = PaymentMethodUpdate(**patch)
+        except ValidationError as exc:
+            return _payment_validation(exc)
+        merged_patch: dict[str, Any] = {}
+        if "nickname" in parsed.model_fields_set:
+            merged_patch["nickname"] = parsed.nickname
+        if "kind" in parsed.model_fields_set and parsed.kind is not None:
+            merged_patch["kind"] = parsed.kind.value
+        if "owner" in parsed.model_fields_set:
+            merged_patch["owner"] = parsed.owner
+        if "last4" in parsed.model_fields_set:
+            merged_patch["last4"] = parsed.last4
+        if "expiry_month" in parsed.model_fields_set:
+            merged_patch["expiry_month"] = parsed.expiry_month
+        if "expiry_year" in parsed.model_fields_set:
+            merged_patch["expiry_year"] = parsed.expiry_year
+        try:
+            values = prepare_payment_method(
+                merge_payment_method(method, merged_patch),
+                explicit_last4=explicit_last4,
+                explicit_expiry=explicit_expiry,
+            )
+        except ValidationError as exc:
+            return _payment_validation(exc)
+        except PaymentMethodError as exc:
+            return exc.message
+        apply_payment_method(method, values)
+        db.commit()
+        db.refresh(method)
+        logger.info(
+            "MCP [user=%s]: updated payment method id=%d",
+            _audit_username(),
+            method.id,
+        )
+        return PaymentMethodResponse.model_validate(method).model_dump(mode="json")
+    except Exception:
+        logger.exception(
+            "MCP [user=%s]: error updating payment method id=%d",
+            _audit_username(),
+            payment_method_id,
+        )
+        db.rollback()
+        return "Internal error updating payment method."
+    finally:
+        db.close()
+
+
+@mcp.tool()
+def archive_payment_method(
+    payment_method_id: int, unarchive: bool = False
+) -> dict | str:
+    """Archive a payment method, or unarchive it when unarchive is true.
+
+    Archiving is refused while an active bill still uses it, or while a
+    replacement is open. There is no delete tool.
+
+    Args:
+        payment_method_id: The payment method id.
+        unarchive: Set true to make an archived method active again.
+
+    Returns:
+        The payment method, or a one-line error.
+    """
+    db = SessionLocal()
+    try:
+        method = db.get(PaymentMethod, payment_method_id)
+        if method is None:
+            return f"Payment method {payment_method_id} not found."
+        try:
+            if unarchive:
+                unarchive_method(method)
+            else:
+                archive_method(db, method)
+        except PaymentMethodError as exc:
+            db.rollback()
+            return exc.message
+        db.commit()
+        db.refresh(method)
+        logger.info(
+            "MCP [user=%s]: %s payment method id=%d",
+            _audit_username(),
+            "unarchived" if unarchive else "archived",
+            method.id,
+        )
+        return PaymentMethodResponse.model_validate(method).model_dump(mode="json")
+    except Exception:
+        logger.exception(
+            "MCP [user=%s]: error archiving payment method id=%d",
+            _audit_username(),
+            payment_method_id,
+        )
+        db.rollback()
+        return "Internal error updating payment method."
     finally:
         db.close()

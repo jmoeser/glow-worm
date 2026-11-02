@@ -19,6 +19,7 @@ from app.routes.categories import router as categories_router
 from app.routes.dashboard import router as dashboard_router
 from app.routes.income import router as income_router
 from app.routes.monthly_cost import router as monthly_cost_router
+from app.routes.payment_methods import router as payment_methods_router
 from app.routes.shares import router as shares_router
 from app.routes.sinking_funds import router as sinking_funds_router
 from app.routes.spending_history import router as spending_history_router
@@ -127,6 +128,7 @@ app.mount("/static", StaticFiles(directory="app/static"), name="static")
 app.include_router(auth_router)
 app.include_router(dashboard_router)
 app.include_router(bills_router)
+app.include_router(payment_methods_router)
 app.include_router(budgets_router)
 app.include_router(categories_router)
 app.include_router(income_router)

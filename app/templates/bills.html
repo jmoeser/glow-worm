@@ -1,69 +1,55 @@
+{% macro bill_display_cells(bill) %}
+<td data-sort-value="{{ bill.name }}">{{ bill.name }}</td>
+<td class="gw-text-muted" data-sort-value="{{ bill.debtor_provider }}">{{ bill.debtor_provider }}</td>
+<td data-sort-value="{{ paid_with[bill.id].sort }}">
+    {% if paid_with[bill.id].label == "Not set" %}
+    <span class="gw-text-dim">Not set</span>
+    {% else %}
+    {{ paid_with[bill.id].label }}
+    {% if paid_with[bill.id].badge %}
+    <span class="gw-badge gw-badge--pending">{{ paid_with[bill.id].badge }}</span>
+    {% endif %}
+    {% endif %}
+</td>
+<td class="text-right" data-sort-value="{{ bill.amount }}">
+    ${{ bill.amount|money }}
+    {% if bill.foreign_amount and bill.foreign_currency %}
+    <br><span class="gw-foreign-amount">{{ "%.2f"|format(bill.foreign_amount) }} {{ bill.foreign_currency }}</span>
+    {% endif %}
+</td>
+<td class="gw-text-muted" data-sort-value="{{ frequency_labels.get(bill.frequency, bill.frequency) }}">{{ frequency_labels.get(bill.frequency, bill.frequency) }}</td>
+<td>
+    {% if bill.bill_type == "variable" %}
+    <span class="gw-badge-variable">Variable</span>
+    {% else %}
+    <span class="gw-text-muted">Fixed</span>
+    {% endif %}
+</td>
+<td class="gw-text-muted" data-sort-value="{{ bill.next_due_date }}">{{ bill.next_due_date }}</td>
+<td>
+    {% if bill.bill_type == "variable" %}
+    <button hx-get="/bills/{{ bill.id }}/pay" hx-target="#bill-row-{{ bill.id }}" hx-swap="outerHTML"
+            class="gw-action-pay">Pay</button>
+    {% endif %}
+    <button hx-get="/bills/{{ bill.id }}/edit" hx-target="#bill-row-{{ bill.id }}" hx-swap="outerHTML"
+            class="gw-action-edit">Edit</button>
+    <button hx-delete="/bills/{{ bill.id }}" hx-target="#bill-row-{{ bill.id }}" hx-swap="delete"
+            hx-confirm="Deactivate this bill?"
+            class="gw-action-delete">Delete</button>
+</td>
+{% endmacro %}
 {% if fragment == "table_body" %}
 {# --- Partial: full table body rows --- #}
 {% for bill in bills %}
 <tr id="bill-row-{{ bill.id }}">
-    <td data-sort-value="{{ bill.name }}">{{ bill.name }}</td>
-    <td class="gw-text-muted" data-sort-value="{{ bill.debtor_provider }}">{{ bill.debtor_provider }}</td>
-    <td class="text-right" data-sort-value="{{ bill.amount }}">
-        ${{ bill.amount|money }}
-        {% if bill.foreign_amount and bill.foreign_currency %}
-        <br><span class="gw-foreign-amount">{{ "%.2f"|format(bill.foreign_amount) }} {{ bill.foreign_currency }}</span>
-        {% endif %}
-    </td>
-    <td class="gw-text-muted" data-sort-value="{{ frequency_labels.get(bill.frequency, bill.frequency) }}">{{ frequency_labels.get(bill.frequency, bill.frequency) }}</td>
-    <td>
-        {% if bill.bill_type == "variable" %}
-        <span class="gw-badge-variable">Variable</span>
-        {% else %}
-        <span class="gw-text-muted">Fixed</span>
-        {% endif %}
-    </td>
-    <td class="gw-text-muted" data-sort-value="{{ bill.next_due_date }}">{{ bill.next_due_date }}</td>
-    <td>
-        {% if bill.bill_type == "variable" %}
-        <button hx-get="/bills/{{ bill.id }}/pay" hx-target="#bill-row-{{ bill.id }}" hx-swap="outerHTML"
-                class="gw-action-pay">Pay</button>
-        {% endif %}
-        <button hx-get="/bills/{{ bill.id }}/edit" hx-target="#bill-row-{{ bill.id }}" hx-swap="outerHTML"
-                class="gw-action-edit">Edit</button>
-        <button hx-delete="/bills/{{ bill.id }}" hx-target="#bill-row-{{ bill.id }}" hx-swap="delete"
-                hx-confirm="Deactivate this bill?"
-                class="gw-action-delete">Delete</button>
-    </td>
+    {{ bill_display_cells(bill) }}
 </tr>
 {% endfor %}
 
 {% elif fragment == "bill_row" %}
 {# --- Partial: single display row --- #}
 <tr id="bill-row-{{ bill.id }}">
-    <td data-sort-value="{{ bill.name }}">{{ bill.name }}</td>
-    <td class="gw-text-muted" data-sort-value="{{ bill.debtor_provider }}">{{ bill.debtor_provider }}</td>
-    <td class="text-right" data-sort-value="{{ bill.amount }}">
-        ${{ bill.amount|money }}
-        {% if bill.foreign_amount and bill.foreign_currency %}
-        <br><span class="gw-foreign-amount">{{ "%.2f"|format(bill.foreign_amount) }} {{ bill.foreign_currency }}</span>
-        {% endif %}
-    </td>
-    <td class="gw-text-muted" data-sort-value="{{ frequency_labels.get(bill.frequency, bill.frequency) }}">{{ frequency_labels.get(bill.frequency, bill.frequency) }}</td>
-    <td>
-        {% if bill.bill_type == "variable" %}
-        <span class="gw-badge-variable">Variable</span>
-        {% else %}
-        <span class="gw-text-muted">Fixed</span>
-        {% endif %}
-    </td>
-    <td class="gw-text-muted" data-sort-value="{{ bill.next_due_date }}">{{ bill.next_due_date }}</td>
-    <td>
-        {% if bill.bill_type == "variable" %}
-        <button hx-get="/bills/{{ bill.id }}/pay" hx-target="#bill-row-{{ bill.id }}" hx-swap="outerHTML"
-                class="gw-action-pay">Pay</button>
-        {% endif %}
-        <button hx-get="/bills/{{ bill.id }}/edit" hx-target="#bill-row-{{ bill.id }}" hx-swap="outerHTML"
-                class="gw-action-edit">Edit</button>
-        <button hx-delete="/bills/{{ bill.id }}" hx-target="#bill-row-{{ bill.id }}" hx-swap="delete"
-                hx-confirm="Deactivate this bill?"
-                class="gw-action-delete">Delete</button>
-    </td>
+    {{ bill_display_cells(bill) }}
 </tr>
 
 {% elif fragment == "edit_row" %}
@@ -76,6 +62,16 @@
     <td>
         <input type="text" name="debtor_provider" value="{{ bill.debtor_provider }}" form="edit-form-{{ bill.id }}"
                class="gw-edit-input">
+    </td>
+    <td>
+        <select name="payment_method_id" form="edit-form-{{ bill.id }}" class="gw-edit-input">
+            <option value="" {{ 'selected' if not bill.payment_method_id }}>Not set</option>
+            {% for method in payment_methods %}
+            <option value="{{ method.id }}" {{ 'selected' if bill.payment_method_id == method.id }}>
+                {{ method.owner }} — {{ method.nickname }}{% if method.last4 %} ending {{ method.last4 }}{% endif %}
+            </option>
+            {% endfor %}
+        </select>
     </td>
     <td>
         <input type="number" name="amount" value="{{ "%.2f"|format(bill.amount) }}" step="0.01" min="0.01"
@@ -123,6 +119,7 @@
 <tr class="gw-edit-row" id="bill-row-{{ bill.id }}">
     <td>{{ bill.name }}</td>
     <td class="gw-text-muted">{{ bill.debtor_provider }}</td>
+    <td></td>
     <td>
         <input type="number" name="amount" value="{{ "%.2f"|format(bill.amount) }}" step="0.01" min="0.01"
                form="pay-form-{{ bill.id }}"
@@ -259,6 +256,12 @@
             <span class="gw-summary-label">Annual cost:</span>
             <span class="gw-summary-value" id="bills-annual-cost">${{ total_annual|money }}</span>
         </div>
+        <div class="gw-summary-item">
+            <a href="/bills?payment_method=none">No payment method: {{ unset_count }}</a>
+            {% if payment_filter %}
+            <a href="/bills" class="gw-text-muted">Show all</a>
+            {% endif %}
+        </div>
     </div>
 
     <!-- Bills table -->
@@ -269,6 +272,7 @@
                     <tr>
                         <th class="gw-sortable" onclick="sortBills('name')">Name <span class="gw-sort-indicator" id="sort-indicator-name"></span></th>
                         <th class="gw-sortable" onclick="sortBills('provider')">Provider <span class="gw-sort-indicator" id="sort-indicator-provider"></span></th>
+                        <th class="gw-sortable" onclick="sortBills('paid_with')">Paid with <span class="gw-sort-indicator" id="sort-indicator-paid_with"></span></th>
                         <th class="text-right gw-sortable" onclick="sortBills('amount')">Amount <span class="gw-sort-indicator" id="sort-indicator-amount"></span></th>
                         <th class="gw-sortable" onclick="sortBills('frequency')">Frequency <span class="gw-sort-indicator" id="sort-indicator-frequency"></span></th>
                         <th>Type</th>
@@ -279,34 +283,7 @@
                 <tbody id="bills-table-body">
                     {% for bill in bills %}
                     <tr id="bill-row-{{ bill.id }}">
-                        <td data-sort-value="{{ bill.name }}">{{ bill.name }}</td>
-                        <td class="gw-text-muted" data-sort-value="{{ bill.debtor_provider }}">{{ bill.debtor_provider }}</td>
-                        <td class="text-right" data-sort-value="{{ bill.amount }}">
-                            ${{ bill.amount|money }}
-                            {% if bill.foreign_amount and bill.foreign_currency %}
-                            <br><span class="gw-foreign-amount">{{ "%.2f"|format(bill.foreign_amount) }} {{ bill.foreign_currency }}</span>
-                            {% endif %}
-                        </td>
-                        <td class="gw-text-muted" data-sort-value="{{ frequency_labels.get(bill.frequency, bill.frequency) }}">{{ frequency_labels.get(bill.frequency, bill.frequency) }}</td>
-                        <td>
-                            {% if bill.bill_type == "variable" %}
-                            <span class="gw-badge-variable">Variable</span>
-                            {% else %}
-                            <span class="gw-text-muted">Fixed</span>
-                            {% endif %}
-                        </td>
-                        <td class="gw-text-muted" data-sort-value="{{ bill.next_due_date }}">{{ bill.next_due_date }}</td>
-                        <td>
-                            {% if bill.bill_type == "variable" %}
-                            <button hx-get="/bills/{{ bill.id }}/pay" hx-target="#bill-row-{{ bill.id }}" hx-swap="outerHTML"
-                                    class="gw-action-pay">Pay</button>
-                            {% endif %}
-                            <button hx-get="/bills/{{ bill.id }}/edit" hx-target="#bill-row-{{ bill.id }}" hx-swap="outerHTML"
-                                    class="gw-action-edit">Edit</button>
-                            <button hx-delete="/bills/{{ bill.id }}" hx-target="#bill-row-{{ bill.id }}" hx-swap="delete"
-                                    hx-confirm="Deactivate this bill?"
-                                    class="gw-action-delete">Delete</button>
-                        </td>
+                        {{ bill_display_cells(bill) }}
                     </tr>
                     {% endfor %}
                 </tbody>
@@ -318,7 +295,7 @@
 (function() {
     var currentSort = { key: null, dir: 'asc' };
 
-    var colMap = { name: 0, provider: 1, amount: 2, frequency: 3, next_due_date: 5 };
+    var colMap = { name: 0, provider: 1, paid_with: 2, amount: 3, frequency: 4, next_due_date: 6 };
 
     window.sortBills = function(key) {
         var tbody = document.getElementById('bills-table-body');

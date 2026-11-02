@@ -1,8 +1,10 @@
+import re
 from datetime import datetime
 from decimal import Decimal
 from enum import Enum
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
+from pydantic_core import PydanticCustomError
 
 # --- Enums ---
 
@@ -39,6 +41,63 @@ class BillsAllocationMethod(str, Enum):
 class BillType(str, Enum):
     fixed = "fixed"
     variable = "variable"
+
+
+class PaymentMethodKind(str, Enum):
+    card = "card"
+    bank = "bank"
+    manual = "manual"
+
+
+class ReplacementStatus(str, Enum):
+    open = "open"
+    finished = "finished"
+    stopped = "stopped"
+
+
+_BETWEEN_DIGITS = re.compile(r"(?<=\d)[ \-.]+(?=\d)")
+_LONG_DIGIT_RUN = re.compile(r"\d{6,}")
+
+
+def reject_account_number(value: str) -> str:
+    """Reject a string that hides a card or account number behind separators."""
+    collapsed = _BETWEEN_DIGITS.sub("", value)
+    if _LONG_DIGIT_RUN.search(collapsed):
+        raise PydanticCustomError(
+            "account_number",
+            "Don't put card or account numbers here.",
+        )
+    return value
+
+
+def public_validation_errors(exc: ValidationError) -> list[dict[str, object]]:
+    """Bills-API error shape: loc, msg, and type only. Never the input value."""
+    return [
+        {"loc": list(err["loc"]), "msg": err["msg"], "type": err["type"]}
+        for err in exc.errors()
+    ]
+
+
+def _required_text(value: object) -> str:
+    if not isinstance(value, str):
+        raise PydanticCustomError("string_type", "Field required")
+    text = value.strip()
+    if text == "":
+        raise PydanticCustomError("missing", "Field required")
+    return reject_account_number(text)
+
+
+def _optional_last4(value: object) -> str | None:
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        raise PydanticCustomError("last4", "Enter only the last 4 digits.")
+    text = value.strip()
+    if text == "":
+        return None
+    if re.fullmatch(r"\d{4}", text) is None:
+        raise PydanticCustomError("last4", "Enter only the last 4 digits.")
+    return text
 
 
 class ShareTradeType(str, Enum):
@@ -264,6 +323,7 @@ class RecurringBillCreate(BaseModel):
     bill_type: BillType = BillType.fixed
     foreign_amount: Decimal | None = Field(None, gt=Decimal(0))
     foreign_currency: str | None = Field(None, min_length=3, max_length=3)
+    payment_method_id: int | None = None
 
 
 class RecurringBillUpdate(BaseModel):
@@ -277,6 +337,7 @@ class RecurringBillUpdate(BaseModel):
     bill_type: BillType | None = None
     foreign_amount: Decimal | None = Field(None, gt=Decimal(0))
     foreign_currency: str | None = Field(None, min_length=3, max_length=3)
+    payment_method_id: int | None = None
 
 
 class RecurringBillResponse(BaseModel):
@@ -295,6 +356,7 @@ class RecurringBillResponse(BaseModel):
     next_due_date: str
     foreign_amount: Decimal | None = None
     foreign_currency: str | None = None
+    payment_method_id: int | None = None
     created_at: datetime
     updated_at: datetime
 
@@ -302,6 +364,98 @@ class RecurringBillResponse(BaseModel):
 class RecurringBillPay(BaseModel):
     amount: Decimal = Field(..., gt=Decimal(0))
     date: str = Field(..., pattern=r"^\d{4}-\d{2}-\d{2}$")
+
+
+class PaymentMethodCreate(BaseModel):
+    nickname: str = Field(..., max_length=60)
+    kind: PaymentMethodKind
+    last4: str | None = None
+    expiry_month: int | None = Field(None, ge=1, le=12)
+    expiry_year: int | None = Field(None, ge=2000, le=2100)
+    owner: str = Field(..., max_length=60)
+
+    @field_validator("nickname", "owner", mode="before")
+    @classmethod
+    def _clean_required(cls, value: object) -> str:
+        return _required_text(value)
+
+    @field_validator("last4", mode="before")
+    @classmethod
+    def _clean_last4(cls, value: object) -> str | None:
+        return _optional_last4(value)
+
+
+class PaymentMethodUpdate(BaseModel):
+    nickname: str | None = Field(None, max_length=60)
+    kind: PaymentMethodKind | None = None
+    last4: str | None = None
+    expiry_month: int | None = Field(None, ge=1, le=12)
+    expiry_year: int | None = Field(None, ge=2000, le=2100)
+    owner: str | None = Field(None, max_length=60)
+
+    @field_validator("nickname", "owner", mode="before")
+    @classmethod
+    def _clean_optional(cls, value: object) -> str | None:
+        if value is None:
+            return None
+        return _required_text(value)
+
+    @field_validator("last4", mode="before")
+    @classmethod
+    def _clean_last4(cls, value: object) -> str | None:
+        return _optional_last4(value)
+
+
+class PaymentMethodResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    nickname: str
+    kind: PaymentMethodKind
+    last4: str | None = None
+    expiry_month: int | None = None
+    expiry_year: int | None = None
+    owner: str
+    is_archived: bool
+    created_at: datetime
+    updated_at: datetime
+
+
+class ReplacementItemResponse(BaseModel):
+    bill_id: int
+    name: str
+    done: bool
+    due_soon: bool
+    updated_on: str | None = None
+    note: str | None = None
+
+
+class ReplacementProgressResponse(BaseModel):
+    old_id: int
+    new_id: int
+    other_id: int
+    other_label: str
+    started_at: datetime
+    done: int
+    counted: int
+    items: list[ReplacementItemResponse]
+
+
+class ReplacementNoteInput(BaseModel):
+    note: str | None = Field(None, max_length=200)
+    updated_on: str | None = Field(None, pattern=r"^\d{4}-\d{2}-\d{2}$")
+
+    @field_validator("note", mode="before")
+    @classmethod
+    def _note(cls, value: object) -> str | None:
+        if value is None:
+            return None
+        if not isinstance(value, str):
+            raise PydanticCustomError("string_type", "Enter a note.")
+        text = value.strip()
+        if text == "":
+            return None
+        return reject_account_number(text)
 
 
 # --- Income Allocation Schemas ---

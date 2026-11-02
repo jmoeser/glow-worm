@@ -1,6 +1,7 @@
 import json
 from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
+from typing import Any
 
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import HTMLResponse, JSONResponse
@@ -16,6 +17,12 @@ from app.schemas import (
     RecurringBillPay,
     RecurringBillResponse,
     RecurringBillUpdate,
+)
+from app.services.payment_methods import (
+    PaymentMethodError,
+    assign_payment_method,
+    paid_with_for,
+    payment_method_choices,
 )
 from app.tasks import advance_due_date
 from app.templating import templates
@@ -60,7 +67,7 @@ def _compute_annual_cost(amount, frequency: str) -> Decimal:
     return Decimal(str(amount)) * Decimal(str(multiplier))
 
 
-def _bill_context(db: Session):
+def _bill_context(db: Session) -> dict[str, Any]:
     bills = _active_bills(db)
     categories = _expense_categories(db)
     total_annual = sum(
@@ -79,7 +86,21 @@ def _bill_context(db: Session):
         "total_annual": total_annual.quantize(Decimal("0.01")),
         "total_monthly": total_monthly,
         "bills_fund_id": bills_fund.id if bills_fund else None,
+        "paid_with": paid_with_for(db, bills),
+        "unset_count": sum(1 for bill in bills if bill.payment_method_id is None),
     }
+
+
+def _filter_bills(bills: list[RecurringBill], payment_method: str | None):
+    if not payment_method:
+        return bills
+    if payment_method == "none":
+        return [bill for bill in bills if bill.payment_method_id is None]
+    try:
+        method_id = int(payment_method)
+    except ValueError:
+        return bills
+    return [bill for bill in bills if bill.payment_method_id == method_id]
 
 
 def _render_table_body(request: Request, db: Session, ctx: dict | None = None) -> str:
@@ -93,7 +114,7 @@ def _render_table_body(request: Request, db: Session, ctx: dict | None = None) -
     ).decode()
 
 
-def _render_bill_row(request: Request, bill: RecurringBill) -> str:
+def _render_bill_row(request: Request, db: Session, bill: RecurringBill) -> str:
     return bytes(
         templates.TemplateResponse(
             request,
@@ -101,13 +122,16 @@ def _render_bill_row(request: Request, bill: RecurringBill) -> str:
             {
                 "bill": bill,
                 "frequency_labels": FREQUENCY_LABELS,
+                "paid_with": paid_with_for(db, [bill]),
                 "fragment": "bill_row",
             },
         ).body
     ).decode()
 
 
-def _render_edit_row(request: Request, bill: RecurringBill, categories) -> str:
+def _render_edit_row(
+    request: Request, db: Session, bill: RecurringBill, categories
+) -> str:
     return bytes(
         templates.TemplateResponse(
             request,
@@ -116,6 +140,7 @@ def _render_edit_row(request: Request, bill: RecurringBill, categories) -> str:
                 "bill": bill,
                 "categories": categories,
                 "frequency_labels": FREQUENCY_LABELS,
+                "payment_methods": payment_method_choices(db, bill.payment_method_id),
                 "fragment": "edit_row",
             },
         ).body
@@ -178,9 +203,15 @@ def _record_bill_payment(
 
 
 @router.get("/bills", response_class=HTMLResponse)
-async def bills_page(request: Request, db: Session = Depends(get_db)):
+async def bills_page(
+    request: Request,
+    payment_method: str | None = None,
+    db: Session = Depends(get_db),
+):
     user = get_current_user(request)
     ctx = _bill_context(db)
+    ctx["payment_filter"] = payment_method
+    ctx["bills"] = _filter_bills(ctx["bills"], payment_method)
     return templates.TemplateResponse(
         request,
         "bills.html",
@@ -282,7 +313,7 @@ async def bills_get_row(request: Request, bill_id: int, db: Session = Depends(ge
     bill = db.query(RecurringBill).filter(RecurringBill.id == bill_id).first()
     if not bill:
         return HTMLResponse("Not found", status_code=404)
-    return HTMLResponse(_render_bill_row(request, bill))
+    return HTMLResponse(_render_bill_row(request, db, bill))
 
 
 @router.get("/bills/{bill_id}/edit", response_class=HTMLResponse)
@@ -293,7 +324,7 @@ async def bills_edit_form(
     if not bill:
         return HTMLResponse("Not found", status_code=404)
     categories = _expense_categories(db)
-    return HTMLResponse(_render_edit_row(request, bill, categories))
+    return HTMLResponse(_render_edit_row(request, db, bill, categories))
 
 
 @router.get("/bills/{bill_id}/pay", response_class=HTMLResponse)
@@ -333,7 +364,7 @@ async def bills_pay(request: Request, bill_id: int, db: Session = Depends(get_db
     except ValueError as exc:
         return HTMLResponse(f'<p class="text-red-600 text-sm">{exc}</p>')
 
-    return HTMLResponse(_render_bill_row(request, bill))
+    return HTMLResponse(_render_bill_row(request, db, bill))
 
 
 @router.post("/bills/{bill_id}", response_class=HTMLResponse)
@@ -392,10 +423,29 @@ async def bills_update(request: Request, bill_id: int, db: Session = Depends(get
             bill.foreign_amount = None
         bill.foreign_currency = foreign_currency_raw if bill.foreign_amount else None
 
+    if "payment_method_id" in form:
+        raw = str(form.get("payment_method_id") or "").strip()
+        try:
+            new_id = int(raw) if raw else None
+        except ValueError:
+            db.rollback()
+            return HTMLResponse(
+                '<p class="text-red-600 text-sm">Payment method not found or archived.</p>',
+                status_code=422,
+            )
+        try:
+            assign_payment_method(db, bill, new_id)
+        except PaymentMethodError as exc:
+            db.rollback()
+            return HTMLResponse(
+                f'<p class="text-red-600 text-sm">{exc.message}</p>',
+                status_code=exc.status,
+            )
+
     db.commit()
     db.refresh(bill)
 
-    return HTMLResponse(_render_bill_row(request, bill))
+    return HTMLResponse(_render_bill_row(request, db, bill))
 
 
 @router.delete("/bills/{bill_id}", response_class=HTMLResponse)
@@ -450,6 +500,13 @@ async def api_create_bill(request: Request, db: Session = Depends(get_db)):
         foreign_currency=data.foreign_currency,
     )
     db.add(bill)
+    db.flush()
+    if data.payment_method_id is not None:
+        try:
+            assign_payment_method(db, bill, data.payment_method_id)
+        except PaymentMethodError as exc:
+            db.rollback()
+            return JSONResponse({"detail": exc.message}, status_code=exc.status)
     db.commit()
     db.refresh(bill)
 
@@ -486,7 +543,17 @@ async def api_update_bill(
             return JSONResponse({"detail": errors}, status_code=422)
         return JSONResponse({"detail": str(exc)}, status_code=422)
 
-    for field, value in data.model_dump(exclude_unset=True).items():
+    updates = data.model_dump(exclude_unset=True)
+    payment_method_set = "payment_method_id" in updates
+    payment_method_id = updates.pop("payment_method_id", None)
+    if payment_method_set:
+        try:
+            assign_payment_method(db, bill, payment_method_id)
+        except PaymentMethodError as exc:
+            db.rollback()
+            return JSONResponse({"detail": exc.message}, status_code=exc.status)
+
+    for field, value in updates.items():
         if field in ("frequency", "bill_type") and value is not None:
             setattr(bill, field, value.value if hasattr(value, "value") else value)
         else:
