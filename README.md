@@ -112,6 +112,13 @@ To create your user account inside the container:
 docker exec -it <container-id> python scripts/create_user.py
 ```
 
+To repair stored budget spent inside the container, dry-run first (prints the gaps, writes nothing), then apply. A second apply changes nothing:
+
+```bash
+docker exec -it <container-id> python scripts/reconcile_budget_spent.py
+docker exec -it <container-id> python scripts/reconcile_budget_spent.py --apply
+```
+
 ## Configuration
 
 All configuration is via environment variables (see `.env.example`):
@@ -346,7 +353,7 @@ glow-worm/
 │       ├── client.py      # httpx wrapper with Bearer auth
 │       └── commands/      # Subcommand modules (bills, tx, funds, budgets, …)
 ├── alembic/               # Database migrations
-├── scripts/               # Utility scripts (create_user, seed_data)
+├── scripts/               # Utility scripts (create_user, seed_data, reconcile_budget_spent)
 ├── tests/                 # Test suite (includes test_cli.py)
 ├── aqua.yaml              # aqua pins (uv CLI, pinact)
 ├── prek.toml              # prek git hook config
