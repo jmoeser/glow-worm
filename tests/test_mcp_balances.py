@@ -431,7 +431,7 @@ class TestMcpBudgetFundBalance:
         assert fund_balance == Decimal("0.00")
         assert spent == Decimal("40.00")
 
-    def test_other_types_do_not_change_budget_figures(
+    def test_budget_expense_moves_spent_not_fund_balance(
         self, db_session, setup_database, sample_category, sample_sinking_funds
     ):
         fund = sample_sinking_funds[0]
@@ -451,14 +451,14 @@ class TestMcpBudgetFundBalance:
         assert _fund_balance(db_session, fund.id) == Decimal("450.00")
         fund_balance, spent = _budget_figures(db_session, budget.id)
         assert fund_balance == Decimal("0.00")
-        assert spent == Decimal("40.00")
+        assert spent == Decimal("90.00")
 
         updated = _update_transaction(transaction_id=created["id"], amount=20)
         assert isinstance(updated, dict)
         assert _fund_balance(db_session, fund.id) == Decimal("480.00")
         fund_balance, spent = _budget_figures(db_session, budget.id)
         assert fund_balance == Decimal("0.00")
-        assert spent == Decimal("40.00")
+        assert spent == Decimal("60.00")
 
 
 class TestRouteMcpBalanceParity:
