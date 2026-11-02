@@ -145,3 +145,31 @@ def bills_cover_horizon_months() -> int:
         )
         return clamped
     return value
+
+
+def payment_method_expiry_warn_days() -> int:
+    """Days ahead a card expiry counts as "expires soon".
+
+    Reads ``PAYMENT_METHOD_EXPIRY_WARN_DAYS`` on each call. Blank or
+    non-integer values use 60. Integers outside 1–365 are clamped.
+    """
+    default = 60
+    raw = os.getenv("PAYMENT_METHOD_EXPIRY_WARN_DAYS")
+    if raw is None or raw.strip() == "":
+        return default
+    try:
+        value = int(raw.strip())
+    except ValueError:
+        logger.warning(
+            "Invalid PAYMENT_METHOD_EXPIRY_WARN_DAYS=%r; using %s", raw, default
+        )
+        return default
+    if value < 1 or value > 365:
+        clamped = min(365, max(1, value))
+        logger.warning(
+            "PAYMENT_METHOD_EXPIRY_WARN_DAYS=%s is outside 1-365; using %s",
+            value,
+            clamped,
+        )
+        return clamped
+    return value

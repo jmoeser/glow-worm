@@ -11,6 +11,18 @@
 </div>
 {% endif %}
 
+{% if payment_alerts.show_banner %}
+<div id="payment-methods-banner" class="{% if payment_alerts.warning %}gw-warning-banner{% else %}gw-card{% endif %} gw-section">
+    <p><strong>{{ payment_alerts.headline }}</strong></p>
+    {% for line in payment_alerts.lines %}
+    <p>{{ line.text }} <a href="{{ line.href }}">{{ line.link_label }}</a></p>
+    {% endfor %}
+    {% if payment_alerts.extra %}
+    <p>and {{ payment_alerts.extra }} more</p>
+    {% endif %}
+</div>
+{% endif %}
+
 <!-- Total Net Worth -->
 <div class="gw-card gw-section gw-animate-in" style="text-align: center; padding: 24px;">
     <p class="gw-stat-label">Total Net Worth</p>

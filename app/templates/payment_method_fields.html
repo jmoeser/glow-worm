@@ -1,0 +1,38 @@
+<div>
+    <label class="gw-label" for="pm-nickname">Nickname</label>
+    <input type="text" id="pm-nickname" name="nickname" required maxlength="60"
+           class="gw-input" placeholder="e.g. Everyday Visa"
+           value="{{ value_nickname|default('') }}" autocomplete="off">
+</div>
+<div>
+    <label class="gw-label" for="pm-kind">Type</label>
+    <select id="pm-kind" name="kind" class="gw-select" required>
+        {% for value, label in kind_labels.items() %}
+        <option value="{{ value }}" {% if value_kind|default('card') == value %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+    </select>
+</div>
+<div>
+    <label class="gw-label" for="pm-last4">Last 4 digits</label>
+    <input type="text" id="pm-last4" name="last4" inputmode="numeric" maxlength="4"
+           class="gw-input" autocomplete="off" value="{{ value_last4|default('') }}"
+           {% if value_kind|default('card') == 'manual' %}disabled{% endif %}>
+    <p class="gw-text-muted" style="font-size: 0.75rem; margin-top: 4px;">Only the last 4 digits. Never the full number.</p>
+</div>
+<div>
+    <label class="gw-label" for="pm-expiry">Expires</label>
+    <input type="month" id="pm-expiry" name="expiry" class="gw-input"
+           value="{{ value_expiry|default('') }}"
+           {% if value_kind|default('card') != 'card' %}disabled{% endif %}>
+</div>
+<div>
+    <label class="gw-label" for="pm-owner">Owner</label>
+    <input type="text" id="pm-owner" name="owner" required maxlength="60"
+           class="gw-input" list="owner-options" autocomplete="off"
+           value="{{ value_owner|default('') }}">
+    <datalist id="owner-options">
+        {% for owner in owners %}
+        <option value="{{ owner }}"></option>
+        {% endfor %}
+    </datalist>
+</div>

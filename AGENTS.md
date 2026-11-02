@@ -33,7 +33,7 @@ The app manages four distinct, separated money systems, plus an informational sh
 1. **Income Allocation**: Automated distribution on the 1st of the month based on `IncomeAllocation` config.
 2. **Monthly Budget**: Repeating monthly categories (Groceries, etc.). Funded via income; tracks `spent_amount` vs `allocated_amount`.
 3. **Sinking Funds**: Savings pots (Bills, Savings, etc.) with `current_balance`.
-4. **Recurring Bills**: Managed within the "Bills" Sinking Fund.
+4. **Recurring Bills**: Managed within the "Bills" Sinking Fund. Each bill can name the payment method that pays it (card, bank account, or BPAY / pay myself). Only the last 4 digits are stored.
 5. **Shares** (informational): US share trades, FIFO cost base, and daily prices. Stored on `share_trades`, `share_prices`, `fx_rates`, and `market_data_runs`. Not linked to `Transaction`, budgets, or sinking funds.
 
 ## Code Style & Standards
@@ -77,6 +77,7 @@ Middleware execution order (outermost to innermost): CORS (optional) → Session
     - **Net negative** (overspend): creates a `withdrawal`/`expense` transaction from the overflow fund and decrements its balance (can go negative, reflecting reality).
     - **Net zero**: no transaction created.
     - The net surplus formula per budget row: `allocated_amount - spent_amount + fund_balance`. All rows are summed (including negatives) before deciding whether to contribute or withdraw.
+- **Payment methods**: `app/services/payment_methods.py`. Table `payment_methods` (nickname, kind `card`/`bank`/`manual`, last 4, card expiry, owner, archived). `RecurringBill.payment_method_id` is optional. A card is valid through the last day of its expiry month. `PAYMENT_METHOD_EXPIRY_WARN_DAYS` (default 60, clamp 1–365) is read on each call. The dashboard banner (`id="payment-methods-banner"`, under Bills cover, any month) has one line per in-use method that is an expired or expiring card, the old side of an open replacement, or archived while a bill still uses it. Replacing a method is a saved `payment_method_replacements` job (`open`/`finished`/`stopped`) with one item per in-use bill. Ticking moves that bill immediately. Finish asks, then archives the old method only when no active bill is still on it. Stop leaves bills where they are. Nothing finishes on its own. Bills due within 7 days that are still on the old method are flagged. Web, JSON, and MCP share the service. MCP cannot delete a method or write a replacement. Nicknames, owners, and notes reject a run of 6+ digits after spaces, hyphens, and dots between digits are removed. Errors do not repeat the value.
 - **Budget Overdraft Warning**: `GET /dashboard/budget-overdraft-warning?budget_id=X&amount=Y&transaction_type=...` returns an HTMX HTML fragment. Returns empty for non-`budget_expense` types, valid inputs within budget, or missing params. Used by both the Quick Expense form (dashboard) and Add Budget Transaction form (transactions page) via `hx-trigger="change"`.
 
 ## Git hooks (prek)
@@ -117,7 +118,7 @@ Hosted [Mend Renovate](https://github.com/apps/renovate); config is `renovate.js
 
 ## MCP Server
 - Full MCP server implemented with **FastMCP 3.x**, mounted at `/mcp` via SSE transport. `mcp_app.lifespan` is combined with the app lifespan via `combine_lifespans` (required in v3).
-- **10 tools** exposed: CRUD for transactions (`list_transactions`, `get_transaction`, `create_transaction`, `update_transaction`, `delete_transaction`) and recurring bills (`list_bills`, `get_bill`, `create_bill`, `update_bill`, `delete_bill`).
+- **15 tools** exposed: CRUD for transactions (`list_transactions`, `get_transaction`, `create_transaction`, `update_transaction`, `delete_transaction`), recurring bills (`list_bills`, `get_bill`, `create_bill`, `update_bill`, `delete_bill`), and payment methods (`list_payment_methods`, `get_payment_method`, `create_payment_method`, `update_payment_method`, `archive_payment_method`). No payment-method delete tool and no replacement writes. `update_bill` and `update_payment_method` use `_OMIT` so null clears a link.
 - `create_transaction`, `update_transaction`, and `delete_transaction` call `app/services/transaction_balances.py`, same as the transaction routes. Passing null for `sinking_fund_id` or `budget_id` on update clears that link; omitting the argument leaves it unchanged.
 - Uses `contextvars.ContextVar` to propagate the authenticated user from middleware to MCP tool handlers.
 - Authenticated via Bearer token (API keys), CSRF-exempt.
@@ -129,4 +130,4 @@ After any feature addition or significant change, update:
 
 ## API Routes
 - Keep `/api/` prefix for JSON-returning routes.
-- 38 API endpoints across: `/api/keys`, `/api/bills`, `/api/users`, `/api/dashboard`, `/api/budgets`, `/api/categories`, `/api/transactions`, `/api/sinking-funds`, `/api/income`, `/api/monthly-cost`, `/api/shares`.
+- 49 API endpoints across: `/api/keys`, `/api/bills`, `/api/users`, `/api/dashboard`, `/api/budgets`, `/api/categories`, `/api/transactions`, `/api/sinking-funds`, `/api/income`, `/api/monthly-cost`, `/api/shares`, `/api/payment-methods`.

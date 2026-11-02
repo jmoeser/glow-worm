@@ -8,11 +8,12 @@ An opinionated, single-tenant household budgeting app built with Python and Fast
 - **Monthly Budgets** -- Track spending against allocated amounts for repeating categories (Groceries, Eating Out, etc.) with color-coded progress bars. Any unspent surplus is automatically swept into your overflow sinking fund at month-end; net overspend is automatically withdrawn from it so your fund balances always reflect reality. Advisory **budget suggestions** compare each category's allocation to its average spend over the last few completed months (shown on the budgets page and as a dashboard teaser).
 - **Sinking Funds** -- Savings pots (Bills, Savings, Emergency, etc.) that accumulate a balance over time via monthly contributions. A fund's detail page shows how long that balance lasts at the recent rate, or how long a negative balance takes to get back to zero. The Bills fund points to its forecast instead.
 - **Shares** -- Record US share buys and sells (CMC Markets style: USD price, optional fee, broker FX as AUD/USD or USD/AUD). FIFO realised gains are shown in AUD, with unrealised gains in AUD and USD and a portfolio total. A value-over-time chart plots market value and cost base in AUD from stored daily closes and FX rates. Daily closes come from Alpha Vantage; the AUD/USD rate comes from Frankfurter, with Alpha Vantage FX as a fallback. Informational only — share trades are not household budget transactions.
-- **Recurring Bills** -- Manage bills with flexible frequencies (monthly, quarterly, yearly, every 28 days). Fixed bills due today are recorded as paid expenses from the Bills fund and the next due date advances. Variable bills are paid manually.
+- **Recurring Bills** -- Manage bills with flexible frequencies (monthly, quarterly, yearly, every 28 days). Fixed bills due today are recorded as paid expenses from the Bills fund and the next due date advances. Variable bills are paid manually. Each bill can record which payment method pays it.
+- **Payment methods** -- Record the card, bank account, or BPAY / pay myself entry that pays each bill. Only the last 4 digits are stored. When a card is close to expiry, or you are moving bills to a new card, the dashboard lists what still needs updating. The checklist can be left and picked up later.
 - **Recurring Transfers** -- Define fixed monthly outflows (e.g. an allowance, an external savings transfer) that are processed automatically as part of income allocation and deducted from the unallocated remainder.
 - **Category Management** -- Create and manage transaction categories (income, expense, transfer). System categories required for income allocation are protected from deletion.
 - **Transaction Ledger** -- Full transaction history with filters by date, category, and fund. Supports dual-linkage so a single transaction can reference both a sinking fund and a recurring bill.
-- **Dashboard** -- At-a-glance view of your budget status, upcoming bills, fund balances, and unallocated income. When the Bills fund may run short of upcoming bills over the next few months (default 3, `BILLS_COVER_HORIZON_MONTHS`), a banner says how much is due, what the fund has, and whether reaching the Bills secondary-income goal would cover the gap. The Quick Expense form warns you in real time if a transaction would overdraw a budget category and tells you which fund will cover the shortfall at month-end. Surfaces a budget-suggestions teaser when allocations look off vs recent averages.
+- **Dashboard** -- At-a-glance view of your budget status, upcoming bills, fund balances, and unallocated income. When the Bills fund may run short of upcoming bills over the next few months (default 3, `BILLS_COVER_HORIZON_MONTHS`), a banner says how much is due, what the fund has, and whether reaching the Bills secondary-income goal would cover the gap. A second banner lists cards that expire soon and payment-method replacements still in progress. The Quick Expense form warns you in real time if a transaction would overdraw a budget category and tells you which fund will cover the shortfall at month-end. Surfaces a budget-suggestions teaser when allocations look off vs recent averages.
 - **MCP Server** -- Built-in [Model Context Protocol](https://modelcontextprotocol.io/) server so AI agents can manage your transactions and bills programmatically.
 - **API Keys** -- Generate Bearer tokens for API and MCP access, managed from the web UI.
 - **CLI (`glow`)** -- A `pipx`-installable command-line tool for managing transactions, bills, budgets, and sinking funds from the terminal.
@@ -123,6 +124,7 @@ All configuration is via environment variables (see `.env.example`):
 | `ALLOWED_ORIGINS` | Comma-separated CORS origins (leave empty to disable) | -- |
 | `TIMEZONE` | Timezone for date calculations and scheduling | `Australia/Brisbane` |
 | `BILLS_COVER_HORIZON_MONTHS` | How many calendar months ahead the dashboard Bills cover check looks (clamped to 1–12) | `3` |
+| `PAYMENT_METHOD_EXPIRY_WARN_DAYS` | How many days ahead a card expiry is shown on the dashboard (clamped to 1–365) | `60` |
 | `ALPHA_VANTAGE_API_KEY` | Alpha Vantage key for US share prices (and FX fallback). Leave empty to record trades without live prices | -- |
 | `SHARES_UPDATE_TIME` | Weekday clock time for the daily price and FX job (`HH:MM`) | `18:00` |
 | `SHARES_UPDATE_TIMEZONE` | Timezone for that job | `America/New_York` |
@@ -135,7 +137,7 @@ All configuration is via environment variables (see `.env.example`):
 
 ## MCP Server
 
-Glow-worm exposes an [MCP](https://modelcontextprotocol.io/) server at `/mcp` using SSE transport. This allows LLMs and AI agents to manage transactions and recurring bills programmatically.
+Glow-worm exposes an [MCP](https://modelcontextprotocol.io/) server at `/mcp` using SSE transport. This allows LLMs and AI agents to manage transactions, recurring bills, and payment methods programmatically.
 
 ### Available Tools
 
@@ -151,6 +153,11 @@ Glow-worm exposes an [MCP](https://modelcontextprotocol.io/) server at `/mcp` us
 | `create_bill` | Create a new recurring bill |
 | `update_bill` | Update fields on an existing bill |
 | `delete_bill` | Deactivate a recurring bill (soft delete) |
+| `list_payment_methods` | List payment methods (optionally include archived) |
+| `get_payment_method` | Get one payment method, including an open replacement's progress |
+| `create_payment_method` | Add a card, bank account, or BPAY / pay myself entry |
+| `update_payment_method` | Edit a payment method. Null clears last 4 or expiry when the type allows it |
+| `archive_payment_method` | Archive a payment method, or unarchive it |
 
 Creating, updating, or deleting a transaction through these tools updates the linked sinking-fund balance, and a budget's fund balance for budget transfers, using the same rules as the transactions page and `/api/transactions`.
 
@@ -330,7 +337,7 @@ glow-worm/
 │   ├── mcp_server.py      # MCP tool definitions
 │   ├── templating.py      # Jinja2 template helpers
 │   ├── routes/            # Route modules (auth, dashboard, bills, etc.)
-│   ├── services/          # Domain logic (transaction balances, budget recommendations, shares, market data)
+│   ├── services/          # Domain logic (transaction balances, budget recommendations, payment methods, shares, market data)
 │   ├── templates/         # Jinja2 HTML templates
 │   ├── static/            # CSS, logo, static assets
 │   └── cli/               # glow CLI (pipx-installable)

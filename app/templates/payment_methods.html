@@ -1,0 +1,284 @@
+{% extends "base.html" %}
+{% block title %}Payment methods — Glow Worm{% endblock %}
+{% block content %}
+<style>
+.pm-badge { margin-left: 6px; }
+.pm-actions form { display: inline; }
+.pm-actions { white-space: nowrap; }
+</style>
+
+{% if page == "list" %}
+<div style="max-width: 1100px;">
+    <div style="display: flex; align-items: center; justify-content: space-between;">
+        <h2 class="gw-page-header" style="margin-bottom: 0;">Payment methods</h2>
+        {% if show_archived %}
+        <a href="/payment-methods">Hide archived</a>
+        {% else %}
+        <a href="/payment-methods?archived=1">Show archived</a>
+        {% endif %}
+    </div>
+
+    {% if flash %}
+    <p class="gw-msg-success" id="payment-method-flash">{{ flash }}</p>
+    {% endif %}
+    {% if error %}
+    <p class="gw-msg-error" id="payment-method-error">{{ error }}</p>
+    {% endif %}
+
+    {% if boxes %}
+    <div class="gw-card gw-section" id="replacements-in-progress">
+        {% for box in boxes %}
+        <p>
+            Replacing <strong>{{ box.old_label }}</strong> with <strong>{{ box.new_label }}</strong>:
+            {{ box.phrase }}. Started {{ box.started }}.
+            <a href="{{ box.href }}">Continue</a>
+        </p>
+        {% endfor %}
+    </div>
+    {% endif %}
+
+    <div class="gw-card gw-section" id="add-payment-method">
+        <h3 style="font-family: var(--font-display); font-size: 1.05rem; margin-bottom: 12px;">Add payment method</h3>
+        <form hx-post="/payment-methods" class="gw-grid-2" autocomplete="off" id="payment-method-form">
+            {% include "payment_method_fields.html" %}
+            <div style="grid-column: 1 / -1;">
+                <button type="submit" class="gw-btn gw-btn-primary">Add payment method</button>
+            </div>
+        </form>
+    </div>
+
+    <div class="gw-table-wrap">
+        <div class="gw-overflow-x">
+            <table id="payment-methods-table">
+                <thead>
+                    <tr>
+                        <th>Name</th>
+                        <th>Owner</th>
+                        <th>Type</th>
+                        <th>Expires</th>
+                        <th>Used by</th>
+                        <th>Status</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for row in rows %}
+                    <tr id="pm-row-{{ row.method.id }}">
+                        <td>{{ row.label }}</td>
+                        <td>{{ row.method.owner }}</td>
+                        <td>{{ row.kind_label }}</td>
+                        <td>{{ row.expires }}</td>
+                        <td>
+                            {% if row.used_label != "0 bills" %}
+                            <a href="/bills?payment_method={{ row.method.id }}">{{ row.used_label }}</a>
+                            {% else %}
+                            {{ row.used_label }}
+                            {% endif %}
+                        </td>
+                        <td><span class="gw-badge {% if row.status in ['Expired', 'Expires soon', 'Being replaced', 'Archived'] %}gw-badge--pending{% else %}gw-badge--paid{% endif %}">{{ row.status }}</span></td>
+                        <td class="pm-actions">
+                            <a class="gw-btn gw-btn-ghost gw-btn-sm" href="/payment-methods/{{ row.method.id }}/edit">Edit</a>
+                            {% if row.replace_href %}
+                            <a class="gw-btn gw-btn-ghost gw-btn-sm" href="{{ row.replace_href }}">{{ row.replace_label }}</a>
+                            {% endif %}
+                            {% if row.method.is_archived %}
+                            <form hx-post="/payment-methods/{{ row.method.id }}/unarchive">
+                                <button type="submit" class="gw-btn gw-btn-ghost gw-btn-sm">Unarchive</button>
+                            </form>
+                            {% elif row.archive_ok %}
+                            <form hx-post="/payment-methods/{{ row.method.id }}/archive">
+                                <button type="submit" class="gw-btn gw-btn-ghost gw-btn-sm">Archive</button>
+                            </form>
+                            {% endif %}
+                            {% if row.delete_ok %}
+                            <form hx-post="/payment-methods/{{ row.method.id }}/delete" hx-confirm="Delete this payment method?">
+                                <button type="submit" class="gw-action-delete">Delete</button>
+                            </form>
+                            {% endif %}
+                            {% for reason in row.blocked %}
+                            <div class="gw-text-dim" style="font-size: 0.8rem;">{{ reason }}</div>
+                            {% endfor %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+{% elif page == "edit" %}
+<div style="max-width: 720px;">
+    <h2 class="gw-page-header">Edit {{ method.nickname }}</h2>
+    {% if error %}
+    <p class="gw-msg-error" id="payment-method-error">{{ error }}</p>
+    {% endif %}
+    <form hx-post="/payment-methods/{{ method.id }}" class="gw-grid-2" autocomplete="off" id="payment-method-form">
+        {% set value_nickname = method.nickname %}
+        {% set value_owner = method.owner %}
+        {% set value_kind = method.kind %}
+        {% set value_last4 = method.last4 or "" %}
+        {% set value_expiry = month_value %}
+        {% include "payment_method_fields.html" %}
+        <div style="grid-column: 1 / -1;">
+            <button type="submit" class="gw-btn gw-btn-primary">Save</button>
+            <a href="/payment-methods" class="gw-btn gw-btn-ghost">Cancel</a>
+        </div>
+    </form>
+</div>
+
+{% elif page == "start" %}
+<div style="max-width: 720px;">
+    <h2 class="gw-page-header">Replace {{ old_label }}</h2>
+    <p>Add the new card or account, or pick one you already have.</p>
+    {% if error %}
+    <p class="gw-msg-error" id="payment-method-error">{{ error }}</p>
+    {% endif %}
+    <form hx-post="/payment-methods/{{ old.id }}/replace" autocomplete="off" id="replace-start-form">
+        <div class="gw-section">
+            <label class="gw-label" for="existing-id">Use an existing one</label>
+            <select id="existing-id" name="existing_id" class="gw-select">
+                <option value="">Add a new one instead</option>
+                {% for choice in choices %}
+                <option value="{{ choice.id }}">{{ choice.owner }} — {{ choice.nickname }}{% if choice.last4 %} ending {{ choice.last4 }}{% endif %}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="gw-card gw-section gw-grid-2" id="add-payment-method">
+            {% set value_nickname = old.nickname %}
+            {% set value_owner = old.owner %}
+            {% set value_kind = old.kind %}
+            {% set value_last4 = "" %}
+            {% set value_expiry = "" %}
+            {% include "payment_method_fields.html" %}
+        </div>
+        <button type="submit" class="gw-btn gw-btn-primary">Start replacing</button>
+        <a href="/payment-methods" class="gw-btn gw-btn-ghost">Cancel</a>
+    </form>
+</div>
+
+{% elif page == "replace" %}
+<div style="max-width: 1100px;" id="replacement-checklist">
+    <h2 class="gw-page-header">Moving bills to {{ new_label }}</h2>
+    <p>Tick each bill once you've updated it with the provider. {{ prog.phrase }}.</p>
+    {% if expired_warning %}
+    <div class="gw-warning-banner gw-section">
+        <p>{{ old_label }} expired at the {{ expired_when }}. Bills still on it may fail.</p>
+    </div>
+    {% endif %}
+    {% if error %}
+    <p class="gw-msg-error">{{ error }}</p>
+    {% endif %}
+    <div class="gw-table-wrap gw-section">
+        <div class="gw-overflow-x">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Moved</th>
+                        <th>Bill</th>
+                        <th>Provider</th>
+                        <th class="text-right">Amount</th>
+                        <th>Next due</th>
+                        <th></th>
+                        <th>Updated on</th>
+                        <th>Note</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for item in prog.items %}
+                    <tr id="replace-row-{{ item.bill_id }}">
+                        <td>
+                            {% if item.done %}
+                            <form hx-post="/payment-methods/{{ old.id }}/replace/untick">
+                                <input type="hidden" name="bill_id" value="{{ item.bill_id }}">
+                                <button type="submit" class="gw-btn gw-btn-ghost gw-btn-sm">Undo</button>
+                            </form>
+                            {% else %}
+                            <form hx-post="/payment-methods/{{ old.id }}/replace/tick">
+                                <input type="hidden" name="bill_id" value="{{ item.bill_id }}">
+                                <button type="submit" class="gw-btn gw-btn-ghost gw-btn-sm">Tick</button>
+                            </form>
+                            {% endif %}
+                        </td>
+                        <td>{{ item.name }}</td>
+                        <td class="gw-text-muted">{{ item.provider }}</td>
+                        <td class="text-right">${{ item.amount|money }}</td>
+                        <td>{{ item.next_due_date }}</td>
+                        <td>{% if item.due_text() %}<span class="gw-text-warning">{{ item.due_text() }}</span>{% endif %}</td>
+                        <td>
+                            <input type="date" name="updated_on" value="{{ item.updated_on or '' }}" class="gw-edit-input" form="note-form-{{ item.bill_id }}">
+                            {% if item.done and not item.updated_on %}
+                            <span class="gw-text-muted">Moved</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            <form hx-post="/payment-methods/{{ old.id }}/replace/note" id="note-form-{{ item.bill_id }}">
+                                <input type="hidden" name="bill_id" value="{{ item.bill_id }}">
+                                <input type="text" name="note" value="{{ item.note or '' }}" maxlength="200" placeholder="Add note" class="gw-edit-input" autocomplete="off">
+                                <button type="submit" class="gw-btn gw-btn-ghost gw-btn-sm">Save</button>
+                            </form>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    {% if prog.not_counted_names %}
+    <p class="gw-text-dim">Not counted (turned off or moved elsewhere): {{ prog.not_counted_names|join(', ') }}.</p>
+    {% endif %}
+    <div style="margin-top: 16px;">
+        {% if prog.can_finish %}
+        <a class="gw-btn gw-btn-primary" href="/payment-methods/{{ old.id }}/replace/finish">Finish</a>
+        {% endif %}
+        <a class="gw-btn gw-btn-ghost" href="/payment-methods/{{ old.id }}/replace/stop">Stop replacing</a>
+        <a class="gw-btn gw-btn-ghost" href="/payment-methods">Back</a>
+    </div>
+</div>
+
+{% elif page == "finish" %}
+<div style="max-width: 640px;">
+    <h2 class="gw-page-header">Finish replacing {{ old_label }}</h2>
+    {% if error %}
+    <p class="gw-msg-error">{{ error }}</p>
+    {% endif %}
+    <p>Archive {{ old_label }}? You can unarchive it later.</p>
+    <form hx-post="/payment-methods/{{ old.id }}/replace/finish">
+        <button type="submit" class="gw-btn gw-btn-primary">Archive and finish</button>
+        <a href="/payment-methods/{{ old.id }}/replace" class="gw-btn gw-btn-ghost">Back</a>
+    </form>
+</div>
+
+{% elif page == "stop" %}
+<div style="max-width: 640px;">
+    <h2 class="gw-page-header">Stop replacing {{ old_label }}</h2>
+    <p>Bills you've moved stay on the new one. The rest stay on the old one.</p>
+    <p>If the new card is wrong, stop, then replace that new card with the right one and replace this card again for the bills still on it.</p>
+    <form hx-post="/payment-methods/{{ old.id }}/replace/stop">
+        <button type="submit" class="gw-btn gw-btn-primary">Stop replacing</button>
+        <a href="/payment-methods/{{ old.id }}/replace" class="gw-btn gw-btn-ghost">Back</a>
+    </form>
+</div>
+{% endif %}
+
+<script>
+function syncPaymentKind(kind) {
+    var last4 = document.getElementById("pm-last4");
+    var expiry = document.getElementById("pm-expiry");
+    if (!last4 || !expiry) return;
+    var manual = kind === "manual";
+    var card = kind === "card";
+    last4.disabled = manual;
+    expiry.disabled = !card;
+    if (manual) last4.value = "";
+    if (!card) expiry.value = "";
+}
+document.addEventListener("DOMContentLoaded", function () {
+    var kind = document.getElementById("pm-kind");
+    if (kind) {
+        syncPaymentKind(kind.value);
+        kind.addEventListener("change", function () { syncPaymentKind(kind.value); });
+    }
+});
+</script>
+{% endblock %}

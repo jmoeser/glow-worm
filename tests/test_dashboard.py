@@ -417,3 +417,75 @@ class TestBudgetOverdraftWarning:
         resp = authed_client.get("/dashboard/budget-overdraft-warning")
         assert resp.status_code == 200
         assert resp.text == ""
+
+
+class TestPaymentMethodBanner:
+    def test_banner_absent_without_a_problem(self, authed_client):
+        response = authed_client.get("/")
+        assert 'id="payment-methods-banner"' not in response.text
+
+    def test_expired_card_shows_on_any_month(
+        self, authed_client, db_session, sample_category
+    ):
+        from app.models import PaymentMethod, RecurringBill
+
+        method = PaymentMethod(
+            nickname="Everyday Visa",
+            kind="card",
+            last4="4321",
+            expiry_month=10,
+            expiry_year=2026,
+            owner="Jordan",
+        )
+        db_session.add(method)
+        db_session.flush()
+        db_session.add(
+            RecurringBill(
+                name="Netflix",
+                amount=15,
+                debtor_provider="Netflix",
+                start_date="2026-01-01",
+                frequency="monthly",
+                category_id=sample_category.id,
+                next_due_date="2026-11-05",
+                payment_method_id=method.id,
+            )
+        )
+        db_session.commit()
+        current = authed_client.get("/")
+        assert 'id="payment-methods-banner"' in current.text
+        assert "expired at the end of October 2026" in current.text
+        assert "gw-warning-banner" in current.text
+        past = authed_client.get("/?month=1&year=2020")
+        assert 'id="payment-methods-banner"' in past.text
+        assert "October 2026" in past.text
+
+    def test_continue_link_for_open_replacement(
+        self, authed_client, db_session, sample_category
+    ):
+        from app.models import PaymentMethod, RecurringBill
+        from app.services.payment_methods import start
+
+        old = PaymentMethod(nickname="Joint account", kind="bank", owner="Jordan")
+        new = PaymentMethod(nickname="Offset account", kind="bank", owner="Jordan")
+        db_session.add_all([old, new])
+        db_session.flush()
+        db_session.add(
+            RecurringBill(
+                name="Rent",
+                amount=100,
+                debtor_provider="Landlord",
+                start_date="2026-01-01",
+                frequency="monthly",
+                category_id=sample_category.id,
+                next_due_date="2027-06-01",
+                payment_method_id=old.id,
+            )
+        )
+        db_session.commit()
+        start(db_session, old.id, new_id=new.id)
+        db_session.commit()
+        page = authed_client.get("/?month=1&year=2020")
+        assert "Continue" in page.text
+        assert f"/payment-methods/{old.id}/replace" in page.text
+        assert "bill moved" in page.text

@@ -9,16 +9,24 @@ import os
 
 os.environ["DATABASE_URL"] = "sqlite:///./test-glow-worm.db"
 
+import asyncio
+
 from app.mcp_server import (
+    archive_payment_method,
     create_bill,
+    create_payment_method,
     create_transaction,
     delete_bill,
     delete_transaction,
     get_bill,
+    get_payment_method,
     get_transaction,
     list_bills,
+    list_payment_methods,
     list_transactions,
+    mcp,
     update_bill,
+    update_payment_method,
     update_transaction,
 )
 
@@ -284,3 +292,88 @@ class TestMcpMount:
         # or return 401 — but NOT 404 which would mean it's not mounted
         resp = client.get("/mcp/sse")
         assert resp.status_code != 404
+
+
+class TestPaymentMethodTools:
+    def test_tool_list_and_instructions(self):
+        names = [tool.name for tool in asyncio.run(mcp.list_tools())]
+        assert "list_payment_methods" in names
+        assert "get_payment_method" in names
+        assert "create_payment_method" in names
+        assert "update_payment_method" in names
+        assert "archive_payment_method" in names
+        assert "delete_payment_method" not in names
+        assert "payment methods" in mcp.instructions
+
+    def test_validation_archive_progress_and_bill_link(
+        self, db_session, setup_database, sample_category
+    ):
+        from app.models import PaymentMethod, RecurringBill
+
+        rejected = create_payment_method(
+            nickname="4111 1111 1111 1111",
+            kind="card",
+            owner="Jordan",
+            last4="4321",
+            expiry_month=12,
+            expiry_year=2027,
+        )
+        assert "4111 1111 1111 1111" not in str(rejected)
+        assert "Don't put card or account numbers here." in str(rejected)
+
+        created = create_payment_method(
+            nickname="Everyday Visa",
+            kind="card",
+            owner="Jordan",
+            last4="4321",
+            expiry_month=12,
+            expiry_year=2027,
+        )
+        assert isinstance(created, dict)
+        assert created["last4"] == "4321"
+        listed = list_payment_methods()
+        assert listed[0]["nickname"] == "Everyday Visa"
+
+        updated = update_payment_method(created["id"], nickname="Household Visa")
+        assert isinstance(updated, dict)
+        assert updated["last4"] == "4321"
+        assert updated["nickname"] == "Household Visa"
+
+        bill = RecurringBill(
+            name="Netflix",
+            amount=15,
+            debtor_provider="Netflix",
+            start_date="2026-01-01",
+            frequency="monthly",
+            category_id=sample_category.id,
+            next_due_date="2026-11-05",
+            payment_method_id=created["id"],
+        )
+        db_session.add(bill)
+        db_session.commit()
+        blocked = archive_payment_method(created["id"])
+        assert isinstance(blocked, str)
+        assert "Move these bills first" in blocked
+
+        other = PaymentMethod(nickname="New", kind="manual", owner="Jordan")
+        db_session.add(other)
+        db_session.commit()
+        from app.services.payment_methods import start
+
+        start(db_session, created["id"], new_id=other.id)
+        db_session.commit()
+        fetched = get_payment_method(created["id"])
+        assert isinstance(fetched, dict)
+        assert fetched["replacement"]["counted"] == 1
+        assert fetched["replacement"]["items"][0]["name"] == "Netflix"
+
+        moved = update_bill(bill.id, payment_method_id=other.id)
+        assert isinstance(moved, dict)
+        assert moved["payment_method_id"] == other.id
+        cleared = update_bill(bill.id, payment_method_id=None)
+        assert isinstance(cleared, dict)
+        assert cleared["payment_method_id"] is None
+        omitted = update_bill(bill.id, name="Netflix Plus")
+        assert isinstance(omitted, dict)
+        assert omitted["payment_method_id"] is None
+        assert omitted["name"] == "Netflix Plus"

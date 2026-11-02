@@ -20,6 +20,7 @@ from app.models import (
 from app.schemas import DashboardSummary, SinkingFundResponse, TransactionResponse
 from app.services.bills_cover import compute_bills_cover
 from app.services.budget_recommendations import recommendation_summary
+from app.services.payment_methods import compute_payment_alerts
 from app.tasks import _compute_bills_recommended
 from app.templating import templates
 
@@ -207,6 +208,8 @@ async def dashboard_page(
     data = _dashboard_data(db, month, year)
     now_date = datetime.now(TIMEZONE).strftime("%Y-%m-%d")
     bills_cover = compute_bills_cover(db)
+    payment_alerts = compute_payment_alerts(db)
+    db.commit()
     return templates.TemplateResponse(
         request,
         "dashboard.html",
@@ -214,6 +217,7 @@ async def dashboard_page(
             "username": user.username,
             "now_date": now_date,
             "bills_cover": bills_cover,
+            "payment_alerts": payment_alerts,
             **data,
         },
     )
