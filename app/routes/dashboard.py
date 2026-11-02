@@ -21,6 +21,7 @@ from app.schemas import DashboardSummary, SinkingFundResponse, TransactionRespon
 from app.services.bills_cover import compute_bills_cover
 from app.services.budget_recommendations import recommendation_summary
 from app.services.payment_methods import compute_payment_alerts
+from app.services.transaction_balances import adjust_budget_spent_amount
 from app.tasks import _compute_bills_recommended
 from app.templating import templates
 
@@ -352,10 +353,12 @@ async def quick_expense(
         budget_id=budget.id,
     )
     db.add(txn)
-
-    # Increment spent_amount
-    budget.spent_amount = float(
-        (Decimal(str(budget.spent_amount)) + amt).quantize(Decimal("0.01"))
+    adjust_budget_spent_amount(
+        db,
+        budget_id=budget.id,
+        txn_type="expense",
+        transaction_type="budget_expense",
+        amount=amt,
     )
     db.commit()
 
