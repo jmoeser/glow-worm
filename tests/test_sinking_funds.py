@@ -1,8 +1,9 @@
 import re
 from datetime import date, datetime, timedelta
+from unittest.mock import patch
 
 from app.config import TIMEZONE
-from app.models import SinkingFund, Transaction
+from app.models import IncomeAllocation, SinkingFund, Transaction
 
 
 class TestSinkingFundsPageGet:
@@ -731,6 +732,49 @@ class TestSinkingFundForecast:
         # Both sample bills should appear somewhere in the 12-month forecast
         assert "Rent" in response.text
         assert "Internet" in response.text
+
+    @patch("app.tasks._today", return_value=date(2026, 3, 18))
+    def test_received_contribution_is_labelled_and_not_readded(
+        self,
+        _mock_today,
+        authed_client,
+        db_session,
+        sample_sinking_funds,
+        transfer_category,
+    ):
+        fund = sample_sinking_funds[0]
+        fund.current_balance = 1000
+        db_session.add(
+            IncomeAllocation(
+                monthly_income_amount=5000,
+                monthly_budget_allocation=0,
+                bills_fund_allocation_type="fixed",
+                bills_fund_fixed_amount=600,
+            )
+        )
+        db_session.add(
+            Transaction(
+                date="2026-03-01",
+                description="Income allocation to Bills fund",
+                amount=550,
+                category_id=transfer_category.id,
+                type="transfer",
+                transaction_type="income_allocation",
+                sinking_fund_id=fund.id,
+            )
+        )
+        db_session.commit()
+
+        response = authed_client.get(f"/sinking-funds/{fund.id}/forecast")
+        assert response.status_code == 200
+        text = response.text
+        assert "Monthly Contribution:" in text
+        assert "+$600.00" in text
+        assert "+$550.00" in text
+        assert "(received)" in text
+        # Starting balance already includes the deposit, so March closes at 1000.
+        assert "$1,000.00" in text
+        assert "$1,550.00" not in text
 
     def test_detail_page_shows_forecast_tab_for_bills(
         self, authed_client, sample_sinking_funds
