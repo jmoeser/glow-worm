@@ -112,7 +112,19 @@ def generate_bills_forecast(db: Session, months: int = 12) -> list[dict]:
     """Project Bills fund cash flow over the next N months.
 
     Returns a list of month dicts (length == months) with keys:
-        month, year, month_name, bills, total_out, contribution, closing_balance
+        month, year, month_name, bills, total_out, contribution,
+        contribution_received, received_contribution,
+        configured_contribution, closing_balance
+
+    ``contribution`` is money still to come. It is the only contribution
+    figure added into ``closing_balance``, which starts from the fund's
+    current balance. When this month already has an ``income_allocation``
+    into the Bills fund, the first row keeps ``contribution`` at 0 (so the
+    deposit is not added twice), sets ``contribution_received`` to True,
+    and sets ``received_contribution`` to the sum of those deposits.
+    Every other row has the flag False and ``received_contribution`` 0.
+    ``configured_contribution`` is the fixed or recommended monthly amount
+    on every row, including a month whose deposit has already landed.
     """
     today = _today()
 
@@ -136,13 +148,16 @@ def generate_bills_forecast(db: Session, months: int = 12) -> list[dict]:
             monthly_contribution = _compute_bills_recommended(db)
     else:
         monthly_contribution = Decimal(0)
+    monthly_contribution = monthly_contribution.quantize(Decimal("0.01"))
 
-    # Check if this month's contribution has already been deposited
+    # This month's deposit is already inside current_balance. Record the
+    # actual sum for display, and keep it out of the running balance.
     month_start = f"{today.year}-{today.month:02d}-01"
     month_end = f"{today.year}-{today.month:02d}-{calendar.monthrange(today.year, today.month)[1]:02d}"
+    received_contribution = Decimal("0.00")
     already_contributed = False
     if bills_fund:
-        already_contributed = (
+        deposited = (
             db.query(Transaction)
             .filter(
                 Transaction.transaction_type == "income_allocation",
@@ -150,8 +165,14 @@ def generate_bills_forecast(db: Session, months: int = 12) -> list[dict]:
                 Transaction.date >= month_start,
                 Transaction.date <= month_end,
             )
-            .first()
-        ) is not None
+            .all()
+        )
+        already_contributed = bool(deposited)
+        if deposited:
+            received_contribution = sum(
+                (Decimal(str(txn.amount)) for txn in deposited),
+                Decimal(0),
+            ).quantize(Decimal("0.01"))
 
     # Calculate the horizon end date
     end_abs = today.month - 1 + months - 1
@@ -191,10 +212,10 @@ def generate_bills_forecast(db: Session, months: int = 12) -> list[dict]:
         bills_this_month = monthly_bills.get((y, m), [])
         total_out = sum((b["amount"] for b in bills_this_month), Decimal(0))
 
-        # Skip contribution for current month if already processed
-        contribution = (
-            Decimal(0) if (i == 0 and already_contributed) else monthly_contribution
-        )
+        # contribution stays "still to come". The received deposit is already
+        # in the starting balance, so it must not be added again.
+        this_month_received = i == 0 and already_contributed
+        contribution = Decimal("0.00") if this_month_received else monthly_contribution
 
         running_balance = running_balance + contribution - total_out
 
@@ -205,7 +226,12 @@ def generate_bills_forecast(db: Session, months: int = 12) -> list[dict]:
                 "month_name": calendar.month_name[m],
                 "bills": bills_this_month,
                 "total_out": total_out.quantize(Decimal("0.01")),
-                "contribution": contribution.quantize(Decimal("0.01")),
+                "contribution": contribution,
+                "contribution_received": this_month_received,
+                "received_contribution": (
+                    received_contribution if this_month_received else Decimal("0.00")
+                ),
+                "configured_contribution": monthly_contribution,
                 "closing_balance": running_balance.quantize(Decimal("0.01")),
             }
         )

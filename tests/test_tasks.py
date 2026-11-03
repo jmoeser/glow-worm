@@ -21,6 +21,7 @@ from app.models import (
     SinkingFund,
     Transaction,
 )
+from app.services.bills_cover import compute_bills_cover
 from app.tasks import (
     advance_due_date,
     generate_bills_forecast,
@@ -1078,33 +1079,123 @@ class TestGenerateBillsForecast:
         result = generate_bills_forecast(db_session)
         for row in result:
             assert row["contribution"] == Decimal("0.00")
+            assert row["contribution_received"] is False
+            assert row["received_contribution"] == Decimal("0.00")
+            assert row["configured_contribution"] == Decimal("0.00")
 
     @patch("app.tasks._today")
-    def test_contribution_skipped_if_already_processed(
+    def test_already_contributed_shows_received_sum_without_adding_it(
         self, mock_today, db_session, forecast_setup
     ):
-        """If the bills fund allocation already ran this month, month 0 contribution is $0."""
+        """A deposit already in the balance is shown, and not added again.
+
+        The ledger sum can differ from the configured monthly amount. The
+        closing balance still starts from current_balance and adds only
+        contributions that have not landed yet.
+        """
         mock_today.return_value = date(2026, 3, 18)
         transfer_cat = Category(name="Transfer", type="transfer", color="#888888")
         db_session.add(transfer_cat)
         db_session.flush()
 
-        # Simulate this month's allocation already deposited
-        txn = Transaction(
-            date="2026-03-01",
-            description="Income allocation to Bills fund",
-            amount=600,
-            category_id=transfer_cat.id,
-            type="transfer",
-            transaction_type="income_allocation",
-            sinking_fund_id=forecast_setup["bills_fund"].id,
+        bill = RecurringBill(
+            name="Internet",
+            amount=100,
+            debtor_provider="ISP",
+            start_date="2026-01-01",
+            frequency="monthly",
+            category_id=forecast_setup["expense_cat"].id,
+            next_due_date="2026-03-25",
         )
-        db_session.add(txn)
+        db_session.add(bill)
+        bills_fund = forecast_setup["bills_fund"]
+        for amount, day in ((400, "2026-03-01"), (250, "2026-03-02")):
+            db_session.add(
+                Transaction(
+                    date=day,
+                    description="Income allocation to Bills fund",
+                    amount=amount,
+                    category_id=transfer_cat.id,
+                    type="transfer",
+                    transaction_type="income_allocation",
+                    sinking_fund_id=bills_fund.id,
+                )
+            )
+        # Last month, and a different fund this month, are not this deposit.
+        other = SinkingFund(name="Savings", color="#00FF00", current_balance=0)
+        db_session.add(other)
+        db_session.flush()
+        db_session.add(
+            Transaction(
+                date="2026-02-01",
+                description="Income allocation to Bills fund",
+                amount=600,
+                category_id=transfer_cat.id,
+                type="transfer",
+                transaction_type="income_allocation",
+                sinking_fund_id=bills_fund.id,
+            )
+        )
+        db_session.add(
+            Transaction(
+                date="2026-03-01",
+                description="Income allocation to Savings",
+                amount=900,
+                category_id=transfer_cat.id,
+                type="transfer",
+                transaction_type="income_allocation",
+                sinking_fund_id=other.id,
+            )
+        )
         db_session.commit()
 
         result = generate_bills_forecast(db_session)
+
+        assert result[0]["contribution_received"] is True
+        assert result[0]["received_contribution"] == Decimal("650.00")
         assert result[0]["contribution"] == Decimal("0.00")
-        assert result[1]["contribution"] == Decimal("600.00")
+        assert result[0]["configured_contribution"] == Decimal("600.00")
+        # 1000 current balance already includes the deposit: 1000 + 0 - 100.
+        assert result[0]["closing_balance"] == Decimal("900.00")
+
+        for row in result[1:]:
+            assert row["contribution_received"] is False
+            assert row["received_contribution"] == Decimal("0.00")
+            assert row["contribution"] == Decimal("600.00")
+            assert row["configured_contribution"] == Decimal("600.00")
+        # Next month still adds the configured amount once: 900 + 600 - 100.
+        assert result[1]["closing_balance"] == Decimal("1400.00")
+
+        cover = compute_bills_cover(
+            db_session, today=date(2026, 3, 18), horizon_months=3
+        )
+        # March is already posted, so only 1 Apr, 1 May, and 1 Jun remain.
+        assert cover.primary_in == Decimal("1800.00")
+        assert cover.fund_balance == Decimal("1000.00")
+        assert cover.without_cash == Decimal("2800.00")
+
+    @patch("app.tasks._today")
+    def test_not_yet_contributed_still_adds_this_month(
+        self, mock_today, db_session, forecast_setup
+    ):
+        """No Bills deposit this month: contribution is still to come."""
+        mock_today.return_value = date(2026, 3, 18)
+        result = generate_bills_forecast(db_session)
+
+        assert result[0]["contribution_received"] is False
+        assert result[0]["received_contribution"] == Decimal("0.00")
+        assert result[0]["contribution"] == Decimal("600.00")
+        assert result[0]["configured_contribution"] == Decimal("600.00")
+        # 1000 + 600, and nothing is due.
+        assert result[0]["closing_balance"] == Decimal("1600.00")
+        assert all(row["contribution_received"] is False for row in result)
+
+        cover = compute_bills_cover(
+            db_session, today=date(2026, 3, 18), horizon_months=3
+        )
+        # March has not posted, so it is included with Apr, May, and Jun.
+        assert cover.primary_in == Decimal("2400.00")
+        assert cover.without_cash == Decimal("3400.00")
 
     @patch("app.tasks._today")
     def test_inactive_bill_excluded(self, mock_today, db_session, forecast_setup):
@@ -1146,3 +1237,5 @@ class TestGenerateBillsForecast:
         result = generate_bills_forecast(db_session)
         # 1200/mo * 12 = 14400/yr / 12 = 1200/mo recommended
         assert result[1]["contribution"] == Decimal("1200.00")
+        assert result[0]["configured_contribution"] == Decimal("1200.00")
+        assert result[0]["contribution_received"] is False

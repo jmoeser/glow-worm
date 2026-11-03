@@ -31,7 +31,7 @@
         {% if forecast %}
         <div class="gw-summary-item">
             <span class="gw-summary-label">Monthly Contribution:</span>
-            <span class="gw-summary-value" style="color: var(--positive);">+${{ forecast[0].contribution|money }}</span>
+            <span class="gw-summary-value" style="color: var(--positive);">+${{ forecast[0].configured_contribution|money }}</span>
         </div>
         <div class="gw-summary-item">
             <span class="gw-summary-label">12-Month Low:</span>
@@ -84,8 +84,9 @@
                             <span class="gw-text-muted">{{ row.month_name }} {{ row.year }}</span>
                             {% endif %}
                         </td>
-                        <td class="text-right" style="color: {% if row.contribution > 0 %}var(--positive){% else %}var(--text-secondary){% endif %}; white-space: nowrap;">
-                            {% if row.contribution > 0 %}+{% endif %}${{ row.contribution|money }}
+                        {% set shown_contribution = row.received_contribution if row.contribution_received else row.contribution %}
+                        <td class="text-right" style="color: {% if shown_contribution > 0 %}var(--positive){% else %}var(--text-secondary){% endif %}; white-space: nowrap;">
+                            {% if shown_contribution > 0 %}+{% endif %}${{ shown_contribution|money }}{% if row.contribution_received %} <span style="color: var(--text-tertiary); font-weight: 400; font-size: 0.75rem;">(received)</span>{% endif %}
                         </td>
                         <td class="text-right" style="color: {% if row.total_out > 0 %}var(--negative){% else %}var(--text-secondary){% endif %}; white-space: nowrap;">
                             {% if row.total_out > 0 %}-{% endif %}${{ row.total_out|money }}
