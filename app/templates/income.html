@@ -44,7 +44,7 @@
                             <input type="radio" name="bills_fund_allocation_type" value="recommended"
                                    {{ 'checked' if not allocation or allocation.bills_fund_allocation_type == 'recommended' }}
                                    onchange="toggleFixedAmount()">
-                            <span style="font-size: 0.875rem; color: var(--text-secondary);">Recommended (auto-calculated)</span>
+                            <span style="font-size: 0.875rem; color: var(--text-secondary);">Recommended (${{ bills_recommended|money }})</span>
                         </label>
                         <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
                             <input type="radio" name="bills_fund_allocation_type" value="fixed"
@@ -160,6 +160,7 @@ const FUND_META = {{ sinking_funds_data | tojson }};
 // Bills Fund is handled separately in processing — identify it by name
 const BILLS_FUND = FUND_META.find(function(f) { return f.name === 'Bills'; }) || null;
 const BILLS_FUND_ID = BILLS_FUND ? BILLS_FUND.id : null;
+const BILLS_RECOMMENDED = {{ bills_recommended }};
 
 let transferRowCounter = {{ recurring_transfers | length }};
 
@@ -201,10 +202,12 @@ function calculateRemainder() {
         fundTotal += parseFloat(input.value) || 0;
     });
 
-    // Add Bills Fund fixed amount when that mode is selected
+    // Bills fund: the fixed amount, or the recommended Bills-fund total.
     const billsFixedRadio = document.querySelector('input[name="bills_fund_allocation_type"][value="fixed"]');
     if (billsFixedRadio && billsFixedRadio.checked) {
         fundTotal += parseFloat(document.getElementById('bills_fund_fixed_amount').value) || 0;
+    } else {
+        fundTotal += BILLS_RECOMMENDED || 0;
     }
 
     let transferTotal = 0;
@@ -259,10 +262,15 @@ function renderSankey() {
         }
     });
 
-    // Add Bills Fund if fixed mode is active
+    // Add Bills Fund in fixed mode, or the recommended amount.
     const billsFixedRadio = document.querySelector('input[name="bills_fund_allocation_type"][value="fixed"]');
-    if (billsFixedRadio && billsFixedRadio.checked && BILLS_FUND) {
-        const billsAmount = parseFloat(document.getElementById('bills_fund_fixed_amount').value) || 0;
+    if (BILLS_FUND) {
+        let billsAmount = 0;
+        if (billsFixedRadio && billsFixedRadio.checked) {
+            billsAmount = parseFloat(document.getElementById('bills_fund_fixed_amount').value) || 0;
+        } else {
+            billsAmount = BILLS_RECOMMENDED || 0;
+        }
         if (billsAmount > 0) {
             fundAllocations.push({ id: BILLS_FUND.id, name: BILLS_FUND.name, color: BILLS_FUND.color, amount: billsAmount });
         }

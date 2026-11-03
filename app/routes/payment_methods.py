@@ -11,8 +11,8 @@ from app.config import TIMEZONE
 from app.database import get_db
 from app.middleware import get_current_user
 from app.models import PaymentMethod, PaymentMethodReplacement
-from app.routes.bills import FREQUENCY_LABELS
 from app.schemas import (
+    FREQUENCY_LABELS,
     PaymentMethodCreate,
     PaymentMethodResponse,
     PaymentMethodUpdate,

@@ -503,3 +503,47 @@ class TestExcludeFromMonthlyCost:
         response = authed_client.get(f"/api/categories/{cat.id}")
         assert response.status_code == 200
         assert response.json()["exclude_from_monthly_cost"] is True
+
+
+def test_delete_blocked_while_a_budget_payment_uses_the_category(
+    authed_client, db_session, sample_budget_categories
+):
+    from app.models import RecurringBill
+
+    groceries = sample_budget_categories[0]
+    active = RecurringBill(
+        name="HelloFresh",
+        amount=80,
+        debtor_provider="HelloFresh",
+        start_date="2026-01-01",
+        frequency="weekly",
+        category_id=groceries.id,
+        next_due_date="2026-06-01",
+        paid_from="budget",
+    )
+    inactive = RecurringBill(
+        name="Old box",
+        amount=10,
+        debtor_provider="Shop",
+        start_date="2026-01-01",
+        frequency="weekly",
+        category_id=groceries.id,
+        next_due_date="2026-06-01",
+        paid_from="budget",
+        is_active=False,
+    )
+    db_session.add_all([active, inactive])
+    db_session.commit()
+    blocked = authed_client.delete(
+        f"/categories/{groceries.id}",
+        headers={"x-csrftoken": authed_client.csrf_token},
+    )
+    assert blocked.status_code == 409
+    assert "HelloFresh is paid from this category" in blocked.text
+    assert "gwError" in blocked.headers["hx-trigger"]
+    api = authed_client.delete(f"/api/categories/{groceries.id}")
+    assert api.status_code == 409
+    active.is_active = False
+    db_session.commit()
+    allowed = authed_client.delete(f"/api/categories/{groceries.id}")
+    assert allowed.status_code == 200

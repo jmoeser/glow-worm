@@ -23,6 +23,11 @@
 </div>
 {% endif %}
 
+{% if is_current_month %}
+{% set due_from = "dashboard" %}
+{% include "_due_to_confirm.html" %}
+{% endif %}
+
 <!-- Total Net Worth -->
 <div class="gw-card gw-section gw-animate-in" style="text-align: center; padding: 24px;">
     <p class="gw-stat-label">Total Net Worth</p>

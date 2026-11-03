@@ -21,22 +21,15 @@ from app.models import (
     IncomeAllocation,
     MarketDataRun,
     MonthlyUnallocatedIncome,
-    RecurringBill,
     SharePrice,
     ShareTrade,
     SinkingFund,
     Transaction,
 )
+from app.schemas import FREQUENCY_ANNUAL_MULTIPLIER
 from app.services.market_data import FxProvider, PriceProvider, RequestGate
 
 logger = logging.getLogger(__name__)
-
-FREQUENCY_ANNUAL_MULTIPLIER = {
-    "monthly": 12,
-    "quarterly": 4,
-    "yearly": 1,
-    "28_days": Decimal("13.036"),
-}
 
 
 def _today() -> date:
@@ -45,7 +38,15 @@ def _today() -> date:
 
 
 def advance_due_date(current: date, frequency: str) -> date:
-    """Advance a due date based on frequency, clamping to last day of month."""
+    """Advance a due date based on frequency, clamping month-based steps.
+
+    Weekly and fortnightly add a fixed number of days, including from the
+    31st. An unknown stored frequency still steps 30 days.
+    """
+    if frequency == "weekly":
+        return current + timedelta(days=7)
+    if frequency == "fortnightly":
+        return current + timedelta(days=14)
     if frequency == "28_days":
         return current + timedelta(days=28)
 
@@ -76,15 +77,22 @@ def advance_due_date(current: date, frequency: str) -> date:
 
 
 def iter_bill_due_dates(
-    next_due_date: str, frequency: str, horizon_end: date
+    next_due_date: str,
+    frequency: str,
+    horizon_end: date,
+    end_date: str | None = None,
 ) -> Iterator[date]:
     """Yield due dates from ``next_due_date`` through ``horizon_end`` inclusive.
 
     Steps with :func:`advance_due_date` so every caller shares one frequency
-    implementation. Stops if a step does not move forward.
+    implementation. Stops if a step does not move forward, and stops before
+    yielding a date after ``end_date``.
     """
     current_due = date.fromisoformat(next_due_date)
+    stop = date.fromisoformat(end_date) if end_date else None
     while current_due <= horizon_end:
+        if stop is not None and current_due > stop:
+            break
         yield current_due
         nxt = advance_due_date(current_due, frequency)
         if nxt <= current_due:
@@ -93,8 +101,13 @@ def iter_bill_due_dates(
 
 
 def _compute_bills_recommended(db: Session) -> Decimal:
-    """Calculate recommended monthly bills allocation: total annual cost / 12."""
-    bills = db.query(RecurringBill).filter(RecurringBill.is_active == True).all()
+    """Calculate recommended monthly bills allocation: total annual cost / 12.
+
+    Only Bills-fund rows count. Payments from a budget or another fund do not.
+    """
+    from app.services.recurring_payments import bills_fund_bills
+
+    bills = bills_fund_bills(db)
     total_annual = sum(
         (
             Decimal(str(b.amount))
@@ -108,7 +121,9 @@ def _compute_bills_recommended(db: Session) -> Decimal:
     return (total_annual / 12).quantize(Decimal("0.01"))
 
 
-def generate_bills_forecast(db: Session, months: int = 12) -> list[dict]:
+def generate_bills_forecast(
+    db: Session, months: int = 12, include_overdue: bool = False
+) -> list[dict]:
     """Project Bills fund cash flow over the next N months.
 
     Returns a list of month dicts (length == months) with keys:
@@ -125,10 +140,16 @@ def generate_bills_forecast(db: Session, months: int = 12) -> list[dict]:
     Every other row has the flag False and ``received_contribution`` 0.
     ``configured_contribution`` is the fixed or recommended monthly amount
     on every row, including a month whose deposit has already landed.
+
+    Only Bills-fund bills are projected, and each walk stops at ``end_date``.
+    When ``include_overdue`` is set, unpaid variable occurrences from earlier
+    months are added to the current month and marked ``overdue``.
     """
+    from app.services.recurring_payments import bills_fund_bills
+
     today = _today()
 
-    active_bills = db.query(RecurringBill).filter(RecurringBill.is_active == True).all()
+    active_bills = bills_fund_bills(db)
 
     bills_fund = (
         db.query(SinkingFund)
@@ -182,14 +203,22 @@ def generate_bills_forecast(db: Session, months: int = 12) -> list[dict]:
         calendar.monthrange(today.year + end_abs // 12, end_abs % 12 + 1)[1],
     )
 
-    # Project each bill's payment dates forward into monthly buckets
+    # Project each bill's payment dates forward into monthly buckets.
+    # Dates before the current month are left out unless this is the Bills
+    # fund page catching up unpaid variable bills.
+    current_ym = (today.year, today.month)
     monthly_bills: dict[tuple[int, int], list[dict]] = {}
     for bill in active_bills:
         amount = Decimal(str(bill.amount))
         for current_due in iter_bill_due_dates(
-            bill.next_due_date, bill.frequency, horizon_end
+            bill.next_due_date, bill.frequency, horizon_end, bill.end_date
         ):
             ym = (current_due.year, current_due.month)
+            overdue = ym < current_ym
+            if overdue:
+                if not (include_overdue and bill.bill_type == "variable"):
+                    continue
+                ym = current_ym
             monthly_bills.setdefault(ym, []).append(
                 {
                     "id": bill.id,
@@ -197,6 +226,7 @@ def generate_bills_forecast(db: Session, months: int = 12) -> list[dict]:
                     "amount": amount,
                     "bill_type": bill.bill_type,
                     "due_date": current_due,
+                    "overdue": overdue,
                     "foreign_amount": bill.foreign_amount,
                     "foreign_currency": bill.foreign_currency,
                 }
@@ -566,19 +596,19 @@ def process_due_bills(db: Session | None = None) -> None:
             logger.warning("No Bills sinking fund found, skipping bill processing")
             return
 
-        due_bills = (
-            db.query(RecurringBill)
-            .filter(
-                RecurringBill.is_active == True,
-                RecurringBill.next_due_date <= today_str,
-            )
-            .all()
-        )
+        from app.services.recurring_payments import bills_fund_bills
+
+        due_bills = [
+            bill for bill in bills_fund_bills(db) if bill.next_due_date <= today_str
+        ]
 
         processed = 0
         for bill in due_bills:
-            # Skip variable bills — they require manual payment
+            # Budget and other-fund rows are not in this list. Variable
+            # Bills-fund bills wait in Due to confirm.
             if getattr(bill, "bill_type", "fixed") == "variable":
+                continue
+            if bill.end_date and bill.next_due_date > bill.end_date:
                 continue
 
             # Idempotency: skip if already paid today for this bill

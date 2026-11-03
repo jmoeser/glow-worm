@@ -27,10 +27,38 @@ class TransactionType(str, Enum):
 
 
 class BillFrequency(str, Enum):
+    weekly = "weekly"
+    fortnightly = "fortnightly"
     twenty_eight_days = "28_days"
     monthly = "monthly"
     quarterly = "quarterly"
     yearly = "yearly"
+
+
+class PaidFrom(str, Enum):
+    bills_fund = "bills_fund"
+    budget = "budget"
+    sinking_fund = "sinking_fund"
+
+
+# One 365-day basis for every annual figure. 28_days stays 13.036 (365 / 28).
+FREQUENCY_LABELS: dict[str, str] = {
+    "weekly": "Weekly",
+    "fortnightly": "Fortnightly",
+    "monthly": "Monthly",
+    "quarterly": "Quarterly",
+    "yearly": "Yearly",
+    "28_days": "Every 28 Days",
+}
+
+FREQUENCY_ANNUAL_MULTIPLIER: dict[str, Decimal | int] = {
+    "weekly": Decimal("52.143"),
+    "fortnightly": Decimal("26.071"),
+    "monthly": 12,
+    "quarterly": 4,
+    "yearly": 1,
+    "28_days": Decimal("13.036"),
+}
 
 
 class BillsAllocationMethod(str, Enum):
@@ -324,6 +352,8 @@ class RecurringBillCreate(BaseModel):
     foreign_amount: Decimal | None = Field(None, gt=Decimal(0))
     foreign_currency: str | None = Field(None, min_length=3, max_length=3)
     payment_method_id: int | None = None
+    paid_from: PaidFrom = PaidFrom.bills_fund
+    paid_from_fund_id: int | None = None
 
 
 class RecurringBillUpdate(BaseModel):
@@ -331,6 +361,7 @@ class RecurringBillUpdate(BaseModel):
     amount: Decimal | None = Field(None, gt=Decimal(0))
     debtor_provider: str | None = None
     frequency: BillFrequency | None = None
+    category_id: int | None = None
     end_date: str | None = Field(None, pattern=r"^\d{4}-\d{2}-\d{2}$")
     is_active: bool | None = None
     next_due_date: str | None = Field(None, pattern=r"^\d{4}-\d{2}-\d{2}$")
@@ -338,6 +369,8 @@ class RecurringBillUpdate(BaseModel):
     foreign_amount: Decimal | None = Field(None, gt=Decimal(0))
     foreign_currency: str | None = Field(None, min_length=3, max_length=3)
     payment_method_id: int | None = None
+    paid_from: PaidFrom | None = None
+    paid_from_fund_id: int | None = None
 
 
 class RecurringBillResponse(BaseModel):
@@ -357,6 +390,8 @@ class RecurringBillResponse(BaseModel):
     foreign_amount: Decimal | None = None
     foreign_currency: str | None = None
     payment_method_id: int | None = None
+    paid_from: str = "bills_fund"
+    paid_from_fund_id: int | None = None
     created_at: datetime
     updated_at: datetime
 
@@ -364,6 +399,36 @@ class RecurringBillResponse(BaseModel):
 class RecurringBillPay(BaseModel):
     amount: Decimal = Field(..., gt=Decimal(0))
     date: str = Field(..., pattern=r"^\d{4}-\d{2}-\d{2}$")
+
+
+class RecurringBillConfirm(BaseModel):
+    amount: Decimal = Field(..., gt=Decimal(0))
+    due_date: str = Field(..., pattern=r"^\d{4}-\d{2}-\d{2}$")
+
+    @field_validator("amount")
+    @classmethod
+    def _at_most_two_places(cls, value: Decimal) -> Decimal:
+        exponent = value.as_tuple().exponent
+        if isinstance(exponent, int) and exponent < -2:
+            raise ValueError("Amount must have at most 2 decimal places.")
+        return value
+
+
+class RecurringBillSkip(BaseModel):
+    due_date: str = Field(..., pattern=r"^\d{4}-\d{2}-\d{2}$")
+
+
+class DuePaymentResponse(BaseModel):
+    bill_id: int
+    name: str
+    provider: str
+    expected_amount: Decimal
+    due_date: str
+    more_due: int
+    paid_from: str
+    paid_from_label: str
+    budget_month: str | None = None
+    problem: dict[str, str] | None = None
 
 
 class PaymentMethodCreate(BaseModel):

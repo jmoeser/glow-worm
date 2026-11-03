@@ -73,6 +73,7 @@
                                         <span>
                                             {{ bill.name }}
                                             {% if bill.bill_type == "variable" %}<em style="color: var(--text-tertiary);">(variable)</em>{% endif %}
+                                            {% if bill.overdue %}<em style="color: var(--text-tertiary);">(overdue)</em>{% endif %}
                                             {% if bill.foreign_currency %}<span style="color: var(--text-tertiary); font-size: 0.75rem;">{{ bill.foreign_amount|money }} {{ bill.foreign_currency }}</span>{% endif %}
                                         </span>
                                         <span style="font-weight: 500; color: var(--negative);">-${{ bill.amount|money }}</span>

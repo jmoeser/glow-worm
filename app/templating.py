@@ -5,6 +5,14 @@ from typing import Any, cast
 
 from fastapi.templating import Jinja2Templates
 
+from app.services.recurring_payments import (
+    format_due_date,
+    format_month_year,
+    needs_confirm,
+    source_is_broken,
+    source_label,
+)
+
 templates = Jinja2Templates(directory="app/templates")
 
 
@@ -32,6 +40,28 @@ try:
 except PackageNotFoundError:
     _app_version = "dev"
 
+
+def _due_label(value) -> str:
+    try:
+        return format_due_date(value)
+    except ValueError, TypeError:
+        return str(value)
+
+
+def _month_year(value) -> str:
+    try:
+        return format_month_year(value)
+    except ValueError, TypeError:
+        return str(value)
+
+
 cast(MutableMapping[str, Any], templates.env.filters)["money"] = _money_format
 cast(MutableMapping[str, Any], templates.env.filters)["qty"] = _qty_format
+cast(MutableMapping[str, Any], templates.env.filters)["due_label"] = _due_label
+cast(MutableMapping[str, Any], templates.env.filters)["month_year"] = _month_year
 cast(MutableMapping[str, Any], templates.env.globals)["app_version"] = _app_version
+cast(MutableMapping[str, Any], templates.env.globals)["source_label"] = source_label
+cast(MutableMapping[str, Any], templates.env.globals)["source_is_broken"] = (
+    source_is_broken
+)
+cast(MutableMapping[str, Any], templates.env.globals)["needs_confirm"] = needs_confirm

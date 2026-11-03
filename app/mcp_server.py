@@ -22,7 +22,6 @@ from app.schemas import (
     PaymentMethodResponse,
     PaymentMethodUpdate,
     RecurringBillCreate,
-    RecurringBillResponse,
     RecurringBillUpdate,
     TransactionCreate,
     TransactionResponse,
@@ -38,6 +37,22 @@ from app.services.payment_methods import (
     prepare_payment_method,
     replacement_payload,
     unarchive_method,
+)
+from app.services.recurring_payments import (
+    PaidFromError,
+    PaymentBlocked,
+    PaymentConflict,
+    apply_paid_from,
+    confirm_transaction_payload,
+    due_to_confirm,
+    serialize_bill,
+    update_bill_fields,
+)
+from app.services.recurring_payments import (
+    confirm_payment as confirm_payment_service,
+)
+from app.services.recurring_payments import (
+    skip_payment as skip_payment_service,
 )
 from app.services.transaction_balances import (
     apply_transaction_balance_effects,
@@ -65,7 +80,10 @@ mcp = FastMCP(
         "transactions, recurring bills, and payment methods. Transactions track "
         "individual income and expense events. Recurring bills track repeating "
         "charges like rent, utilities, and subscriptions. Payment methods record "
-        "which card or account pays a bill. Only the last 4 digits are stored."
+        "which card or account pays a bill. Only the last 4 digits are stored. "
+        "Bills paid from the Bills fund are logged automatically. Payments from "
+        "a budget or sinking fund, and variable Bills-fund bills, wait until "
+        "you confirm or skip each one."
     ),
 )
 
@@ -430,10 +448,7 @@ def list_bills(include_inactive: bool = False) -> list[dict]:
         if not include_inactive:
             query = query.filter(RecurringBill.is_active == True)
         bills = query.order_by(RecurringBill.next_due_date).all()
-        return [
-            RecurringBillResponse.model_validate(b).model_dump(mode="json")
-            for b in bills
-        ]
+        return [serialize_bill(b) for b in bills]
     finally:
         db.close()
 
@@ -453,7 +468,7 @@ def get_bill(bill_id: int) -> dict | str:
         bill = db.query(RecurringBill).filter(RecurringBill.id == bill_id).first()
         if not bill:
             return f"Bill {bill_id} not found."
-        return RecurringBillResponse.model_validate(bill).model_dump(mode="json")
+        return serialize_bill(bill)
     finally:
         db.close()
 
@@ -470,6 +485,9 @@ def create_bill(
     end_date: str | None = None,
     is_active: bool = True,
     payment_method_id: int | None = None,
+    paid_from: str = "bills_fund",
+    paid_from_fund_id: int | None = None,
+    bill_type: str | None = None,
 ) -> dict | str:
     """Create a new recurring bill.
 
@@ -478,17 +496,26 @@ def create_bill(
         amount: Positive monetary amount per occurrence.
         debtor_provider: Who the bill is paid to.
         start_date: When the bill started, in YYYY-MM-DD format.
-        frequency: One of: '28_days', 'monthly', 'quarterly', 'yearly'.
-        category_id: ID of the expense category.
+        frequency: One of: 'weekly', 'fortnightly', '28_days', 'monthly',
+            'quarterly', 'yearly'.
+        category_id: ID of the expense category. For a budget payment this
+            is the budget category.
         next_due_date: Next payment date in YYYY-MM-DD format.
         end_date: Optional end date in YYYY-MM-DD format.
         is_active: Whether the bill is active. Defaults to True.
         payment_method_id: Optional payment method id. Null leaves it unset.
+        paid_from: 'bills_fund' (default), 'budget', or 'sinking_fund'.
+        paid_from_fund_id: Sinking fund id when paid_from is 'sinking_fund'.
+        bill_type: 'fixed' or 'variable'. Omit to keep the default, fixed.
+            Only Bills-fund rows use it. Others always wait for confirm.
 
     Returns:
         The created bill object, or an error message.
     """
     try:
+        create_kwargs: dict[str, Any] = {}
+        if bill_type is not None:
+            create_kwargs["bill_type"] = bill_type
         data = RecurringBillCreate(
             name=name,
             amount=Decimal(str(amount)),
@@ -500,6 +527,9 @@ def create_bill(
             end_date=end_date,
             is_active=is_active,
             payment_method_id=payment_method_id,
+            paid_from=paid_from,
+            paid_from_fund_id=paid_from_fund_id,
+            **create_kwargs,
         )
     except (ValidationError, ValueError, TypeError) as exc:
         return f"Validation error: {exc}"
@@ -520,6 +550,15 @@ def create_bill(
             next_due_date=data.next_due_date,
             end_date=data.end_date,
             is_active=data.is_active,
+            bill_type=data.bill_type.value,
+        )
+        apply_paid_from(
+            db,
+            bill,
+            paid_from=data.paid_from.value,
+            paid_from_fund_id=data.paid_from_fund_id,
+            category_id=data.category_id,
+            force=True,
         )
         db.add(bill)
         db.flush()
@@ -534,8 +573,8 @@ def create_bill(
             bill.id,
             bill.name,
         )
-        return RecurringBillResponse.model_validate(bill).model_dump(mode="json")
-    except PaymentMethodError as exc:
+        return serialize_bill(bill)
+    except (PaymentMethodError, PaidFromError) as exc:
         db.rollback()
         return exc.message
     except Exception:
@@ -557,6 +596,10 @@ def update_bill(
     is_active: bool | None = None,
     next_due_date: str | None = None,
     payment_method_id: int | None = _OMIT,  # pyrefly: ignore[bad-function-definition]
+    paid_from: str | None = None,
+    paid_from_fund_id: int | None = _OMIT,  # pyrefly: ignore[bad-function-definition]
+    bill_type: str | None = None,
+    category_id: int | None = None,
 ) -> dict | str:
     """Update an existing recurring bill.
 
@@ -567,11 +610,17 @@ def update_bill(
         name: New name for the bill.
         amount: New monetary amount per occurrence.
         debtor_provider: New provider name.
-        frequency: New frequency ('28_days', 'monthly', 'quarterly', 'yearly').
+        frequency: New frequency ('weekly', 'fortnightly', '28_days',
+            'monthly', 'quarterly', 'yearly').
         end_date: New end date in YYYY-MM-DD format.
         is_active: New active status.
         next_due_date: New next due date in YYYY-MM-DD format.
         payment_method_id: New payment method id. Null clears the link.
+        paid_from: 'bills_fund', 'budget', or 'sinking_fund'.
+        paid_from_fund_id: Sinking fund id. Null clears it when leaving a fund.
+        bill_type: 'fixed' or 'variable'. Stored for every row; only Bills-fund
+            rows use it to decide automatic payment.
+        category_id: Expense category. For a budget payment this is the budget.
 
     Returns:
         The updated bill object, or an error message.
@@ -593,6 +642,14 @@ def update_bill(
         update_data["next_due_date"] = next_due_date
     if payment_method_id is not _OMIT:
         update_data["payment_method_id"] = payment_method_id
+    if paid_from is not None:
+        update_data["paid_from"] = paid_from
+    if paid_from_fund_id is not _OMIT:
+        update_data["paid_from_fund_id"] = paid_from_fund_id
+    if bill_type is not None:
+        update_data["bill_type"] = bill_type
+    if category_id is not None:
+        update_data["category_id"] = category_id
 
     try:
         data = RecurringBillUpdate(**update_data)
@@ -610,18 +667,14 @@ def update_bill(
         payment_id = updates.pop("payment_method_id", None)
         if payment_set:
             assign_payment_method(db, bill, payment_id)
-        for field, value in updates.items():
-            if field == "frequency" and value is not None:
-                setattr(bill, field, value.value if hasattr(value, "value") else value)
-            else:
-                setattr(bill, field, value)
+        update_bill_fields(db, bill, data)
 
         db.commit()
         db.refresh(bill)
 
         logger.info("MCP [user=%s]: updated bill id=%d", _audit_username(), bill.id)
-        return RecurringBillResponse.model_validate(bill).model_dump(mode="json")
-    except PaymentMethodError as exc:
+        return serialize_bill(bill)
+    except (PaymentMethodError, PaidFromError) as exc:
         db.rollback()
         return exc.message
     except Exception:
@@ -664,6 +717,116 @@ def delete_bill(bill_id: int) -> str:
         )
         db.rollback()
         return "Internal error deactivating bill."
+    finally:
+        db.close()
+
+
+@mcp.tool()
+def list_due_payments() -> list[dict]:
+    """List payments waiting to be confirmed or skipped.
+
+    One row per bill, for the oldest occurrence that is due today or overdue.
+    Fixed bills paid from the Bills fund are logged automatically and are
+    not listed.
+
+    Returns:
+        Due payment rows with the expected amount, source, and any problem
+        that would block confirm.
+    """
+    db = SessionLocal()
+    try:
+        rows = due_to_confirm(db)
+        return [
+            {
+                **row,
+                "expected_amount": float(row["expected_amount"]),
+            }
+            for row in rows
+        ]
+    finally:
+        db.close()
+
+
+@mcp.tool()
+def confirm_payment(bill_id: int, due_date: str, amount: float) -> dict | str:
+    """Confirm one due occurrence and log it.
+
+    The date is the occurrence's due date, which must still be next_due_date.
+    A budget payment is logged against that month. If that month was already
+    swept to an overflow fund, the same amount is taken back from the fund.
+
+    Args:
+        bill_id: The recurring payment to confirm.
+        due_date: The occurrence date, YYYY-MM-DD. Must match next_due_date.
+        amount: Amount to log. Use the real charge, not only the estimate.
+
+    Returns:
+        The transaction, the updated bill, and any overflow take-back,
+        or a plain message when the payment is blocked or already done.
+    """
+    db = SessionLocal()
+    try:
+        bill = db.query(RecurringBill).filter(RecurringBill.id == bill_id).first()
+        if not bill:
+            return f"Bill {bill_id} not found."
+        result = confirm_payment_service(db, bill, Decimal(str(amount)), due_date)
+        db.commit()
+        db.refresh(result.transaction)
+        db.refresh(result.bill)
+        return {
+            "transaction": confirm_transaction_payload(result.transaction),
+            "bill": serialize_bill(result.bill),
+            "taken_back": result.taken_back,
+            "message": result.message,
+        }
+    except (PaymentBlocked, PaymentConflict) as exc:
+        db.rollback()
+        return exc.detail
+    except (ValueError, TypeError) as exc:
+        db.rollback()
+        return f"Validation error: {exc}"
+    except Exception:
+        logger.exception(
+            "MCP [user=%s]: error confirming bill id=%d", _audit_username(), bill_id
+        )
+        db.rollback()
+        return "Internal error confirming payment."
+    finally:
+        db.close()
+
+
+@mcp.tool()
+def skip_payment(bill_id: int, due_date: str) -> dict | str:
+    """Skip one occurrence. Nothing is written to the ledger.
+
+    Args:
+        bill_id: The recurring payment to skip.
+        due_date: The occurrence date, YYYY-MM-DD. Must match next_due_date.
+
+    Returns:
+        The updated bill, or a plain message when it cannot be skipped.
+    """
+    db = SessionLocal()
+    try:
+        bill = db.query(RecurringBill).filter(RecurringBill.id == bill_id).first()
+        if not bill:
+            return f"Bill {bill_id} not found."
+        result = skip_payment_service(db, bill, due_date)
+        db.commit()
+        db.refresh(result.bill)
+        return {"bill": serialize_bill(result.bill), "message": result.message}
+    except (PaymentBlocked, PaymentConflict) as exc:
+        db.rollback()
+        return exc.detail
+    except ValueError as exc:
+        db.rollback()
+        return f"Validation error: {exc}"
+    except Exception:
+        logger.exception(
+            "MCP [user=%s]: error skipping bill id=%d", _audit_username(), bill_id
+        )
+        db.rollback()
+        return "Internal error skipping payment."
     finally:
         db.close()
 

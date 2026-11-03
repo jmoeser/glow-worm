@@ -1,4 +1,5 @@
 import calendar
+import json
 import re
 from collections import defaultdict
 from datetime import date, datetime
@@ -12,22 +13,19 @@ from sqlalchemy.orm import Session, joinedload
 from app.config import TIMEZONE
 from app.database import get_db
 from app.middleware import get_current_user
-from app.models import RecurringBill, SinkingFund, Transaction
+from app.models import SinkingFund, Transaction
 from app.schemas import SinkingFundCreate, SinkingFundResponse, SinkingFundUpdate
 from app.services.fund_runway import compute_fund_runway
-from app.tasks import generate_bills_forecast
+from app.services.recurring_payments import (
+    delete_blocked_message,
+    paying_bills_for_fund,
+)
+from app.tasks import _compute_bills_recommended, generate_bills_forecast
 from app.templating import templates
 
 _COLOR_RE = re.compile(r"^#[0-9a-fA-F]{6}$")
 
 router = APIRouter()
-
-FREQUENCY_ANNUAL_MULTIPLIER = {
-    "monthly": 12,
-    "quarterly": 4,
-    "yearly": 1,
-    "28_days": Decimal("13.036"),  # 365.25 / 28
-}
 
 
 def _active_funds(db: Session):
@@ -37,19 +35,6 @@ def _active_funds(db: Session):
         .order_by(SinkingFund.name)
         .all()
     )
-
-
-def _compute_bills_recommended(db: Session) -> Decimal:
-    bills = db.query(RecurringBill).filter(RecurringBill.is_active == True).all()
-    total_annual = sum(
-        (
-            Decimal(str(b.amount))
-            * Decimal(str(FREQUENCY_ANNUAL_MULTIPLIER.get(b.frequency, 1)))
-            for b in bills
-        ),
-        Decimal(0),
-    )
-    return (total_annual / 12).quantize(Decimal("0.01"))
 
 
 def _fund_context(db: Session):
@@ -206,6 +191,11 @@ async def sinking_funds_delete(
             '<p class="text-red-600 text-sm">System sinking funds cannot be deleted.</p>',
             status_code=400,
         )
+    blocked = delete_blocked_message(paying_bills_for_fund(db, fund.id), "fund")
+    if blocked:
+        response = HTMLResponse(blocked, status_code=409)
+        response.headers["HX-Trigger"] = json.dumps({"gwError": blocked})
+        return response
     fund.is_deleted = True
     db.commit()
     return HTMLResponse("")
@@ -324,7 +314,9 @@ async def sinking_fund_forecast(
     if not fund:
         return HTMLResponse("Not found", status_code=404)
 
-    forecast = generate_bills_forecast(db)
+    forecast = generate_bills_forecast(
+        db, include_overdue=fund.name == "Bills" and not fund.is_deleted
+    )
 
     return templates.TemplateResponse(
         request,
@@ -540,6 +532,9 @@ async def api_delete_fund(
         return JSONResponse(
             {"detail": "System sinking funds cannot be deleted."}, status_code=400
         )
+    blocked = delete_blocked_message(paying_bills_for_fund(db, fund.id), "fund")
+    if blocked:
+        return JSONResponse({"detail": blocked}, status_code=409)
     fund.is_deleted = True
     db.commit()
     return JSONResponse({"detail": "Sinking fund deleted"}, status_code=200)

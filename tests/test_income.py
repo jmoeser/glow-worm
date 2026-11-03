@@ -564,3 +564,32 @@ class TestRecurringTransfersFormPost:
         assert response.status_code == 200
         assert "Household allowance" in response.text
         assert "200" in response.text
+
+
+def test_recommended_mode_includes_the_bills_amount(
+    authed_client, db_session, sample_category
+):
+    from decimal import Decimal
+
+    from app.models import RecurringBill
+    from app.tasks import _compute_bills_recommended
+
+    db_session.add(
+        RecurringBill(
+            name="Power",
+            amount=120,
+            debtor_provider="Grid",
+            start_date="2026-01-01",
+            frequency="monthly",
+            category_id=sample_category.id,
+            next_due_date="2026-06-01",
+            paid_from="bills_fund",
+        )
+    )
+    db_session.commit()
+    recommended = _compute_bills_recommended(db_session)
+    assert recommended == Decimal("120.00")
+    page = authed_client.get("/income")
+    assert f"Recommended (${recommended}" in page.text or "120.00" in page.text
+    assert f"const BILLS_RECOMMENDED = {recommended}" in page.text
+    assert "fundTotal += BILLS_RECOMMENDED" in page.text

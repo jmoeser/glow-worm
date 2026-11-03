@@ -958,3 +958,111 @@ class TestErrorHandling:
             result = runner.invoke(app, ["bills", "delete", "99", "--yes"])
         assert result.exit_code == 1
         assert "Bill not found" in result.output
+
+
+class TestBillsDueConfirmSkip:
+    def test_due_lists_rows(self, mock_config):
+        row = {
+            "bill_id": 4,
+            "name": "HelloFresh",
+            "expected_amount": "89.95",
+            "paid_from_label": "Groceries budget",
+            "due_date": "2026-10-26",
+            "more_due": 1,
+        }
+        with respx.mock:
+            respx.get(f"{SERVER_URL}/api/bills/due").mock(
+                return_value=httpx.Response(200, json=[row])
+            )
+            result = runner.invoke(app, ["bills", "due"])
+        assert result.exit_code == 0
+        assert "HelloFresh" in result.output
+        assert "26 Oct 2026" in result.output
+
+    def test_confirm_sends_due_date(self, mock_config):
+        bill = {
+            **SAMPLE_BILLS[0],
+            "paid_from": "budget",
+            "paid_from_label": "Groceries budget",
+        }
+        with respx.mock:
+            respx.get(f"{SERVER_URL}/api/bills/1").mock(
+                return_value=httpx.Response(200, json=bill)
+            )
+            route = respx.post(f"{SERVER_URL}/api/bills/1/confirm").mock(
+                return_value=httpx.Response(
+                    200, json={"message": "Logged $89.95 from Groceries budget."}
+                )
+            )
+            result = runner.invoke(
+                app, ["bills", "confirm", "1", "--amount", "89.95"], input="y\n"
+            )
+        assert result.exit_code == 0
+        body = json.loads(route.calls[0].request.content)
+        assert body == {"amount": 89.95, "due_date": "2026-03-01"}
+        assert "Log $89.95 from Groceries for 1 Mar 2026?" in result.output
+
+    def test_skip_and_error_sentence(self, mock_config):
+        bill = {**SAMPLE_BILLS[0], "paid_from_label": "Groceries budget"}
+        with respx.mock:
+            respx.get(f"{SERVER_URL}/api/bills/1").mock(
+                return_value=httpx.Response(200, json=bill)
+            )
+            route = respx.post(f"{SERVER_URL}/api/bills/1/skip").mock(
+                return_value=httpx.Response(200, json={"message": "Skipped."})
+            )
+            result = runner.invoke(app, ["bills", "skip", "1"], input="y\n")
+        assert result.exit_code == 0
+        assert json.loads(route.calls[0].request.content) == {"due_date": "2026-03-01"}
+        with respx.mock:
+            respx.get(f"{SERVER_URL}/api/bills/1").mock(
+                return_value=httpx.Response(200, json=bill)
+            )
+            respx.post(f"{SERVER_URL}/api/bills/1/confirm").mock(
+                return_value=httpx.Response(
+                    400,
+                    json={
+                        "detail": "There's no Groceries budget for March 2026. Set it on the Budgets page first.",
+                        "code": "no_budget",
+                    },
+                )
+            )
+            failed = runner.invoke(
+                app, ["bills", "confirm", "1", "--amount", "10"], input="y\n"
+            )
+        assert failed.exit_code == 1
+        assert "There's no Groceries budget for March 2026." in failed.output
+
+    def test_add_sends_paid_from(self, mock_config):
+        with respx.mock:
+            route = respx.post(f"{SERVER_URL}/api/bills").mock(
+                return_value=httpx.Response(201, json=SAMPLE_BILLS[0])
+            )
+            runner.invoke(
+                app,
+                [
+                    "bills",
+                    "add",
+                    "--name",
+                    "Care",
+                    "--amount",
+                    "50",
+                    "--provider",
+                    "Centre",
+                    "--frequency",
+                    "weekly",
+                    "--category-id",
+                    "2",
+                    "--start-date",
+                    "2026-01-01",
+                    "--next-due-date",
+                    "2026-06-01",
+                    "--paid-from",
+                    "sinking_fund",
+                    "--fund-id",
+                    "7",
+                ],
+            )
+        body = json.loads(route.calls[0].request.content)
+        assert body["paid_from"] == "sinking_fund"
+        assert body["paid_from_fund_id"] == 7
