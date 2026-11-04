@@ -81,6 +81,16 @@ class RecurringBill(Base):
     __tablename__ = "recurring_bills"
     __table_args__ = (
         Index("ix_recurring_bills_payment_method_id", "payment_method_id"),
+        Index("ix_recurring_bills_paid_from_fund_id", "paid_from_fund_id"),
+        CheckConstraint(
+            "paid_from IN ('bills_fund', 'budget', 'sinking_fund')",
+            name="ck_recurring_bills_paid_from",
+        ),
+        CheckConstraint(
+            "(paid_from = 'sinking_fund' AND paid_from_fund_id IS NOT NULL) "
+            "OR (paid_from <> 'sinking_fund' AND paid_from_fund_id IS NULL)",
+            name="ck_recurring_bills_paid_from_fund",
+        ),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -106,11 +116,27 @@ class RecurringBill(Base):
         ),
         nullable=True,
     )
+    paid_from: Mapped[str] = mapped_column(
+        String(20),
+        nullable=False,
+        default="bills_fund",
+        server_default=text("'bills_fund'"),
+    )
+    paid_from_fund_id: Mapped[int | None] = mapped_column(
+        ForeignKey(
+            "sinking_funds.id",
+            name="fk_recurring_bills_paid_from_fund_id",
+        ),
+        nullable=True,
+    )
     created_at: Mapped[datetime] = mapped_column(default=_utcnow)
     updated_at: Mapped[datetime] = mapped_column(default=_utcnow, onupdate=_utcnow)
 
     category: Mapped[Category] = relationship(back_populates="recurring_bills")
     payment_method: Mapped[PaymentMethod | None] = relationship(back_populates="bills")
+    paid_from_fund: Mapped[SinkingFund | None] = relationship(
+        foreign_keys=[paid_from_fund_id],
+    )
     transactions: Mapped[list[Transaction]] = relationship(
         back_populates="recurring_bill"
     )

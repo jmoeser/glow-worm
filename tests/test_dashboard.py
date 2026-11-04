@@ -489,3 +489,109 @@ class TestPaymentMethodBanner:
         assert "Continue" in page.text
         assert f"/payment-methods/{old.id}/replace" in page.text
         assert "bill moved" in page.text
+
+
+class TestDueToConfirmCard:
+    def test_shows_only_when_due_and_only_this_month(
+        self, authed_client, db_session, sample_category, sample_budget_categories
+    ):
+        from datetime import timedelta
+
+        from app.config import TIMEZONE
+        from app.models import Budget, RecurringBill, SinkingFund
+
+        today = datetime.now(TIMEZONE).date()
+        yesterday = today - timedelta(days=1)
+        fund = SinkingFund(
+            name="Bills", color="#ff0000", current_balance=100, is_system=True
+        )
+        db_session.add(fund)
+        groceries = sample_budget_categories[0]
+        budget = Budget(
+            category_id=groceries.id,
+            month=yesterday.month,
+            year=yesterday.year,
+            allocated_amount=50,
+            spent_amount=0,
+            fund_balance=0,
+        )
+        db_session.add(budget)
+        db_session.flush()
+        due = RecurringBill(
+            name="HelloFresh",
+            amount=89.95,
+            debtor_provider="HelloFresh",
+            start_date="2020-01-01",
+            frequency="weekly",
+            category_id=groceries.id,
+            next_due_date=yesterday.isoformat(),
+            paid_from="budget",
+        )
+        variable = RecurringBill(
+            name="Water",
+            amount=210,
+            debtor_provider="Utility",
+            start_date="2020-01-01",
+            frequency="monthly",
+            category_id=sample_category.id,
+            next_due_date=yesterday.isoformat(),
+            bill_type="variable",
+            paid_from="bills_fund",
+        )
+        fixed = RecurringBill(
+            name="Rent",
+            amount=1000,
+            debtor_provider="Landlord",
+            start_date="2020-01-01",
+            frequency="monthly",
+            category_id=sample_category.id,
+            next_due_date=yesterday.isoformat(),
+            bill_type="fixed",
+            paid_from="bills_fund",
+        )
+        db_session.add_all([due, variable, fixed])
+        db_session.commit()
+        page = authed_client.get("/")
+        assert 'id="due-to-confirm"' in page.text
+        assert "HelloFresh" in page.text
+        assert "Water" in page.text
+        assert "Groceries budget" in page.text
+        assert (
+            ">Rent<" not in page.text.split('id="due-to-confirm"')[1].split("</div>")[0]
+        )
+        past = authed_client.get("/?month=1&year=2020")
+        assert 'id="due-to-confirm"' not in past.text
+        confirmed = authed_client.post(
+            f"/bills/{due.id}/confirm?from=dashboard",
+            data={"amount": "90.00", "due_date": due.next_due_date},
+            headers={"x-csrftoken": authed_client.csrf_token},
+        )
+        assert confirmed.status_code == 200
+        assert "Water" in confirmed.text
+        assert "HelloFresh" not in confirmed.text
+
+    def test_problem_row_links_and_hides_confirm(
+        self, authed_client, db_session, sample_budget_categories
+    ):
+        from app.models import RecurringBill
+
+        groceries = sample_budget_categories[0]
+        bill = RecurringBill(
+            name="HelloFresh",
+            amount=20,
+            debtor_provider="HelloFresh",
+            start_date="2020-01-01",
+            frequency="weekly",
+            category_id=groceries.id,
+            next_due_date="2020-01-06",
+            paid_from="budget",
+        )
+        db_session.add(bill)
+        db_session.commit()
+        page = authed_client.get("/")
+        assert "no Groceries budget for January 2020" in page.text
+        assert "Set it on the Budgets page" in page.text
+        assert "month=1" in page.text and "year=2020" in page.text
+        row = page.text.split("HelloFresh", 1)[1]
+        assert "Skip" in row
+        assert ">Confirm<" not in row.split("Skip", 1)[0]

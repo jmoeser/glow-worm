@@ -1239,3 +1239,135 @@ class TestGenerateBillsForecast:
         assert result[1]["contribution"] == Decimal("1200.00")
         assert result[0]["configured_contribution"] == Decimal("1200.00")
         assert result[0]["contribution_received"] is False
+
+
+class TestRecurringPaymentRules:
+    def test_weekly_and_fortnightly_steps_and_multipliers(self):
+        from app.schemas import FREQUENCY_ANNUAL_MULTIPLIER
+
+        assert advance_due_date(date(2026, 1, 31), "weekly") == date(2026, 2, 7)
+        assert advance_due_date(date(2026, 1, 31), "fortnightly") == date(2026, 2, 14)
+        assert FREQUENCY_ANNUAL_MULTIPLIER["weekly"] == Decimal("52.143")
+        assert FREQUENCY_ANNUAL_MULTIPLIER["fortnightly"] == Decimal("26.071")
+        assert FREQUENCY_ANNUAL_MULTIPLIER["28_days"] == Decimal("13.036")
+
+    def test_iter_stops_after_end_date(self):
+        dates = list(
+            iter_bill_due_dates("2026-01-15", "weekly", date(2026, 2, 28), "2026-01-20")
+        )
+        assert dates == [date(2026, 1, 15)]
+
+    @patch("app.tasks._today")
+    def test_scheduler_ignores_budget_rows_and_end_date(
+        self, mock_today, db_session, bills_setup
+    ):
+        mock_today.return_value = date(2026, 2, 1)
+        budget_bill = RecurringBill(
+            name="HelloFresh",
+            amount=80,
+            debtor_provider="HelloFresh",
+            start_date="2026-01-01",
+            frequency="weekly",
+            category_id=bills_setup["expense_cat"].id,
+            next_due_date="2026-01-20",
+            paid_from="budget",
+        )
+        ended = RecurringBill(
+            name="Old power",
+            amount=50,
+            debtor_provider="Power",
+            start_date="2025-01-01",
+            frequency="monthly",
+            category_id=bills_setup["expense_cat"].id,
+            next_due_date="2026-02-01",
+            end_date="2026-01-15",
+            paid_from="bills_fund",
+        )
+        db_session.add_all([budget_bill, ended])
+        db_session.commit()
+        process_due_bills(db=db_session)
+        paid_ids = {
+            row.recurring_bill_id for row in db_session.query(Transaction).all()
+        }
+        assert bills_setup["bill_due"].id in paid_ids
+        assert budget_bill.id not in paid_ids
+        assert ended.id not in paid_ids
+        db_session.refresh(ended)
+        assert ended.next_due_date == "2026-02-01"
+
+    @patch("app.tasks._today")
+    def test_forecast_and_recommended_ignore_other_sources(
+        self, mock_today, db_session, forecast_setup
+    ):
+        from app.tasks import _compute_bills_recommended
+
+        mock_today.return_value = date(2026, 3, 18)
+        db_session.add(
+            RecurringBill(
+                name="Groceries box",
+                amount=100,
+                debtor_provider="Shop",
+                start_date="2026-01-01",
+                frequency="monthly",
+                category_id=forecast_setup["expense_cat"].id,
+                next_due_date="2026-03-20",
+                paid_from="budget",
+            )
+        )
+        kept = RecurringBill(
+            name="Power",
+            amount=40,
+            debtor_provider="Grid",
+            start_date="2026-01-01",
+            frequency="monthly",
+            category_id=forecast_setup["expense_cat"].id,
+            next_due_date="2026-03-20",
+            paid_from="bills_fund",
+        )
+        db_session.add(kept)
+        db_session.commit()
+        result = generate_bills_forecast(db_session)
+        names = [bill["name"] for row in result for bill in row["bills"]]
+        assert "Power" in names
+        assert "Groceries box" not in names
+        # 40 * 12 / 12 = 40
+        assert _compute_bills_recommended(db_session) == Decimal("40.00")
+
+    @patch("app.tasks._today")
+    def test_overdue_variable_bills_land_in_this_month(
+        self, mock_today, db_session, forecast_setup
+    ):
+        mock_today.return_value = date(2026, 3, 18)
+        db_session.add_all(
+            [
+                RecurringBill(
+                    name="Water",
+                    amount=30,
+                    debtor_provider="Utility",
+                    start_date="2026-01-01",
+                    frequency="monthly",
+                    category_id=forecast_setup["expense_cat"].id,
+                    next_due_date="2026-02-10",
+                    bill_type="variable",
+                    paid_from="bills_fund",
+                ),
+                RecurringBill(
+                    name="Rent",
+                    amount=100,
+                    debtor_provider="Landlord",
+                    start_date="2026-01-01",
+                    frequency="monthly",
+                    category_id=forecast_setup["expense_cat"].id,
+                    next_due_date="2026-02-10",
+                    bill_type="fixed",
+                    paid_from="bills_fund",
+                ),
+            ]
+        )
+        db_session.commit()
+        plain = generate_bills_forecast(db_session)
+        assert all(not bill.get("overdue") for row in plain for bill in row["bills"])
+        caught = generate_bills_forecast(db_session, include_overdue=True)
+        overdue = [bill for bill in caught[0]["bills"] if bill.get("overdue")]
+        assert [bill["name"] for bill in overdue] == ["Water"]
+        assert caught[0]["total_out"] == plain[0]["total_out"] + Decimal("30.00")

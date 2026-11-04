@@ -18,7 +18,6 @@ from sqlalchemy.orm import Session
 from app.config import TIMEZONE, bills_cover_horizon_months
 from app.models import (
     IncomeAllocation,
-    RecurringBill,
     SecondaryIncomeAllocation,
     SinkingFund,
     Transaction,
@@ -26,6 +25,7 @@ from app.models import (
 from app.services.money import add_months as _add_months
 from app.services.money import dollars as _dollars
 from app.services.money import money as _money
+from app.services.recurring_payments import bills_fund_bills
 from app.tasks import _compute_bills_recommended, iter_bill_due_dates
 
 logger = logging.getLogger(__name__)
@@ -234,13 +234,16 @@ def _secondary_inflow(
 def _projected_occurrences(
     db: Session, horizon_end: date
 ) -> list[tuple[int, date, Decimal]]:
-    bills = db.query(RecurringBill).filter(RecurringBill.is_active == True).all()
+    bills = bills_fund_bills(db)
     occurrences: list[tuple[int, date, Decimal]] = []
     for bill in bills:
         amount = _money(bill.amount)
         try:
             due_dates = iter_bill_due_dates(
-                bill.next_due_date, bill.frequency, horizon_end
+                bill.next_due_date,
+                bill.frequency,
+                horizon_end,
+                bill.end_date,
             )
             for due in due_dates:
                 occurrences.append((bill.id, due, amount))
@@ -258,8 +261,10 @@ def _unpaid_bill_expenses(
 ) -> list[Transaction]:
     """Unpaid bill expenses on or before the horizon, including dates before today.
 
-    Count a row when it is linked to the Bills fund or has no sinking fund.
-    Expenses charged to some other fund are that fund's obligation.
+    Count a row on the Bills fund. A row with no fund counts only when it
+    has no budget and the bill is still paid from the Bills fund. A budget
+    expense is that budget's spend. Expenses on some other fund are that
+    fund's obligation.
 
     Scheduler-generated bills are stored with ``is_paid`` true (the model
     default) and the Bills balance is reduced at the same time, so they are
@@ -280,9 +285,15 @@ def _unpaid_bill_expenses(
     )
     kept: list[Transaction] = []
     for row in rows:
-        if row.sinking_fund_id not in (None, bills_fund_id):
+        if row.sinking_fund_id == bills_fund_id:
+            kept.append(row)
             continue
-        kept.append(row)
+        # A budget expense is that budget's spend, even when it names a bill.
+        # An unlinked expense counts only for a Bills-fund bill.
+        if row.sinking_fund_id is None and row.budget_id is None:
+            bill = row.recurring_bill
+            if bill is not None and bill.paid_from == "bills_fund":
+                kept.append(row)
     return kept
 
 

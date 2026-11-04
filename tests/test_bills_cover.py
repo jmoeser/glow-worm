@@ -842,3 +842,83 @@ def test_horizon_end_is_inclusive(
         assert result.obligations == Decimal("25.00")
     else:
         assert result.obligations == Decimal("0.00")
+
+
+def test_cover_ignores_other_sources_and_budget_expenses(
+    db_session, sample_category, sample_sinking_funds
+):
+    from app.models import Budget, Category
+    from app.services.recurring_payments import confirm_payment, skip_payment
+
+    today = date(2026, 6, 1)
+    groceries = Category(
+        name="Groceries", type="expense", color="#22C55E", is_budget_category=True
+    )
+    db_session.add(groceries)
+    db_session.flush()
+    budget = Budget(
+        category_id=groceries.id,
+        month=6,
+        year=2026,
+        allocated_amount=100,
+        spent_amount=0,
+        fund_balance=0,
+    )
+    db_session.add(budget)
+    db_session.commit()
+    box = _bill(
+        db_session,
+        groceries.id,
+        name="Box",
+        amount=80,
+        frequency="yearly",
+        next_due="2026-06-02",
+    )
+    box.paid_from = "budget"
+    water = _bill(
+        db_session,
+        sample_category.id,
+        name="Water",
+        amount=40,
+        frequency="yearly",
+        next_due="2026-05-15",
+    )
+    water.bill_type = "variable"
+    db_session.commit()
+    before = compute_bills_cover(db_session, today=today, horizon_months=3)
+    assert before.obligations == Decimal("40.00")
+    _txn(
+        db_session,
+        groceries.id,
+        date="2026-06-02",
+        amount=80,
+        transaction_type="budget_expense",
+        budget_id=budget.id,
+        recurring_bill_id=box.id,
+        sinking_fund_id=None,
+        is_paid=False,
+    )
+    after_expense = compute_bills_cover(db_session, today=today, horizon_months=3)
+    assert after_expense.obligations == Decimal("40.00")
+    confirm_payment(db_session, water, Decimal(40), "2026-05-15")
+    db_session.commit()
+    confirmed = compute_bills_cover(db_session, today=today, horizon_months=3)
+    assert confirmed.obligations == Decimal("0.00")
+    gas = _bill(
+        db_session,
+        sample_category.id,
+        name="Gas",
+        amount=15,
+        frequency="yearly",
+        next_due="2026-05-20",
+    )
+    gas.bill_type = "variable"
+    db_session.commit()
+    assert compute_bills_cover(
+        db_session, today=today, horizon_months=3
+    ).obligations == (Decimal("15.00"))
+    skip_payment(db_session, gas, "2026-05-20")
+    db_session.commit()
+    assert compute_bills_cover(
+        db_session, today=today, horizon_months=3
+    ).obligations == (Decimal("0.00"))

@@ -1,0 +1,54 @@
+{% if fragment == "form" and bill %}
+<div id="due-row-{{ bill.id }}" style="padding: 8px 0;">
+    <form hx-post="/bills/{{ bill.id }}/confirm?from={{ due_from }}"
+          hx-target="#due-to-confirm" hx-swap="outerHTML">
+        <p style="margin-bottom: 8px;">Due {{ bill.next_due_date|due_label }}</p>
+        <input type="number" name="amount" value="{{ '%.2f'|format(bill.amount) }}"
+               step="0.01" min="0.01" required class="gw-input" style="max-width: 140px;">
+        <p style="margin: 8px 0;">From {{ source_label(bill) }}{% if bill.paid_from == 'budget' %} ({{ bill.next_due_date|month_year }}){% endif %}</p>
+        <input type="hidden" name="due_date" value="{{ bill.next_due_date }}">
+        <button type="submit" class="gw-btn gw-btn-success gw-btn-sm" hx-disabled-elt="this">Confirm</button>
+        <button type="button" class="gw-btn gw-btn-ghost gw-btn-sm"
+                hx-get="/bills/due-card?from={{ due_from }}"
+                hx-target="#due-to-confirm" hx-swap="outerHTML"
+                hx-disabled-elt="this">Cancel</button>
+    </form>
+</div>
+{% elif due_payments %}
+<div id="due-to-confirm" class="gw-card gw-section">
+    <h3 style="font-family: var(--font-display); font-size: 1.05rem; font-weight: 600; margin-bottom: 4px;">Due to confirm</h3>
+    {% for item in due_payments %}
+    <div id="due-row-{{ item.bill_id }}" style="display: flex; gap: 12px; align-items: flex-start; justify-content: space-between; padding: 8px 0; border-top: 1px solid var(--border, #2a2f3a);">
+        <div>
+            <strong>{{ item.name }}</strong>
+            · ${{ item.expected_amount|money }}
+            · {{ item.paid_from_label }}
+            · Due {{ item.due_date|due_label }}
+            {% if item.more_due %} · +{{ item.more_due }} more{% endif %}
+            {% if item.problem %}
+            <p class="gw-text-negative" style="margin: 4px 0 0;">
+                {{ item.problem.detail }}
+                {% if item.problem.href %}
+                <a href="{{ item.problem.href }}">{% if item.problem.code == 'no_budget' %}Set it on the Budgets page{% else %}Change where this is paid from{% endif %}</a>
+                {% endif %}
+            </p>
+            {% endif %}
+        </div>
+        <div style="white-space: nowrap;">
+            {% if not item.problem %}
+            <button type="button" class="gw-action-pay"
+                    hx-get="/bills/{{ item.bill_id }}/confirm?from={{ 'dashboard' if due_from == 'dashboard' else 'card' }}"
+                    hx-target="#due-row-{{ item.bill_id }}" hx-swap="outerHTML">Confirm</button>
+            {% endif %}
+            <button type="button"
+                    hx-post="/bills/{{ item.bill_id }}/skip?from={{ 'dashboard' if due_from == 'dashboard' else 'card' }}"
+                    hx-vals='{"due_date": "{{ item.due_date }}"}'
+                    hx-target="#due-to-confirm" hx-swap="outerHTML"
+                    hx-confirm="Skip the {{ item.due_date|due_label }} payment?"
+                    hx-disabled-elt="this"
+                    class="gw-action-edit">Skip</button>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% endif %}

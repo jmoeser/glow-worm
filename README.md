@@ -8,7 +8,7 @@ An opinionated, single-tenant household budgeting app built with Python and Fast
 - **Monthly Budgets** -- Track spending against allocated amounts for repeating categories (Groceries, Eating Out, etc.) with color-coded progress bars. Any unspent surplus is automatically swept into your overflow sinking fund at month-end; net overspend is automatically withdrawn from it so your fund balances always reflect reality. Advisory **budget suggestions** compare each category's allocation to its average spend over the last few completed months (shown on the budgets page and as a dashboard teaser).
 - **Sinking Funds** -- Savings pots (Bills, Savings, Emergency, etc.) that accumulate a balance over time via monthly contributions. A fund's detail page shows how long that balance lasts at the recent rate, or how long a negative balance takes to get back to zero. The Bills fund points to its forecast instead.
 - **Shares** -- Record US share buys and sells (CMC Markets style: USD price, optional fee, broker FX as AUD/USD or USD/AUD). FIFO realised gains are shown in AUD, with unrealised gains in AUD and USD and a portfolio total. A value-over-time chart plots market value and cost base in AUD from stored daily closes and FX rates. Daily closes come from Alpha Vantage; the AUD/USD rate comes from Frankfurter, with Alpha Vantage FX as a fallback. Informational only — share trades are not household budget transactions.
-- **Recurring Bills** -- Manage bills with flexible frequencies (monthly, quarterly, yearly, every 28 days). Fixed bills due today are recorded as paid expenses from the Bills fund and the next due date advances. Variable bills are paid manually. Each bill can record which payment method pays it.
+- **Recurring payments** -- Repeating payments (weekly, fortnightly, monthly, quarterly, yearly, every 28 days), paid from the Bills fund, a budget, or another sinking fund. Fixed Bills-fund payments are logged automatically. Everything else, including a variable Bills-fund bill, waits on the dashboard and the Bills page until you confirm or skip it. Each one can record which payment method pays it.
 - **Payment methods** -- Record the card, bank account, or BPAY / pay myself entry that pays each bill. Only the last 4 digits are stored. When a card is close to expiry, or you are moving bills to a new card, the dashboard lists what still needs updating. The checklist can be left and picked up later.
 - **Recurring Transfers** -- Define fixed monthly outflows (e.g. an allowance, an external savings transfer) that are processed automatically as part of income allocation and deducted from the unallocated remainder.
 - **Category Management** -- Create and manage transaction categories (income, expense, transfer). System categories required for income allocation are protected from deletion.
@@ -160,6 +160,9 @@ Glow-worm exposes an [MCP](https://modelcontextprotocol.io/) server at `/mcp` us
 | `create_bill` | Create a new recurring bill |
 | `update_bill` | Update fields on an existing bill |
 | `delete_bill` | Deactivate a recurring bill (soft delete) |
+| `list_due_payments` | List payments waiting to be confirmed or skipped |
+| `confirm_payment` | Log one occurrence on its due date |
+| `skip_payment` | Step past one occurrence without writing a transaction |
 | `list_payment_methods` | List payment methods (optionally include archived) |
 | `get_payment_method` | Get one payment method, including an open replacement's progress |
 | `create_payment_method` | Add a card, bank account, or BPAY / pay myself entry |
@@ -344,7 +347,7 @@ glow-worm/
 │   ├── mcp_server.py      # MCP tool definitions
 │   ├── templating.py      # Jinja2 template helpers
 │   ├── routes/            # Route modules (auth, dashboard, bills, etc.)
-│   ├── services/          # Domain logic (transaction balances, budget recommendations, payment methods, shares, market data)
+│   ├── services/          # Domain logic (transaction balances, recurring payments, budget recommendations, payment methods, shares, market data)
 │   ├── templates/         # Jinja2 HTML templates
 │   ├── static/            # CSS, logo, static assets
 │   └── cli/               # glow CLI (pipx-installable)

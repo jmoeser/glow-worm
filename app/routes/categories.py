@@ -1,3 +1,4 @@
+import json
 import re
 
 from fastapi import APIRouter, Depends, Request
@@ -9,6 +10,10 @@ from app.database import get_db
 from app.middleware import get_current_user
 from app.models import Category
 from app.schemas import CategoryCreate, CategoryResponse, CategoryUpdate
+from app.services.recurring_payments import (
+    delete_blocked_message,
+    paying_bills_for_category,
+)
 from app.templating import templates
 
 _COLOR_RE = re.compile(r"^#[0-9a-fA-F]{6}$")
@@ -173,6 +178,13 @@ async def categories_delete(
             '<p class="text-red-600 text-sm">System categories cannot be deleted.</p>',
             status_code=400,
         )
+    blocked = delete_blocked_message(
+        paying_bills_for_category(db, category.id), "category"
+    )
+    if blocked:
+        response = HTMLResponse(blocked, status_code=409)
+        response.headers["HX-Trigger"] = json.dumps({"gwError": blocked})
+        return response
     category.is_deleted = True
     db.commit()
     return HTMLResponse("")
@@ -274,6 +286,11 @@ async def api_delete_category(
         return JSONResponse(
             {"detail": "System categories cannot be deleted."}, status_code=400
         )
+    blocked = delete_blocked_message(
+        paying_bills_for_category(db, category.id), "category"
+    )
+    if blocked:
+        return JSONResponse({"detail": blocked}, status_code=409)
     category.is_deleted = True
     db.commit()
     return JSONResponse({"detail": "Category deleted"}, status_code=200)

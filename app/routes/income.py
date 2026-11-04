@@ -29,6 +29,7 @@ from app.schemas import (
     SecondaryIncomeAllocationCreate,
     SecondaryIncomeAllocationResponse,
 )
+from app.tasks import _compute_bills_recommended
 from app.templating import templates
 
 router = APIRouter()
@@ -127,6 +128,7 @@ async def income_page(request: Request, db: Session = Depends(get_db)):
             "fund_allocation_map": fund_allocation_map,
             "sinking_funds_data": sinking_funds_data,
             "recurring_transfers": recurring_transfers,
+            "bills_recommended": _compute_bills_recommended(db),
         },
     )
 

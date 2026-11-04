@@ -1103,3 +1103,66 @@ class TestFundRunwayPage:
         assert dashboard.status_code == 200
         assert "fund-runway" not in listing.text
         assert "fund-runway" not in dashboard.text
+
+
+def test_forecast_marks_overdue_only_on_the_bills_fund(
+    authed_client, db_session, sample_sinking_funds, sample_category
+):
+    from datetime import date
+    from unittest.mock import patch
+
+    from app.models import RecurringBill
+
+    bills = sample_sinking_funds[0]
+    other = sample_sinking_funds[1]
+    db_session.add(
+        RecurringBill(
+            name="Water",
+            amount=30,
+            debtor_provider="Utility",
+            start_date="2026-01-01",
+            frequency="monthly",
+            category_id=sample_category.id,
+            next_due_date="2026-02-10",
+            bill_type="variable",
+            paid_from="bills_fund",
+        )
+    )
+    db_session.commit()
+    with patch("app.tasks._today", return_value=date(2026, 3, 18)):
+        bills_page = authed_client.get(f"/sinking-funds/{bills.id}/forecast")
+        other_page = authed_client.get(f"/sinking-funds/{other.id}/forecast")
+    assert "(overdue)" in bills_page.text
+    assert "(overdue)" not in other_page.text
+
+
+def test_delete_fund_blocked_while_an_active_payment_uses_it(
+    authed_client, db_session, sample_sinking_funds, sample_category
+):
+    from app.models import RecurringBill
+
+    fund = sample_sinking_funds[1]
+    bill = RecurringBill(
+        name="Child care",
+        amount=200,
+        debtor_provider="Centre",
+        start_date="2026-01-01",
+        frequency="weekly",
+        category_id=sample_category.id,
+        next_due_date="2026-06-01",
+        paid_from="sinking_fund",
+        paid_from_fund_id=fund.id,
+    )
+    db_session.add(bill)
+    db_session.commit()
+    blocked = authed_client.delete(
+        f"/sinking-funds/{fund.id}",
+        headers={"x-csrftoken": authed_client.csrf_token},
+    )
+    assert blocked.status_code == 409
+    assert "Child care is paid from this fund" in blocked.text
+    assert "gwError" in blocked.headers["hx-trigger"]
+    bill.is_active = False
+    db_session.commit()
+    allowed = authed_client.delete(f"/api/sinking-funds/{fund.id}")
+    assert allowed.status_code == 200

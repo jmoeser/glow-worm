@@ -8,7 +8,7 @@ class TestBillsPageGet:
     def test_renders_page_with_table(self, authed_client):
         response = authed_client.get("/bills")
         assert response.status_code == 200
-        assert "Recurring Bills" in response.text
+        assert "Recurring payments" in response.text
         assert "Name" in response.text
         assert "Provider" in response.text
         assert "Amount" in response.text
@@ -33,7 +33,7 @@ class TestBillsPageGet:
 
     def test_shows_add_form(self, authed_client):
         response = authed_client.get("/bills")
-        assert "Add New Bill" in response.text
+        assert "Add new" in response.text
         assert 'name="name"' in response.text
         assert 'name="amount"' in response.text
 
@@ -506,31 +506,41 @@ class TestProcessDueBillsVariableSkip:
         assert fixed_bill.next_due_date != "2026-02-01"
 
 
-class TestBillsPayFormGet:
-    def test_returns_pay_form_for_variable_bill(self, authed_client, variable_bill):
-        response = authed_client.get(f"/bills/{variable_bill.id}/pay")
-        assert response.status_code == 200
-        assert "Record Payment" in response.text
-        assert 'name="amount"' in response.text
-        assert 'name="date"' in response.text
+class TestBillsConfirmRow:
+    def test_variable_row_has_confirm_and_skip_not_pay(
+        self, authed_client, variable_bill
+    ):
+        page = authed_client.get("/bills")
+        assert "Confirm" in page.text
+        assert "Skip" in page.text
+        assert ">Pay<" not in page.text
+        assert f"/bills/{variable_bill.id}/pay" not in page.text
 
-    def test_404_for_nonexistent_bill(self, authed_client):
-        response = authed_client.get("/bills/99999/pay")
+    def test_confirm_form_shows_due_date_and_source(
+        self, authed_client, variable_bill, bills_fund
+    ):
+        response = authed_client.get(f"/bills/{variable_bill.id}/confirm")
+        assert response.status_code == 200
+        assert "Due 1 Feb 2026" in response.text
+        assert 'name="amount"' in response.text
+        assert 'name="due_date"' in response.text
+        assert "From Bills fund" in response.text
+        assert "Record Payment" not in response.text
+
+    def test_confirm_404_for_nonexistent_bill(self, authed_client):
+        response = authed_client.get("/bills/99999/confirm")
         assert response.status_code == 404
 
-
-class TestBillsPayPost:
-    def test_records_payment_creates_transaction(
+    def test_confirm_logs_on_the_due_date(
         self, authed_client, db_session, variable_bill, bills_fund
     ):
         original_due = variable_bill.next_due_date
         response = authed_client.post(
-            f"/bills/{variable_bill.id}/pay",
-            data={"amount": "180.50", "date": "2026-02-21"},
+            f"/bills/{variable_bill.id}/confirm",
+            data={"amount": "180.50", "due_date": original_due},
             headers={"x-csrftoken": authed_client.csrf_token},
         )
         assert response.status_code == 200
-
         txn = (
             db_session.query(Transaction)
             .filter(Transaction.recurring_bill_id == variable_bill.id)
@@ -538,46 +548,17 @@ class TestBillsPayPost:
         )
         assert txn is not None
         assert float(txn.amount) == 180.50
+        assert txn.date == original_due
         assert txn.sinking_fund_id == bills_fund.id
-
         db_session.refresh(variable_bill)
         assert variable_bill.next_due_date != original_due
-
-    def test_deducts_bills_fund_balance(
-        self, authed_client, db_session, variable_bill, bills_fund
-    ):
-        original_balance = float(bills_fund.current_balance)
-        authed_client.post(
-            f"/bills/{variable_bill.id}/pay",
-            data={"amount": "100.00", "date": "2026-02-21"},
-            headers={"x-csrftoken": authed_client.csrf_token},
-        )
         db_session.refresh(bills_fund)
-        assert float(bills_fund.current_balance) == original_balance - 100.00
+        assert float(bills_fund.current_balance) == 500 - 180.50
 
-    def test_returns_updated_bill_row(self, authed_client, variable_bill, bills_fund):
+    def test_confirm_invalid_amount(self, authed_client, variable_bill, bills_fund):
         response = authed_client.post(
-            f"/bills/{variable_bill.id}/pay",
-            data={"amount": "150.00", "date": "2026-02-21"},
-            headers={"x-csrftoken": authed_client.csrf_token},
-        )
-        assert response.status_code == 200
-        assert variable_bill.name in response.text
-
-    def test_error_if_bills_fund_not_found(self, authed_client, variable_bill):
-        # No bills_fund fixture — fund doesn't exist
-        response = authed_client.post(
-            f"/bills/{variable_bill.id}/pay",
-            data={"amount": "100.00", "date": "2026-02-21"},
-            headers={"x-csrftoken": authed_client.csrf_token},
-        )
-        assert response.status_code == 200
-        assert "Bills sinking fund not found" in response.text
-
-    def test_error_on_invalid_amount(self, authed_client, variable_bill, bills_fund):
-        response = authed_client.post(
-            f"/bills/{variable_bill.id}/pay",
-            data={"amount": "abc", "date": "2026-02-21"},
+            f"/bills/{variable_bill.id}/confirm",
+            data={"amount": "abc", "due_date": variable_bill.next_due_date},
             headers={"x-csrftoken": authed_client.csrf_token},
         )
         assert response.status_code == 200
@@ -585,8 +566,8 @@ class TestBillsPayPost:
 
     def test_403_without_csrf(self, authed_client, variable_bill, bills_fund):
         response = authed_client.post(
-            f"/bills/{variable_bill.id}/pay",
-            data={"amount": "100.00", "date": "2026-02-21"},
+            f"/bills/{variable_bill.id}/confirm",
+            data={"amount": "100.00", "due_date": variable_bill.next_due_date},
         )
         assert response.status_code == 403
 
@@ -645,7 +626,9 @@ class TestApiBillsPay:
             json={"amount": "100", "date": "2026-02-21"},
         )
         assert response.status_code == 400
-        assert "Bills sinking fund not found" in response.json()["detail"]
+        body = response.json()
+        assert body["detail"] == "The Bills fund is missing."
+        assert body["code"] == "source_missing"
 
 
 class TestPaidWith:
@@ -677,7 +660,8 @@ class TestPaidWith:
         assert "Expired" in page.text
         assert "Not set" in page.text
         assert "paid_with: 2" in page.text
-        assert "next_due_date: 6" in page.text
+        assert "paid_from: 3" in page.text
+        assert "next_due_date: 7" in page.text
         assert "No payment method: 1" in page.text
 
     def test_edit_keeps_link_when_key_missing_and_blank_clears(
@@ -770,3 +754,47 @@ class TestPaidWith:
         )
         assert cleared.status_code == 200
         assert cleared.json()["payment_method_id"] is None
+
+
+def test_amount_help_summary_and_success_event(
+    authed_client, db_session, sample_category
+):
+    page = authed_client.get("/bills")
+    assert "Amount each time it's due." in page.text
+    assert "Bills fund monthly cost" in page.text
+    assert "Other recurring:" in page.text
+    assert "Paid from" in page.text
+    created = authed_client.post(
+        "/bills",
+        data={
+            "name": "Power",
+            "debtor_provider": "Grid",
+            "amount": "40",
+            "frequency": "monthly",
+            "start_date": "2026-01-01",
+            "next_due_date": "2026-06-01",
+            "paid_from": "bills_fund",
+            "bill_type": "fixed",
+        },
+        headers={"x-csrftoken": authed_client.csrf_token},
+    )
+    assert created.status_code == 200
+    trigger = created.headers["hx-trigger-after-swap"]
+    assert "Bill added." in trigger
+    assert "monthly" in trigger
+    assert "annual" in trigger
+    assert "other" in trigger
+    rejected = authed_client.post(
+        "/bills",
+        data={
+            "name": "Nope",
+            "debtor_provider": "Nope",
+            "amount": "10",
+            "frequency": "whenever",
+            "start_date": "2026-01-01",
+            "next_due_date": "2026-06-01",
+            "paid_from": "bills_fund",
+        },
+        headers={"x-csrftoken": authed_client.csrf_token},
+    )
+    assert "Choose a frequency." in rejected.text

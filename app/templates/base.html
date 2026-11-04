@@ -47,6 +47,38 @@
                     const isCollapsed = sidebar.classList.toggle('collapsed');
                     localStorage.setItem('sidebar-collapsed', isCollapsed);
                 });
+
+                function showGwStrip(text, kind) {
+                    var strip = document.getElementById('gw-error-strip');
+                    if (!strip) {
+                        strip = document.createElement('div');
+                        strip.id = 'gw-error-strip';
+                        var main = document.querySelector('main.gw-main');
+                        if (main) {
+                            main.insertBefore(strip, main.firstChild);
+                        }
+                    }
+                    strip.className = kind === 'success'
+                        ? 'gw-msg-success gw-section'
+                        : 'gw-warning-banner gw-section';
+                    strip.textContent = text || '';
+                }
+
+                document.body.addEventListener('gwError', function (event) {
+                    var text = event.detail;
+                    if (text && typeof text === 'object') {
+                        text = text.message || text.value || '';
+                    }
+                    showGwStrip(String(text || 'Something went wrong.'), 'error');
+                });
+
+                document.body.addEventListener('gwBillSuccess', function (event) {
+                    var detail = event.detail || {};
+                    if (!detail.message || document.getElementById('bills-message')) {
+                        return;
+                    }
+                    showGwStrip(detail.message, 'success');
+                });
             });
         </script>
     </head>

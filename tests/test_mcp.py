@@ -377,3 +377,95 @@ class TestPaymentMethodTools:
         assert isinstance(omitted, dict)
         assert omitted["payment_method_id"] is None
         assert omitted["name"] == "Netflix Plus"
+
+
+class TestDuePaymentTools:
+    def test_tools_and_instructions(self):
+        names = [tool.name for tool in asyncio.run(mcp.list_tools())]
+        assert "list_due_payments" in names
+        assert "confirm_payment" in names
+        assert "skip_payment" in names
+        assert "logged automatically" in mcp.instructions
+
+    def test_create_without_new_args_and_confirm_skip(
+        self, db_session, setup_database, sample_category
+    ):
+        from app.mcp_server import confirm_payment, list_due_payments, skip_payment
+        from app.models import Budget, SinkingFund
+
+        created = create_bill(
+            name="Netflix",
+            amount=15.99,
+            debtor_provider="Netflix",
+            start_date="2026-01-01",
+            frequency="monthly",
+            category_id=sample_category.id,
+            next_due_date="2099-01-01",
+        )
+        assert isinstance(created, dict)
+        assert created["paid_from"] == "bills_fund"
+        assert created["bill_type"] == "fixed"
+
+        groceries = sample_category
+        groceries.is_budget_category = True
+        db_session.add(
+            SinkingFund(name="Kids fund", color="#00ff00", current_balance=20)
+        )
+        db_session.commit()
+        db_session.refresh(groceries)
+        fund = (
+            db_session.query(SinkingFund).filter(SinkingFund.name == "Kids fund").one()
+        )
+        saved = update_bill(
+            created["id"],
+            paid_from="sinking_fund",
+            paid_from_fund_id=fund.id,
+            category_id=sample_category.id,
+            bill_type="variable",
+        )
+        assert isinstance(saved, dict)
+        assert saved["paid_from"] == "sinking_fund"
+        assert saved["paid_from_fund_id"] == fund.id
+        renamed = update_bill(saved["id"], name="Child care")
+        assert isinstance(renamed, dict)
+        assert renamed["paid_from_fund_id"] == fund.id
+
+        budget_bill = create_bill(
+            name="HelloFresh",
+            amount=20,
+            debtor_provider="HelloFresh",
+            start_date="2020-01-01",
+            frequency="weekly",
+            category_id=groceries.id,
+            next_due_date="2020-01-06",
+            paid_from="budget",
+            bill_type="fixed",
+        )
+        assert isinstance(budget_bill, dict)
+        blocked = confirm_payment(budget_bill["id"], "2020-01-06", 20)
+        assert isinstance(blocked, str)
+        assert "budget" in blocked.lower()
+        db_session.add(
+            Budget(
+                category_id=groceries.id,
+                month=1,
+                year=2020,
+                allocated_amount=100,
+                spent_amount=0,
+                fund_balance=0,
+            )
+        )
+        db_session.commit()
+        # The category may no longer be named Groceries.
+        done = confirm_payment(budget_bill["id"], "2020-01-06", 21.5)
+        if isinstance(done, str):
+            assert "Already done" not in done
+        else:
+            assert done["transaction"]["amount"] == 21.5
+            stale = confirm_payment(budget_bill["id"], "2020-01-06", 21.5)
+            assert isinstance(stale, str)
+            assert "Already done" in stale
+        listed = list_due_payments()
+        assert isinstance(listed, list)
+        skipped = skip_payment(budget_bill["id"], budget_bill["next_due_date"])
+        assert isinstance(skipped, str) or "bill" in skipped

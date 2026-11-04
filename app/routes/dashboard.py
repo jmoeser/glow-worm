@@ -21,6 +21,7 @@ from app.schemas import DashboardSummary, SinkingFundResponse, TransactionRespon
 from app.services.bills_cover import compute_bills_cover
 from app.services.budget_recommendations import recommendation_summary
 from app.services.payment_methods import compute_payment_alerts
+from app.services.recurring_payments import due_to_confirm
 from app.services.transaction_balances import adjust_budget_spent_amount
 from app.tasks import _compute_bills_recommended
 from app.templating import templates
@@ -210,6 +211,7 @@ async def dashboard_page(
     now_date = datetime.now(TIMEZONE).strftime("%Y-%m-%d")
     bills_cover = compute_bills_cover(db)
     payment_alerts = compute_payment_alerts(db)
+    due_payments = due_to_confirm(db) if data["is_current_month"] else []
     db.commit()
     return templates.TemplateResponse(
         request,
@@ -219,6 +221,8 @@ async def dashboard_page(
             "now_date": now_date,
             "bills_cover": bills_cover,
             "payment_alerts": payment_alerts,
+            "due_payments": due_payments,
+            "due_from": "dashboard",
             **data,
         },
     )
