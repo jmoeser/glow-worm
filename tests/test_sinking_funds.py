@@ -1,9 +1,16 @@
 import re
 from datetime import date, datetime, timedelta
+from decimal import Decimal
 from unittest.mock import patch
 
 from app.config import TIMEZONE
-from app.models import IncomeAllocation, SinkingFund, Transaction
+from app.models import (
+    IncomeAllocation,
+    SecondaryIncomeAllocation,
+    SecondaryIncomeAllocationRule,
+    SinkingFund,
+    Transaction,
+)
 
 
 class TestSinkingFundsPageGet:
@@ -791,6 +798,187 @@ class TestSinkingFundForecast:
         response = authed_client.get(f"/sinking-funds/{savings_fund.id}")
         assert response.status_code == 200
         assert f"/sinking-funds/{savings_fund.id}/forecast" not in response.text
+
+
+def _summary_amount(html, label):
+    match = re.search(
+        rf"{re.escape(label)}</span>\s*<span[^>]*>\s*([^<]+)",
+        html,
+        re.DOTALL,
+    )
+    assert match, label
+    return match.group(1).strip()
+
+
+def _bills_secondary_goal(db_session, fund_id, amount):
+    alloc = SecondaryIncomeAllocation(label="Partner")
+    db_session.add(alloc)
+    db_session.flush()
+    db_session.add(
+        SecondaryIncomeAllocationRule(
+            secondary_income_allocation_id=alloc.id,
+            sinking_fund_id=fund_id,
+            goal_amount=amount,
+            sort_order=1,
+        )
+    )
+    db_session.commit()
+
+
+class TestForecastSecondaryToggle:
+    def test_no_goal_hides_the_toggle(self, authed_client, sample_sinking_funds):
+        fund = sample_sinking_funds[0]
+        response = authed_client.get(f"/sinking-funds/{fund.id}/forecast?secondary=1")
+        assert response.status_code == 200
+        assert "Include secondary income" not in response.text
+        assert "(secondary)" not in response.text
+
+    def test_renamed_or_deleted_bills_fund_hides_the_toggle_and_adds_nothing(
+        self, authed_client, db_session, sample_sinking_funds
+    ):
+        fund = sample_sinking_funds[0]
+        fund.current_balance = 250
+        fund.name = "Household"
+        db_session.commit()
+        _bills_secondary_goal(db_session, fund.id, 80)
+
+        renamed = authed_client.get(f"/sinking-funds/{fund.id}/forecast?secondary=1")
+        assert "Include secondary income" not in renamed.text
+        assert "(secondary)" not in renamed.text
+        assert "$80.00" not in renamed.text
+        assert _summary_amount(renamed.text, "12-Month Low:") == "$0.00"
+
+        fund.name = "Bills"
+        fund.is_deleted = True
+        db_session.commit()
+        deleted = authed_client.get(
+            f"/sinking-funds/{fund.id}/forecast?secondary=1",
+            headers={"HX-Request": "true"},
+        )
+        assert "<!doctype html>" not in deleted.text.lower()
+        assert "Include secondary income" not in deleted.text
+        assert "(secondary)" not in deleted.text
+        assert "12-Month Low:" in deleted.text
+
+    def test_other_fund_page_ignores_the_query(
+        self, authed_client, db_session, sample_sinking_funds
+    ):
+        bills, savings = sample_sinking_funds
+        _bills_secondary_goal(db_session, bills.id, 80)
+        response = authed_client.get(
+            f"/sinking-funds/{savings.id}/forecast?secondary=1"
+        )
+        assert "Include secondary income" not in response.text
+        assert "(secondary)" not in response.text
+        assert "$80.00" not in response.text
+
+    @patch("app.tasks._today", return_value=date(2026, 3, 18))
+    def test_htmx_fragment_swaps_the_summary_and_the_remainder(
+        self,
+        _mock_today,
+        authed_client,
+        db_session,
+        sample_sinking_funds,
+        transfer_category,
+    ):
+        fund = sample_sinking_funds[0]
+        fund.current_balance = 1000
+        db_session.add(
+            IncomeAllocation(
+                monthly_income_amount=5000,
+                monthly_budget_allocation=0,
+                bills_fund_allocation_type="fixed",
+                bills_fund_fixed_amount=600,
+            )
+        )
+        db_session.commit()
+        _bills_secondary_goal(db_session, fund.id, Decimal("100.10"))
+        db_session.add(
+            Transaction(
+                date="2026-03-06",
+                description="Partner allocation to Bills",
+                amount=Decimal("35.10"),
+                category_id=transfer_category.id,
+                type="transfer",
+                transaction_type="secondary_income_allocation",
+                sinking_fund_id=fund.id,
+            )
+        )
+        db_session.add(
+            Transaction(
+                date="2026-04-02",
+                description="Partner allocation to Bills",
+                amount=Decimal("40.00"),
+                category_id=transfer_category.id,
+                type="transfer",
+                transaction_type="secondary_income_allocation",
+                sinking_fund_id=fund.id,
+            )
+        )
+        db_session.add(
+            Transaction(
+                date="2026-04-02",
+                description="Partner surplus to Savings",
+                amount=Decimal("999.99"),
+                category_id=transfer_category.id,
+                type="transfer",
+                transaction_type="income_allocation",
+                sinking_fund_id=sample_sinking_funds[1].id,
+            )
+        )
+        db_session.commit()
+
+        off = authed_client.get(
+            f"/sinking-funds/{fund.id}/forecast",
+            headers={"HX-Request": "true"},
+        )
+        assert off.status_code == 200
+        assert "<!doctype html>" not in off.text.lower()
+        assert 'id="forecast-panel"' in off.text
+        assert 'id="forecast-summary"' in off.text
+        assert "gw-summary-bar" in off.text
+        assert "12-Month Low:" in off.text
+        assert "Monthly Contribution:" in off.text
+        assert _summary_amount(off.text, "Monthly Contribution:") == "+$600.00"
+        # 1000 + 600 each month, and March has not had a primary deposit.
+        assert _summary_amount(off.text, "12-Month Low:") == "$1,600.00"
+        assert "Include secondary income" in off.text
+        assert "checked" not in off.text
+        assert "(secondary)" not in off.text
+        assert f'hx-get="/sinking-funds/{fund.id}/forecast?secondary=1"' in off.text
+        assert 'hx-params="none"' in off.text
+        assert 'hx-target="#forecast-panel"' in off.text
+        assert "&larr; Sinking Funds" not in off.text
+
+        ignored = authed_client.get(
+            f"/sinking-funds/{fund.id}/forecast?secondary=yes",
+            headers={"HX-Request": "true"},
+        )
+        assert "checked" not in ignored.text
+        assert "(secondary)" not in ignored.text
+
+        on = authed_client.get(
+            f"/sinking-funds/{fund.id}/forecast?secondary=1",
+            headers={"HX-Request": "true"},
+        )
+        assert "<!doctype html>" not in on.text.lower()
+        assert "12-Month Low:" in on.text
+        assert "gw-summary-bar" in on.text
+        assert _summary_amount(on.text, "Monthly Contribution:") == "+$600.00"
+        # March adds the 65.00 remainder, so the low moves from 1,600 to 1,665.
+        assert _summary_amount(on.text, "12-Month Low:") == "$1,665.00"
+        assert "checked" in on.text
+        assert f'hx-get="/sinking-funds/{fund.id}/forecast?secondary=1"' not in on.text
+        assert f'hx-get="/sinking-funds/{fund.id}/forecast"' in on.text
+        assert "+$65.00" in on.text
+        assert "(secondary)" in on.text
+        assert "$35.10 recorded" in on.text
+        assert "+$60.10" in on.text
+        assert "$40.00 recorded" in on.text
+        assert "$999.99" not in on.text
+        # Later months still show the full goal, and the primary column is separate.
+        assert "+$100.10" in on.text
+        assert ">Secondary<" in on.text
 
 
 class TestSinkingFundHistory:

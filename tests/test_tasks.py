@@ -18,6 +18,8 @@ from app.models import (
     IncomeAllocationToSinkingFund,
     MonthlyUnallocatedIncome,
     RecurringBill,
+    SecondaryIncomeAllocation,
+    SecondaryIncomeAllocationRule,
     SinkingFund,
     Transaction,
 )
@@ -1239,6 +1241,286 @@ class TestGenerateBillsForecast:
         assert result[1]["contribution"] == Decimal("1200.00")
         assert result[0]["configured_contribution"] == Decimal("1200.00")
         assert result[0]["contribution_received"] is False
+
+
+_FORECAST_LEGACY_KEYS = (
+    "month",
+    "year",
+    "month_name",
+    "bills",
+    "total_out",
+    "contribution",
+    "contribution_received",
+    "received_contribution",
+    "configured_contribution",
+    "closing_balance",
+)
+
+
+def _legacy_forecast(rows):
+    return [{key: row[key] for key in _FORECAST_LEGACY_KEYS} for row in rows]
+
+
+def _add_secondary_rules(db_session, amounts_by_fund):
+    alloc = SecondaryIncomeAllocation(label="Partner")
+    db_session.add(alloc)
+    db_session.flush()
+    sort_order = 1
+    for fund_id, amounts in amounts_by_fund:
+        for amount in amounts:
+            db_session.add(
+                SecondaryIncomeAllocationRule(
+                    secondary_income_allocation_id=alloc.id,
+                    sinking_fund_id=fund_id,
+                    goal_amount=amount,
+                    sort_order=sort_order,
+                )
+            )
+            sort_order += 1
+    return alloc
+
+
+def _ledger_row(db_session, forecast_setup, **fields):
+    db_session.add(
+        Transaction(
+            description=fields.pop("description", "ledger row"),
+            category_id=forecast_setup["expense_cat"].id,
+            type=fields.pop("type", "transfer"),
+            sinking_fund_id=fields.pop(
+                "sinking_fund_id", forecast_setup["bills_fund"].id
+            ),
+            **fields,
+        )
+    )
+
+
+class TestForecastSecondaryIncome:
+    """Secondary inflow on the Bills forecast. Off leaves today's projection."""
+
+    def _rich_ledger(self, db_session, forecast_setup):
+        """Goal 100.10, with partial, future, surplus, and other-fund rows."""
+        bills = forecast_setup["bills_fund"]
+        bills.current_balance = 1000
+        savings = SinkingFund(name="Savings", color="#00FF00", current_balance=0)
+        db_session.add(savings)
+        db_session.flush()
+        _add_secondary_rules(
+            db_session,
+            ((bills.id, (Decimal("60.05"), Decimal("40.05"))), (savings.id, (500,))),
+        )
+        # Primary deposit already in the balance. Not secondary progress.
+        _ledger_row(
+            db_session,
+            forecast_setup,
+            date="2026-03-01",
+            amount=80,
+            transaction_type="income_allocation",
+            description="Income allocation to Bills fund",
+        )
+        _ledger_row(
+            db_session,
+            forecast_setup,
+            date="2026-03-04",
+            amount=Decimal("25.00"),
+            transaction_type="secondary_income_allocation",
+        )
+        _ledger_row(
+            db_session,
+            forecast_setup,
+            date="2026-03-11",
+            amount=Decimal("10.10"),
+            transaction_type="secondary_income_allocation",
+        )
+        # Another fund's secondary receipt does not reduce the Bills goal.
+        _ledger_row(
+            db_session,
+            forecast_setup,
+            date="2026-03-11",
+            amount=500,
+            transaction_type="secondary_income_allocation",
+            sinking_fund_id=savings.id,
+        )
+        # Future-dated secondary is already in the balance, so April keeps it out.
+        _ledger_row(
+            db_session,
+            forecast_setup,
+            date="2026-04-02",
+            amount=Decimal("100.10"),
+            transaction_type="secondary_income_allocation",
+        )
+        # Surplus uses income_allocation and is not secondary progress.
+        _ledger_row(
+            db_session,
+            forecast_setup,
+            date="2026-04-02",
+            amount=Decimal("999.99"),
+            transaction_type="income_allocation",
+            description="Partner surplus to Bills",
+        )
+        _ledger_row(
+            db_session,
+            forecast_setup,
+            date="2026-05-09",
+            amount=Decimal("40.55"),
+            transaction_type="secondary_income_allocation",
+        )
+        _ledger_row(
+            db_session,
+            forecast_setup,
+            date="2026-06-01",
+            amount=150,
+            transaction_type="secondary_income_allocation",
+        )
+        db_session.commit()
+
+    @patch("app.tasks._today")
+    def test_off_matches_the_forecast_without_secondary(
+        self, mock_today, db_session, forecast_setup
+    ):
+        mock_today.return_value = date(2026, 3, 18)
+        self._rich_ledger(db_session, forecast_setup)
+
+        off = generate_bills_forecast(db_session)
+        explicit = generate_bills_forecast(db_session, include_secondary=False)
+
+        assert _legacy_forecast(off) == _legacy_forecast(explicit)
+        assert len(off) == 12
+        for row in off:
+            assert row["secondary"] == Decimal("0.00")
+            assert row["secondary_received"] == Decimal("0.00")
+        # March's primary deposit is already in the 1000 balance.
+        assert off[0]["contribution"] == Decimal("0.00")
+        assert off[0]["contribution_received"] is True
+        assert off[0]["received_contribution"] == Decimal("80.00")
+        assert off[0]["closing_balance"] == Decimal("1000.00")
+        assert off[1]["contribution"] == Decimal("600.00")
+        assert off[1]["closing_balance"] == Decimal("1600.00")
+        # The April surplus does not change the primary "still to come" amount.
+        assert off[1]["contribution_received"] is False
+        assert off[4]["closing_balance"] == Decimal("3400.00")
+
+    @patch("app.tasks._today")
+    def test_on_adds_the_goal_and_only_the_unrecorded_remainder(
+        self, mock_today, db_session, forecast_setup
+    ):
+        mock_today.return_value = date(2026, 3, 18)
+        self._rich_ledger(db_session, forecast_setup)
+
+        off = generate_bills_forecast(db_session)
+        on = generate_bills_forecast(db_session, include_secondary=True)
+
+        assert on[0]["secondary"] == Decimal("65.00")
+        assert on[0]["secondary_received"] == Decimal("35.10")
+        assert on[1]["secondary"] == Decimal("0.00")
+        assert on[1]["secondary_received"] == Decimal("100.10")
+        assert on[2]["secondary"] == Decimal("59.55")
+        assert on[2]["secondary_received"] == Decimal("40.55")
+        assert on[3]["secondary"] == Decimal("0.00")
+        assert on[3]["secondary_received"] == Decimal("150.00")
+        for row in on[4:]:
+            assert row["secondary"] == Decimal("100.10")
+            assert row["secondary_received"] == Decimal("0.00")
+
+        added = Decimal("0.00")
+        for before, after in zip(off, on, strict=True):
+            added += after["secondary"]
+            assert after["closing_balance"] == before["closing_balance"] + added
+            assert after["total_out"] == before["total_out"]
+            assert after["bills"] == before["bills"]
+            assert after["contribution"] == before["contribution"]
+            assert after["contribution_received"] == before["contribution_received"]
+            assert after["received_contribution"] == before["received_contribution"]
+            assert after["configured_contribution"] == before["configured_contribution"]
+        assert on[0]["closing_balance"] == Decimal("1065.00")
+        assert on[1]["closing_balance"] == Decimal("1665.00")
+        assert on[2]["closing_balance"] == Decimal("2324.55")
+        assert on[4]["closing_balance"] == Decimal("3624.65")
+
+    @patch("app.tasks._today")
+    def test_no_goal_or_missing_bills_fund_adds_nothing(
+        self, mock_today, db_session, forecast_setup
+    ):
+        mock_today.return_value = date(2026, 3, 18)
+        bills = forecast_setup["bills_fund"]
+        bills.current_balance = 1000
+        savings = SinkingFund(name="Savings", color="#00FF00", current_balance=0)
+        db_session.add(savings)
+        db_session.flush()
+        _add_secondary_rules(db_session, ((savings.id, (400,)),))
+        _ledger_row(
+            db_session,
+            forecast_setup,
+            date="2026-03-04",
+            amount=50,
+            transaction_type="secondary_income_allocation",
+        )
+        db_session.commit()
+
+        untouched = generate_bills_forecast(db_session)
+        no_bills_goal = generate_bills_forecast(db_session, include_secondary=True)
+        assert _legacy_forecast(no_bills_goal) == _legacy_forecast(untouched)
+        assert all(row["secondary"] == Decimal("0.00") for row in no_bills_goal)
+        assert all(
+            row["secondary_received"] == Decimal("0.00") for row in no_bills_goal
+        )
+
+        alloc = db_session.query(SecondaryIncomeAllocation).one()
+        db_session.add(
+            SecondaryIncomeAllocationRule(
+                secondary_income_allocation_id=alloc.id,
+                sinking_fund_id=bills.id,
+                goal_amount=80,
+                sort_order=2,
+            )
+        )
+        db_session.commit()
+        aimed_at_bills = generate_bills_forecast(db_session, include_secondary=True)
+        assert aimed_at_bills[0]["secondary"] == Decimal("30.00")
+
+        bills.name = "Household"
+        db_session.commit()
+        renamed = generate_bills_forecast(db_session, include_secondary=True)
+        renamed_off = generate_bills_forecast(db_session)
+        assert _legacy_forecast(renamed) == _legacy_forecast(renamed_off)
+        # No fund named Bills: the stored balance is not the starting point.
+        assert renamed[0]["closing_balance"] == Decimal("600.00")
+        assert all(row["secondary"] == Decimal("0.00") for row in renamed)
+        assert all(row["secondary_received"] == Decimal("0.00") for row in renamed)
+
+        bills.name = "Bills"
+        bills.is_deleted = True
+        db_session.commit()
+        deleted = generate_bills_forecast(db_session, include_secondary=True)
+        deleted_off = generate_bills_forecast(db_session)
+        assert _legacy_forecast(deleted) == _legacy_forecast(deleted_off)
+        assert deleted[0]["closing_balance"] == Decimal("600.00")
+        assert all(row["secondary"] == Decimal("0.00") for row in deleted)
+        assert all(row["secondary_received"] == Decimal("0.00") for row in deleted)
+
+    @patch("app.tasks._today")
+    def test_lower_goal_does_not_claw_back_the_balance(
+        self, mock_today, db_session, forecast_setup
+    ):
+        mock_today.return_value = date(2026, 3, 18)
+        bills = forecast_setup["bills_fund"]
+        bills.current_balance = 500
+        _add_secondary_rules(db_session, ((bills.id, (40,)),))
+        _ledger_row(
+            db_session,
+            forecast_setup,
+            date="2026-03-02",
+            amount=100,
+            transaction_type="secondary_income_allocation",
+        )
+        db_session.commit()
+
+        result = generate_bills_forecast(db_session, include_secondary=True)
+        assert result[0]["secondary"] == Decimal("0.00")
+        assert result[0]["secondary_received"] == Decimal("100.00")
+        # 500 already includes the 100. The extra above the new goal stays put.
+        assert result[0]["closing_balance"] == Decimal("1100.00")
+        assert result[1]["secondary"] == Decimal("40.00")
+        assert result[1]["closing_balance"] == Decimal("1740.00")
 
 
 class TestRecurringPaymentRules:

@@ -15,6 +15,7 @@ from app.database import get_db
 from app.middleware import get_current_user
 from app.models import SinkingFund, Transaction
 from app.schemas import SinkingFundCreate, SinkingFundResponse, SinkingFundUpdate
+from app.services.bills_secondary import bills_secondary_goal
 from app.services.fund_runway import compute_fund_runway
 from app.services.recurring_payments import (
     delete_blocked_message,
@@ -303,10 +304,31 @@ def _generate_fund_history(fund: SinkingFund, db: Session) -> list[dict]:
     return result
 
 
+def _forecast_secondary_options(
+    db: Session, fund: SinkingFund, secondary: str | None
+) -> tuple[bool, bool]:
+    """Return (include_secondary, show_toggle) for this forecast page.
+
+    The toggle is shown only for the same non-deleted fund named Bills that
+    the forecast uses, and only when that fund's secondary goal is above
+    zero. ``secondary=1`` is the only value that turns the inflow on.
+    """
+    bills_fund = (
+        db.query(SinkingFund)
+        .filter(SinkingFund.name == "Bills", SinkingFund.is_deleted == False)
+        .first()
+    )
+    if bills_fund is None or bills_fund.id != fund.id:
+        return False, False
+    show_toggle = bills_secondary_goal(db, bills_fund.id) > 0
+    return show_toggle and secondary == "1", show_toggle
+
+
 @router.get("/sinking-funds/{fund_id}/forecast", response_class=HTMLResponse)
 async def sinking_fund_forecast(
     request: Request,
     fund_id: int,
+    secondary: str | None = None,
     db: Session = Depends(get_db),
 ):
     user = get_current_user(request)
@@ -314,19 +336,28 @@ async def sinking_fund_forecast(
     if not fund:
         return HTMLResponse("Not found", status_code=404)
 
+    include_secondary, show_secondary_toggle = _forecast_secondary_options(
+        db, fund, secondary
+    )
     forecast = generate_bills_forecast(
-        db, include_overdue=fund.name == "Bills" and not fund.is_deleted
+        db,
+        include_overdue=fund.name == "Bills" and not fund.is_deleted,
+        include_secondary=include_secondary,
     )
 
-    return templates.TemplateResponse(
-        request,
-        "sinking_fund_forecast.html",
-        {
-            "username": user.username,
-            "fund": fund,
-            "forecast": forecast,
-        },
+    context = {
+        "username": user.username,
+        "fund": fund,
+        "forecast": forecast,
+        "include_secondary": include_secondary,
+        "show_secondary_toggle": show_secondary_toggle,
+    }
+    template = (
+        "_forecast_panel.html"
+        if request.headers.get("hx-request")
+        else "sinking_fund_forecast.html"
     )
+    return templates.TemplateResponse(request, template, context)
 
 
 @router.get("/sinking-funds/{fund_id}/history", response_class=HTMLResponse)

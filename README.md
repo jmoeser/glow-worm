@@ -6,7 +6,7 @@ An opinionated, single-tenant household budgeting app built with Python and Fast
 
 - **Income Allocation** -- Configure how your monthly income is automatically distributed across budgets, sinking funds, bills, and recurring transfers on the 1st of each month. Includes a live Sankey diagram showing the breakdown.
 - **Monthly Budgets** -- Track spending against allocated amounts for repeating categories (Groceries, Eating Out, etc.) with color-coded progress bars. Any unspent surplus is automatically swept into your overflow sinking fund at month-end; net overspend is automatically withdrawn from it so your fund balances always reflect reality. Advisory **budget suggestions** compare each category's allocation to its average spend over the last few completed months (shown on the budgets page and as a dashboard teaser).
-- **Sinking Funds** -- Savings pots (Bills, Savings, Emergency, etc.) that accumulate a balance over time via monthly contributions. A fund's detail page shows how long that balance lasts at the recent rate, or how long a negative balance takes to get back to zero. The Bills fund points to its forecast instead.
+- **Sinking Funds** -- Savings pots (Bills, Savings, Emergency, etc.) that accumulate a balance over time via monthly contributions. A fund's detail page shows how long that balance lasts at the recent rate, or how long a negative balance takes to get back to zero. The Bills fund points to its forecast instead. On that forecast, "Include secondary income" (off on every visit unless the address has `?secondary=1`) adds the Bills secondary-income goal to each month.
 - **Shares** -- Record US share buys and sells (CMC Markets style: USD price, optional fee, broker FX as AUD/USD or USD/AUD). FIFO realised gains are shown in AUD, with unrealised gains in AUD and USD and a portfolio total. A value-over-time chart plots market value and cost base in AUD from stored daily closes and FX rates. Daily closes come from Alpha Vantage; the AUD/USD rate comes from Frankfurter, with Alpha Vantage FX as a fallback. Informational only — share trades are not household budget transactions.
 - **Recurring payments** -- Repeating payments (weekly, fortnightly, monthly, quarterly, yearly, every 28 days), paid from the Bills fund, a budget, or another sinking fund. Fixed Bills-fund payments are logged automatically. Everything else, including a variable Bills-fund bill, waits on the dashboard and the Bills page until you confirm or skip it. Each one can record which payment method pays it.
 - **Payment methods** -- Record the card, bank account, or BPAY / pay myself entry that pays each bill. Only the last 4 digits are stored. When a card is close to expiry, or you are moving bills to a new card, the dashboard lists what still needs updating. The checklist can be left and picked up later.
@@ -347,7 +347,7 @@ glow-worm/
 │   ├── mcp_server.py      # MCP tool definitions
 │   ├── templating.py      # Jinja2 template helpers
 │   ├── routes/            # Route modules (auth, dashboard, bills, etc.)
-│   ├── services/          # Domain logic (transaction balances, recurring payments, budget recommendations, payment methods, shares, market data)
+│   ├── services/          # Domain logic (transaction balances, recurring payments, budget recommendations, payment methods, shares, market data, bills secondary)
 │   ├── templates/         # Jinja2 HTML templates
 │   ├── static/            # CSS, logo, static assets
 │   └── cli/               # glow CLI (pipx-installable)

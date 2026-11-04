@@ -18,10 +18,11 @@ from sqlalchemy.orm import Session
 from app.config import TIMEZONE, bills_cover_horizon_months
 from app.models import (
     IncomeAllocation,
-    SecondaryIncomeAllocation,
     SinkingFund,
     Transaction,
 )
+from app.services.bills_secondary import bills_secondary_goal as _bills_secondary_goal
+from app.services.bills_secondary import secondary_recorded as _secondary_recorded
 from app.services.money import add_months as _add_months
 from app.services.money import dollars as _dollars
 from app.services.money import money as _money
@@ -170,37 +171,6 @@ def _primary_inflow(
     for _day in _future_allocation_dates(today, horizon_end):
         total += monthly
     return _money(total)
-
-
-def _bills_secondary_goal(db: Session, fund_id: int) -> Decimal:
-    allocation = db.query(SecondaryIncomeAllocation).first()
-    if allocation is None:
-        return Decimal("0.00")
-    total = Decimal("0.00")
-    for rule in allocation.rules:
-        if rule.sinking_fund_id == fund_id:
-            total += _money(rule.goal_amount)
-    return _money(total)
-
-
-def _secondary_recorded(db: Session, fund_id: int, year: int, month: int) -> Decimal:
-    """Secondary already booked to this fund in the calendar month.
-
-    Matches the secondary-income page: ``secondary_income_allocation`` rows
-    whose date falls in that month. Surplus overflow uses a different
-    transaction type and is not treated as goal progress.
-    """
-    prefix = f"{year:04d}-{month:02d}"
-    rows = (
-        db.query(Transaction)
-        .filter(
-            Transaction.transaction_type == "secondary_income_allocation",
-            Transaction.sinking_fund_id == fund_id,
-            Transaction.date.like(f"{prefix}%"),
-        )
-        .all()
-    )
-    return _money(sum((_money(row.amount) for row in rows), Decimal(0)))
 
 
 def _months_intersecting(today: date, horizon_end: date) -> list[tuple[int, int]]:

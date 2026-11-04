@@ -27,6 +27,7 @@ from app.models import (
     Transaction,
 )
 from app.schemas import FREQUENCY_ANNUAL_MULTIPLIER
+from app.services.bills_secondary import bills_secondary_goal, secondary_recorded
 from app.services.market_data import FxProvider, PriceProvider, RequestGate
 
 logger = logging.getLogger(__name__)
@@ -122,24 +123,41 @@ def _compute_bills_recommended(db: Session) -> Decimal:
 
 
 def generate_bills_forecast(
-    db: Session, months: int = 12, include_overdue: bool = False
+    db: Session,
+    months: int = 12,
+    include_overdue: bool = False,
+    include_secondary: bool = False,
 ) -> list[dict]:
     """Project Bills fund cash flow over the next N months.
 
     Returns a list of month dicts (length == months) with keys:
         month, year, month_name, bills, total_out, contribution,
         contribution_received, received_contribution,
-        configured_contribution, closing_balance
+        configured_contribution, secondary, secondary_received,
+        closing_balance
 
-    ``contribution`` is money still to come. It is the only contribution
-    figure added into ``closing_balance``, which starts from the fund's
-    current balance. When this month already has an ``income_allocation``
-    into the Bills fund, the first row keeps ``contribution`` at 0 (so the
-    deposit is not added twice), sets ``contribution_received`` to True,
-    and sets ``received_contribution`` to the sum of those deposits.
-    Every other row has the flag False and ``received_contribution`` 0.
-    ``configured_contribution`` is the fixed or recommended monthly amount
-    on every row, including a month whose deposit has already landed.
+    ``contribution`` is money still to come. It is the only primary
+    contribution added into ``closing_balance``, which starts from the
+    fund's current balance. When this month already has an
+    ``income_allocation`` into the Bills fund, the first row keeps
+    ``contribution`` at 0 (so the deposit is not added twice), sets
+    ``contribution_received`` to True, and sets ``received_contribution``
+    to the sum of those deposits. Every other row has the flag False and
+    ``received_contribution`` 0. ``configured_contribution`` is the fixed
+    or recommended monthly amount on every row, including a month whose
+    deposit has already landed.
+
+    ``secondary`` is the Bills secondary-income goal still to come that
+    month: ``max(0, goal - secondary_income_allocation recorded on the
+    Bills fund in that month)``, in cents. It is added into
+    ``closing_balance`` only when ``include_secondary`` is true. Recorded
+    rows count in the month they are dated, including future dates,
+    because those deposits are already in ``current_balance``.
+    ``secondary_received`` is that recorded sum for display and is never
+    added again. ``income_allocation`` rows are not secondary progress.
+    With the flag off, both new fields are zero and every other field
+    matches the forecast that ignores secondary income. A missing or
+    renamed Bills fund, or a goal of zero, adds nothing.
 
     Only Bills-fund bills are projected, and each walk stops at ``end_date``.
     When ``include_overdue`` is set, unpaid variable occurrences from earlier
@@ -232,7 +250,13 @@ def generate_bills_forecast(
                 }
             )
 
-    # Build forecast rows
+    # Build forecast rows. The goal is read live; a mid-month edit never
+    # claws money back out of current_balance.
+    bills_fund_id = bills_fund.id if bills_fund is not None else None
+    goal = Decimal("0.00")
+    if include_secondary and bills_fund_id is not None:
+        goal = bills_secondary_goal(db, bills_fund_id)
+
     result = []
     for i in range(months):
         abs_month = today.month - 1 + i
@@ -247,7 +271,15 @@ def generate_bills_forecast(
         this_month_received = i == 0 and already_contributed
         contribution = Decimal("0.00") if this_month_received else monthly_contribution
 
-        running_balance = running_balance + contribution - total_out
+        secondary = Decimal("0.00")
+        secondary_received = Decimal("0.00")
+        if goal > 0 and bills_fund_id is not None:
+            secondary_received = secondary_recorded(db, bills_fund_id, y, m)
+            secondary = max(Decimal("0.00"), goal - secondary_received).quantize(
+                Decimal("0.01")
+            )
+
+        running_balance = running_balance + contribution - total_out + secondary
 
         result.append(
             {
@@ -262,6 +294,8 @@ def generate_bills_forecast(
                     received_contribution if this_month_received else Decimal("0.00")
                 ),
                 "configured_contribution": monthly_contribution,
+                "secondary": secondary,
+                "secondary_received": secondary_received,
                 "closing_balance": running_balance.quantize(Decimal("0.01")),
             }
         )
