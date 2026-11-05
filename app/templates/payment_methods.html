@@ -167,7 +167,7 @@
     </div>
     {% endif %}
     {% if error %}
-    <p class="gw-msg-error">{{ error }}</p>
+    <p class="gw-msg-error" id="payment-method-error">{{ error }}</p>
     {% endif %}
     <div class="gw-table-wrap gw-section">
         <div class="gw-overflow-x">
@@ -240,7 +240,7 @@
 <div style="max-width: 640px;">
     <h2 class="gw-page-header">Finish replacing {{ old_label }}</h2>
     {% if error %}
-    <p class="gw-msg-error">{{ error }}</p>
+    <p class="gw-msg-error" id="payment-method-error">{{ error }}</p>
     {% endif %}
     <p>Archive {{ old_label }}? You can unarchive it later.</p>
     <form hx-post="/payment-methods/{{ old.id }}/replace/finish">
@@ -273,12 +273,31 @@ function syncPaymentKind(kind) {
     if (manual) last4.value = "";
     if (!card) expiry.value = "";
 }
-document.addEventListener("DOMContentLoaded", function () {
+function initPaymentMethodForm() {
     var kind = document.getElementById("pm-kind");
-    if (kind) {
-        syncPaymentKind(kind.value);
-        kind.addEventListener("change", function () { syncPaymentKind(kind.value); });
-    }
-});
+    if (!kind || kind.dataset.bound === "1") return;
+    kind.dataset.bound = "1";
+    syncPaymentKind(kind.value);
+    kind.addEventListener("change", function () { syncPaymentKind(kind.value); });
+}
+document.addEventListener("DOMContentLoaded", initPaymentMethodForm);
+initPaymentMethodForm();
+// HTMX leaves 4xx responses unswapped, so the on-page error never appears.
+if (!window.__gwPaymentMethodErrorSwap) {
+    window.__gwPaymentMethodErrorSwap = true;
+    document.body.addEventListener("htmx:beforeSwap", function (event) {
+        var xhr = event.detail.xhr;
+        if (!xhr || xhr.status < 400) return;
+        var text = xhr.responseText || "";
+        if (text.indexOf('class="gw-msg-error" id="payment-method-error"') === -1) return;
+        var main = document.querySelector("main.gw-main");
+        if (!main) return;
+        event.detail.shouldSwap = true;
+        event.detail.isError = false;
+        event.detail.target = main;
+        event.detail.swapOverride = "outerHTML";
+        event.detail.selectOverride = "main.gw-main";
+    });
+}
 </script>
 {% endblock %}

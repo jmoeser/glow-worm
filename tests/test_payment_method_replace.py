@@ -123,6 +123,55 @@ class TestStart:
         assert new.last4 == "9876"
         assert new.expiry_month == 3
 
+    def test_typed_expiry_and_bad_expiry_on_replace_start(
+        self, authed_client, db_session, sample_category
+    ):
+        old = _method(
+            db_session,
+            "Everyday Visa",
+            kind="card",
+            last4="4321",
+            expiry_month=12,
+            expiry_year=2027,
+        )
+        _bill(db_session, sample_category.id, old.id)
+        rejected = _post(
+            authed_client,
+            f"/payment-methods/{old.id}/replace",
+            {
+                "existing_id": "",
+                "nickname": "Everyday Visa",
+                "kind": "card",
+                "owner": "Jordan",
+                "last4": "9876",
+                "expiry": "nope",
+            },
+        )
+        assert rejected.status_code == 422
+        assert (
+            '<p class="gw-msg-error" id="payment-method-error">'
+            "Use MM/YY or pick a month.</p>"
+        ) in rejected.text
+        assert db_session.query(PaymentMethodReplacement).count() == 0
+
+        created = _post(
+            authed_client,
+            f"/payment-methods/{old.id}/replace",
+            {
+                "existing_id": "",
+                "nickname": "Everyday Visa",
+                "kind": "card",
+                "owner": "Jordan",
+                "last4": "9876",
+                "expiry": "09/28",
+            },
+        )
+        assert created.status_code == 303
+        fresh = db_session.query(PaymentMethodReplacement).one()
+        new = db_session.get(PaymentMethod, fresh.new_id)
+        assert new.expiry_month == 9
+        assert new.expiry_year == 2028
+
     def test_rejections(self, db_session, sample_category):
         old = _method(db_session, "A")
         other = _method(db_session, "B")

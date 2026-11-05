@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.mcp_server import create_payment_method
 from app.models import PaymentMethod, RecurringBill
+from app.services.payment_methods import PaymentMethodError, parse_month_input
 
 PAN = "4111111111111111"
 PAN_VARIANTS = [
@@ -420,3 +421,106 @@ class TestArchiveAndDelete:
             .count()
             == 0
         )
+
+
+class TestExpiryInput:
+    @pytest.mark.parametrize(
+        ("raw", "month", "year"),
+        [
+            ("2028-09", 9, 2028),
+            ("2028-9", 9, 2028),
+            ("09/28", 9, 2028),
+            ("9/28", 9, 2028),
+            ("09/2028", 9, 2028),
+            ("9/2028", 9, 2028),
+            ("09-28", 9, 2028),
+            ("9-28", 9, 2028),
+            ("09-2028", 9, 2028),
+            ("9-2028", 9, 2028),
+            ("  09/28  ", 9, 2028),
+            ("01/00", 1, 2000),
+            ("12/99", 12, 2099),
+            ("01/2100", 1, 2100),
+            ("2100-12", 12, 2100),
+        ],
+    )
+    def test_parse_month_input_accepts_common_shapes(self, raw, month, year):
+        assert parse_month_input(raw) == (month, year)
+
+    @pytest.mark.parametrize(
+        "raw",
+        [
+            "",
+            "   ",
+            "nope",
+            "13/28",
+            "00/28",
+            "09/2101",
+            "1999-12",
+            "2101-01",
+            "2028-13",
+            "2028-00",
+            "09/28/extra",
+            "2028/09",
+            "28",
+            "09.28",
+        ],
+    )
+    def test_parse_month_input_rejects_junk_and_out_of_range(self, raw):
+        with pytest.raises(PaymentMethodError, match=r"Use MM/YY or pick a month\."):
+            parse_month_input(raw)
+
+    def test_html_create_accepts_typed_09_28(self, authed_client, db_session):
+        created = _post(authed_client, "/payment-methods", _card_form(expiry="09/28"))
+        assert created.status_code == 303
+        method = db_session.query(PaymentMethod).one()
+        assert method.expiry_month == 9
+        assert method.expiry_year == 2028
+        page = authed_client.get("/payment-methods")
+        assert "Everyday Visa ending 4321" in page.text
+
+    def test_expiry_field_keeps_month_input_and_shows_hint(self, authed_client):
+        page = authed_client.get("/payment-methods")
+        assert 'id="pm-expiry"' in page.text
+        assert 'type="month"' in page.text
+        assert "MM/YY or use the month picker. Firefox: type MM/YY." in page.text
+
+    def test_bad_expiry_renders_on_page_error(self, authed_client, db_session):
+        raw = "4111111111111111"
+        response = _post(authed_client, "/payment-methods", _card_form(expiry=raw))
+        assert response.status_code == 422
+        assert (
+            '<p class="gw-msg-error" id="payment-method-error">'
+            "Use MM/YY or pick a month.</p>"
+        ) in response.text
+        assert raw not in response.text
+        assert '"detail"' not in response.text
+        assert db_session.query(PaymentMethod).count() == 0
+
+    def test_bad_expiry_on_edit_renders_on_page_error(self, authed_client, db_session):
+        created = _post(authed_client, "/payment-methods", _card_form())
+        assert created.status_code == 303
+        method = db_session.query(PaymentMethod).one()
+        response = _post(
+            authed_client,
+            f"/payment-methods/{method.id}",
+            _card_form(expiry="13/99"),
+        )
+        assert response.status_code == 422
+        assert 'id="payment-method-error"' in response.text
+        assert "Use MM/YY or pick a month." in response.text
+        assert "13/99" not in response.text
+        db_session.refresh(method)
+        assert method.expiry_month == 12
+        assert method.expiry_year == 2027
+
+    def test_non_card_still_rejects_explicit_expiry(self, authed_client, db_session):
+        response = _post(
+            authed_client,
+            "/payment-methods",
+            _card_form(kind="bank", expiry="09/28", last4="1234"),
+        )
+        assert response.status_code == 422
+        assert "Only a card has an expiry." in response.text
+        assert 'id="payment-method-error"' in response.text
+        assert db_session.query(PaymentMethod).count() == 0
