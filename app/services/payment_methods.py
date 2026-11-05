@@ -7,6 +7,7 @@ is a saved job: it changes only when someone ticks, finishes, or stops it.
 from __future__ import annotations
 
 import calendar
+import re
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
@@ -40,6 +41,13 @@ KIND_LABELS = {
     "bank": "Bank account",
     "manual": "BPAY / pay myself",
 }
+
+# YYYY-MM from <input type="month">, or a typed MM/YY, MM/YYYY, MM-YY, MM-YYYY.
+_EXPIRY_INPUT = re.compile(
+    r"^(?:(?P<iso_year>[0-9]{4})-(?P<iso_month>[0-9]{1,2})"
+    r"|(?P<month>[0-9]{1,2})[/-](?P<year>[0-9]{4}|[0-9]{2}))$"
+)
+_EXPIRY_INPUT_MESSAGE = "Use MM/YY or pick a month."
 
 
 class PaymentMethodError(Exception):
@@ -228,14 +236,27 @@ def apply_payment_method(method: PaymentMethod, values: dict) -> None:
 
 
 def parse_month_input(raw: str) -> tuple[int, int]:
-    """Parse ``YYYY-MM`` from ``<input type="month">``. Returns ``(month, year)``."""
-    parts = raw.split("-")
-    if len(parts) != 2 or not parts[0].isdigit() or not parts[1].isdigit():
-        raise PaymentMethodError("Enter the expiry as a month and year.")
-    year = int(parts[0])
-    month = int(parts[1])
+    """Parse a card expiry into ``(month, year)``.
+
+    Accepts ``YYYY-MM`` from ``<input type="month">``, and typed ``MM/YY``,
+    ``MM/YYYY``, ``MM-YY``, and ``MM-YYYY``. A single-digit month is allowed.
+    Two-digit years are 2000–2099.
+    """
+    match = _EXPIRY_INPUT.fullmatch(raw.strip())
+    if match is None:
+        raise PaymentMethodError(_EXPIRY_INPUT_MESSAGE)
+    iso_year = match.group("iso_year")
+    if iso_year is not None:
+        year = int(iso_year)
+        month = int(match.group("iso_month") or "0")
+    else:
+        month = int(match.group("month") or "0")
+        year_text = match.group("year") or ""
+        year = int(year_text) if year_text else 0
+        if len(year_text) == 2:
+            year += 2000
     if year < 2000 or year > 2100 or month < 1 or month > 12:
-        raise PaymentMethodError("Enter the expiry as a month and year.")
+        raise PaymentMethodError(_EXPIRY_INPUT_MESSAGE)
     return month, year
 
 

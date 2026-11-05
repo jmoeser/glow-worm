@@ -24,6 +24,7 @@
     <input type="month" id="pm-expiry" name="expiry" class="gw-input"
            value="{{ value_expiry|default('') }}"
            {% if value_kind|default('card') != 'card' %}disabled{% endif %}>
+    <p class="gw-text-muted" style="font-size: 0.75rem; margin-top: 4px;">MM/YY or use the month picker. Firefox: type MM/YY.</p>
 </div>
 <div>
     <label class="gw-label" for="pm-owner">Owner</label>
