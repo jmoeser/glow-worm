@@ -1,9 +1,16 @@
 import re
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 from enum import Enum
 
-from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    ValidationError,
+    field_validator,
+    model_validator,
+)
 from pydantic_core import PydanticCustomError
 
 # --- Enums ---
@@ -77,6 +84,22 @@ class PaymentMethodKind(str, Enum):
     manual = "manual"
 
 
+class ContractService(str, Enum):
+    electricity = "electricity"
+    health_insurance = "health_insurance"
+    internet = "internet"
+    phone = "phone"
+    car_insurance = "car_insurance"
+    other = "other"
+
+
+class BillDelivery(str, Enum):
+    email = "email"
+    post = "post"
+    app = "app"
+    other = "other"
+
+
 class ReplacementStatus(str, Enum):
     open = "open"
     finished = "finished"
@@ -104,6 +127,37 @@ def public_validation_errors(exc: ValidationError) -> list[dict[str, object]]:
         {"loc": list(err["loc"]), "msg": err["msg"], "type": err["type"]}
         for err in exc.errors()
     ]
+
+
+def _optional_text(value: object) -> str | None:
+    """Strip an optional string. Blank becomes null. Reject a hidden account number."""
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        raise PydanticCustomError("string_type", "Enter text.")
+    text = value.strip()
+    if text == "":
+        return None
+    return reject_account_number(text)
+
+
+def _optional_iso_date(value: object) -> str | None:
+    """Parse a real calendar date. Blank becomes null. Stored as YYYY-MM-DD."""
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        raise PydanticCustomError("date_type", "Enter a real date as YYYY-MM-DD.")
+    text = value.strip()
+    if text == "":
+        return None
+    try:
+        parsed = date.fromisoformat(text)
+    except ValueError:
+        raise PydanticCustomError(
+            "date_fromisoformat",
+            "Enter a real date as YYYY-MM-DD.",
+        ) from None
+    return parsed.isoformat()
 
 
 def _required_text(value: object) -> str:
@@ -352,6 +406,7 @@ class RecurringBillCreate(BaseModel):
     foreign_amount: Decimal | None = Field(None, gt=Decimal(0))
     foreign_currency: str | None = Field(None, min_length=3, max_length=3)
     payment_method_id: int | None = None
+    contract_id: int | None = None
     paid_from: PaidFrom = PaidFrom.bills_fund
     paid_from_fund_id: int | None = None
 
@@ -369,6 +424,7 @@ class RecurringBillUpdate(BaseModel):
     foreign_amount: Decimal | None = Field(None, gt=Decimal(0))
     foreign_currency: str | None = Field(None, min_length=3, max_length=3)
     payment_method_id: int | None = None
+    contract_id: int | None = None
     paid_from: PaidFrom | None = None
     paid_from_fund_id: int | None = None
 
@@ -390,6 +446,7 @@ class RecurringBillResponse(BaseModel):
     foreign_amount: Decimal | None = None
     foreign_currency: str | None = None
     payment_method_id: int | None = None
+    contract_id: int | None = None
     paid_from: str = "bills_fund"
     paid_from_fund_id: int | None = None
     created_at: datetime
@@ -482,6 +539,89 @@ class PaymentMethodResponse(BaseModel):
     expiry_year: int | None = None
     owner: str
     is_archived: bool
+    created_at: datetime
+    updated_at: datetime
+
+
+class ContractCreate(BaseModel):
+    name: str = Field(..., max_length=100)
+    provider: str = Field(..., max_length=150)
+    plan_name: str | None = Field(None, max_length=150)
+    service: ContractService
+    bill_delivery: BillDelivery
+    delivery_detail: str | None = Field(None, max_length=200)
+    notes: str | None = Field(None, max_length=500)
+    started_on: str | None = None
+    ended_on: str | None = None
+
+    @field_validator("name", "provider", mode="before")
+    @classmethod
+    def _clean_required(cls, value: object) -> str:
+        return _required_text(value)
+
+    @field_validator("plan_name", "delivery_detail", "notes", mode="before")
+    @classmethod
+    def _clean_optional(cls, value: object) -> str | None:
+        return _optional_text(value)
+
+    @field_validator("started_on", "ended_on", mode="before")
+    @classmethod
+    def _clean_dates(cls, value: object) -> str | None:
+        return _optional_iso_date(value)
+
+    @model_validator(mode="after")
+    def _end_not_before_start(self):
+        if (
+            self.started_on is not None
+            and self.ended_on is not None
+            and self.ended_on < self.started_on
+        ):
+            raise ValueError("End date must be on or after the start date.")
+        return self
+
+
+class ContractUpdate(BaseModel):
+    name: str | None = Field(None, max_length=100)
+    provider: str | None = Field(None, max_length=150)
+    plan_name: str | None = Field(None, max_length=150)
+    service: ContractService | None = None
+    bill_delivery: BillDelivery | None = None
+    delivery_detail: str | None = Field(None, max_length=200)
+    notes: str | None = Field(None, max_length=500)
+    started_on: str | None = None
+    ended_on: str | None = None
+
+    @field_validator("name", "provider", mode="before")
+    @classmethod
+    def _clean_required(cls, value: object) -> str | None:
+        if value is None:
+            return None
+        return _required_text(value)
+
+    @field_validator("plan_name", "delivery_detail", "notes", mode="before")
+    @classmethod
+    def _clean_optional(cls, value: object) -> str | None:
+        return _optional_text(value)
+
+    @field_validator("started_on", "ended_on", mode="before")
+    @classmethod
+    def _clean_dates(cls, value: object) -> str | None:
+        return _optional_iso_date(value)
+
+
+class ContractResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    name: str
+    provider: str
+    plan_name: str | None = None
+    service: ContractService
+    bill_delivery: BillDelivery
+    delivery_detail: str | None = None
+    notes: str | None = None
+    started_on: str | None = None
+    ended_on: str | None = None
     created_at: datetime
     updated_at: datetime
 

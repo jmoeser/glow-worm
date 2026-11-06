@@ -1,0 +1,57 @@
+<div>
+    <label class="gw-label" for="contract-name">Name</label>
+    <input type="text" id="contract-name" name="name" required maxlength="100"
+           class="gw-input" placeholder="e.g. Home electricity"
+           value="{{ value_name|default('') }}" autocomplete="off">
+</div>
+<div>
+    <label class="gw-label" for="contract-provider">Provider</label>
+    <input type="text" id="contract-provider" name="provider" required maxlength="150"
+           class="gw-input" placeholder="e.g. Origin"
+           value="{{ value_provider|default('') }}" autocomplete="off">
+</div>
+<div>
+    <label class="gw-label" for="contract-plan">Plan name</label>
+    <input type="text" id="contract-plan" name="plan_name" maxlength="150"
+           class="gw-input" placeholder="e.g. Night Shift"
+           value="{{ value_plan_name|default('') }}" autocomplete="off">
+</div>
+<div>
+    <label class="gw-label" for="contract-service">Service</label>
+    <select id="contract-service" name="service" class="gw-select" required>
+        <option value="">Choose</option>
+        {% for value, label in service_labels.items() %}
+        <option value="{{ value }}" {% if value_service|default('') == value %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+    </select>
+</div>
+<div>
+    <label class="gw-label" for="contract-delivery">Bill delivery</label>
+    <select id="contract-delivery" name="bill_delivery" class="gw-select" required>
+        <option value="">Choose</option>
+        {% for value, label in delivery_labels.items() %}
+        <option value="{{ value }}" {% if value_delivery|default('') == value %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+    </select>
+</div>
+<div>
+    <label class="gw-label" for="contract-delivery-detail">Delivery detail</label>
+    <input type="text" id="contract-delivery-detail" name="delivery_detail" maxlength="200"
+           class="gw-input" placeholder="Email address, postal note, or app name"
+           value="{{ value_delivery_detail|default('') }}" autocomplete="off">
+</div>
+<div>
+    <label class="gw-label" for="contract-started">Started</label>
+    <input type="date" id="contract-started" name="started_on" class="gw-input"
+           value="{{ value_started_on|default('') }}">
+</div>
+<div>
+    <label class="gw-label" for="contract-ended">Ended</label>
+    <input type="date" id="contract-ended" name="ended_on" class="gw-input"
+           value="{{ value_ended_on|default('') }}">
+    <p class="gw-text-muted" style="font-size: 0.75rem; margin-top: 4px;">Leave blank while the plan is current. A date here means it has ended. You can't clear a date once it's set.</p>
+</div>
+<div style="grid-column: 1 / -1;">
+    <label class="gw-label" for="contract-notes">Notes</label>
+    <textarea id="contract-notes" name="notes" maxlength="500" class="gw-input" rows="3">{{ value_notes|default('') }}</textarea>
+</div>
