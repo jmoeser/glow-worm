@@ -17,7 +17,15 @@
 {% endmacro %}
 {% macro bill_display_cells(bill) %}
 <td data-sort-value="{{ bill.name }}">{{ bill.name }}</td>
-<td class="gw-text-muted" data-sort-value="{{ bill.debtor_provider }}">{{ bill.debtor_provider }}</td>
+<td class="gw-text-muted" data-sort-value="{{ bill.debtor_provider }}">
+    {{ bill.debtor_provider }}
+    {% if bill.contract %}
+    <br><span class="gw-contract-label">{{ contract_label(bill.contract) }}</span>
+    {% if bill.contract.ended_on %}
+    <span class="gw-badge gw-badge--pending">Ended</span>
+    {% endif %}
+    {% endif %}
+</td>
 <td data-sort-value="{{ paid_with[bill.id].sort }}">
     {% if paid_with[bill.id].label == "Not set" %}
     <span class="gw-text-dim">Not set</span>
@@ -95,6 +103,16 @@
     <td>
         <input type="text" name="debtor_provider" value="{{ bill.debtor_provider }}" form="edit-form-{{ bill.id }}"
                class="gw-edit-input">
+        <select name="contract_id" form="edit-form-{{ bill.id }}" class="gw-edit-input" style="margin-top: 4px;"
+                title="Only payments from now on are tied to this contract. Earlier ones stay off the plan.">
+            <option value="" {{ 'selected' if not bill.contract_id }}>No contract</option>
+            {% for contract in contracts %}
+            <option value="{{ contract.id }}" {{ 'selected' if bill.contract_id == contract.id }}>
+                {{ contract_choice_label(contract) }}
+            </option>
+            {% endfor %}
+        </select>
+        <p class="gw-text-muted" style="font-size: 0.75rem; margin-top: 4px;">Earlier payments stay off the plan.</p>
     </td>
     <td>
         <select name="payment_method_id" form="edit-form-{{ bill.id }}" class="gw-edit-input">
@@ -245,6 +263,14 @@
                 <label for="bill-provider" class="gw-label">Provider</label>
                 <input type="text" id="bill-provider" name="debtor_provider" required
                        class="gw-input" placeholder="e.g. Landlord">
+                <label for="bill-contract" class="gw-label" style="margin-top: 8px;">Contract</label>
+                <select id="bill-contract" name="contract_id" class="gw-select">
+                    <option value="">No contract</option>
+                    {% for contract in contracts %}
+                    <option value="{{ contract.id }}">{{ contract_choice_label(contract) }}</option>
+                    {% endfor %}
+                </select>
+                <p class="gw-text-muted" style="font-size: 0.75rem; margin-top: 4px;">Only payments from now on are tied to this contract. Earlier ones stay off the plan.</p>
             </div>
             <div>
                 <label for="bill-amount" class="gw-label">Amount (local currency)</label>

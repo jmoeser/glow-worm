@@ -670,6 +670,7 @@ def process_due_bills(db: Session | None = None) -> None:
                     transaction_type="regular",
                     sinking_fund_id=bills_fund.id,
                     recurring_bill_id=bill.id,
+                    contract_id=bill.contract_id,
                 )
             )
 

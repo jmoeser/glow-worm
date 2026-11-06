@@ -10,6 +10,7 @@ An opinionated, single-tenant household budgeting app built with Python and Fast
 - **Shares** -- Record US share buys and sells (CMC Markets style: USD price, optional fee, broker FX as AUD/USD or USD/AUD). FIFO realised gains are shown in AUD, with unrealised gains in AUD and USD and a portfolio total. A value-over-time chart plots market value and cost base in AUD from stored daily closes and FX rates. Daily closes come from Alpha Vantage; the AUD/USD rate comes from Frankfurter, with Alpha Vantage FX as a fallback. Informational only — share trades are not household budget transactions.
 - **Recurring payments** -- Repeating payments (weekly, fortnightly, monthly, quarterly, yearly, every 28 days), paid from the Bills fund, a budget, or another sinking fund. Fixed Bills-fund payments are logged automatically. Everything else, including a variable Bills-fund bill, waits on the dashboard and the Bills page until you confirm or skip it. Each one can record which payment method pays it.
 - **Payment methods** -- Record the card, bank account, or BPAY / pay myself entry that pays each bill. Only the last 4 digits are stored. Card expiry accepts the month picker or a typed `MM/YY` (Firefox has no month picker). When a card is close to expiry, or you are moving bills to a new card, the dashboard lists what still needs updating. The checklist can be left and picked up later.
+- **Contracts** -- A register of household plans (electricity, health insurance, internet, phones, and the rest), separate from the bill that pays them. Link a bill to the plan you are on. Ending a plan does not stop that bill. Each payment keeps the plan it was paid under, so switching plans later does not rewrite older payments. Renewals, reminders, and spend totals are not in this version.
 - **Recurring Transfers** -- Define fixed monthly outflows (e.g. an allowance, an external savings transfer) that are processed automatically as part of income allocation and deducted from the unallocated remainder.
 - **Category Management** -- Create and manage transaction categories (income, expense, transfer). System categories required for income allocation are protected from deletion.
 - **Transaction Ledger** -- Full transaction history with filters by date, category, and fund. Supports dual-linkage so a single transaction can reference both a sinking fund and a recurring bill.
@@ -144,7 +145,7 @@ All configuration is via environment variables (see `.env.example`):
 
 ## MCP Server
 
-Glow-worm exposes an [MCP](https://modelcontextprotocol.io/) server at `/mcp` using SSE transport. This allows LLMs and AI agents to manage transactions, recurring bills, and payment methods programmatically.
+Glow-worm exposes an [MCP](https://modelcontextprotocol.io/) server at `/mcp` using SSE transport. This allows LLMs and AI agents to manage transactions, recurring bills, and payment methods programmatically. There are no contract tools in v1; contracts are managed from the web UI and `/api/contracts`.
 
 ### Available Tools
 
@@ -262,7 +263,7 @@ pipx install .
 | `glow budgets add` | Create a new budget entry |
 | `glow budgets delete <id>` | Delete a budget entry |
 
-All commands support `--help`. Pass `--month` / `--year` to `dashboard`, `tx list`, and `budgets list` to view other months.
+All commands support `--help`. Pass `--month` / `--year` to `dashboard`, `tx list`, and `budgets list` to view other months. There is no `glow contracts` command in v1.
 
 ### JSON Output
 
@@ -347,7 +348,7 @@ glow-worm/
 │   ├── mcp_server.py      # MCP tool definitions
 │   ├── templating.py      # Jinja2 template helpers
 │   ├── routes/            # Route modules (auth, dashboard, bills, etc.)
-│   ├── services/          # Domain logic (transaction balances, recurring payments, budget recommendations, payment methods, shares, market data, bills secondary)
+│   ├── services/          # Domain logic (transaction balances, recurring payments, budget recommendations, payment methods, contracts, shares, market data, bills secondary)
 │   ├── templates/         # Jinja2 HTML templates
 │   ├── static/            # CSS, logo, static assets
 │   └── cli/               # glow CLI (pipx-installable)

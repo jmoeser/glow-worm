@@ -82,6 +82,7 @@ class RecurringBill(Base):
     __table_args__ = (
         Index("ix_recurring_bills_payment_method_id", "payment_method_id"),
         Index("ix_recurring_bills_paid_from_fund_id", "paid_from_fund_id"),
+        Index("ix_recurring_bills_contract_id", "contract_id"),
         CheckConstraint(
             "paid_from IN ('bills_fund', 'budget', 'sinking_fund')",
             name="ck_recurring_bills_paid_from",
@@ -129,11 +130,20 @@ class RecurringBill(Base):
         ),
         nullable=True,
     )
+    contract_id: Mapped[int | None] = mapped_column(
+        ForeignKey(
+            "contracts.id",
+            name="fk_recurring_bills_contract_id",
+            ondelete="SET NULL",
+        ),
+        nullable=True,
+    )
     created_at: Mapped[datetime] = mapped_column(default=_utcnow)
     updated_at: Mapped[datetime] = mapped_column(default=_utcnow, onupdate=_utcnow)
 
     category: Mapped[Category] = relationship(back_populates="recurring_bills")
     payment_method: Mapped[PaymentMethod | None] = relationship(back_populates="bills")
+    contract: Mapped[Contract | None] = relationship(back_populates="bills")
     paid_from_fund: Mapped[SinkingFund | None] = relationship(
         foreign_keys=[paid_from_fund_id],
     )
@@ -164,6 +174,10 @@ class Budget(Base):
 
 class Transaction(Base):
     __tablename__ = "transactions"
+    __table_args__ = (
+        Index("ix_transactions_contract_id", "contract_id"),
+        Index("ix_transactions_recurring_bill_id", "recurring_bill_id"),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     date: Mapped[str] = mapped_column(String(10), nullable=False)
@@ -185,6 +199,14 @@ class Transaction(Base):
     budget_id: Mapped[int | None] = mapped_column(
         ForeignKey("budgets.id"), nullable=True
     )
+    contract_id: Mapped[int | None] = mapped_column(
+        ForeignKey(
+            "contracts.id",
+            name="fk_transactions_contract_id",
+            ondelete="SET NULL",
+        ),
+        nullable=True,
+    )
     is_paid: Mapped[bool] = mapped_column(default=True)
     created_at: Mapped[datetime] = mapped_column(default=_utcnow)
 
@@ -196,6 +218,7 @@ class Transaction(Base):
         back_populates="transactions"
     )
     budget: Mapped[Budget | None] = relationship(back_populates="transactions")
+    contract: Mapped[Contract | None] = relationship(back_populates="transactions")
 
 
 class IncomeAllocation(Base):
@@ -480,6 +503,37 @@ class PaymentMethodReplacementItem(Base):
 
     replacement: Mapped[PaymentMethodReplacement] = relationship(back_populates="items")
     recurring_bill: Mapped[RecurringBill] = relationship()
+
+
+class Contract(Base):
+    __tablename__ = "contracts"
+    __table_args__ = (
+        CheckConstraint(
+            "service IN ('electricity', 'health_insurance', 'internet', "
+            "'phone', 'car_insurance', 'other')",
+            name="ck_contracts_service",
+        ),
+        CheckConstraint(
+            "bill_delivery IN ('email', 'post', 'app', 'other')",
+            name="ck_contracts_bill_delivery",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(100), nullable=False)
+    provider: Mapped[str] = mapped_column(String(150), nullable=False)
+    plan_name: Mapped[str | None] = mapped_column(String(150), nullable=True)
+    service: Mapped[str] = mapped_column(String(30), nullable=False)
+    bill_delivery: Mapped[str] = mapped_column(String(20), nullable=False)
+    delivery_detail: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    notes: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    started_on: Mapped[str | None] = mapped_column(String(10), nullable=True)
+    ended_on: Mapped[str | None] = mapped_column(String(10), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(default=_utcnow)
+    updated_at: Mapped[datetime] = mapped_column(default=_utcnow, onupdate=_utcnow)
+
+    bills: Mapped[list[RecurringBill]] = relationship(back_populates="contract")
+    transactions: Mapped[list[Transaction]] = relationship(back_populates="contract")
 
 
 class MonthlyUnallocatedIncome(Base):

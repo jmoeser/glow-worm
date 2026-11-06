@@ -185,3 +185,102 @@ def test_paid_from_revision_backfills_and_rejects_a_half_set_row(tmp_path):
     assert "paid_from" in columns
     assert "paid_from_fund_id" in columns
     engine.dispose()
+
+
+def test_contracts_revision_round_trip(tmp_path):
+    from sqlalchemy import text
+    from sqlalchemy.exc import IntegrityError
+
+    from app.models import Category, Contract, RecurringBill
+
+    url = f"sqlite:///{tmp_path / 'contracts.sqlite'}"
+    env = os.environ.copy()
+    env["DATABASE_URL"] = url
+    env["SECRET_KEY"] = "migration-test-secret-key-not-for-production-use"
+    root = Path(__file__).resolve().parents[1]
+
+    def alembic(*args: str) -> None:
+        result = subprocess.run(
+            ["uv", "run", "alembic", *args],
+            check=False,
+            cwd=root,
+            env=env,
+            capture_output=True,
+            text=True,
+        )
+        assert result.returncode == 0, result.stdout + result.stderr
+
+    alembic("upgrade", "head")
+    engine = create_engine(url)
+    session = sessionmaker(bind=engine)()
+    category = Category(name="Bills", type="expense", color="#112233")
+    session.add(category)
+    session.flush()
+    contract = Contract(
+        name="Home electricity",
+        provider="Origin",
+        service="electricity",
+        bill_delivery="email",
+    )
+    session.add(contract)
+    session.flush()
+    session.add(
+        RecurringBill(
+            name="Power",
+            amount=40,
+            debtor_provider="Origin",
+            start_date="2026-01-01",
+            frequency="monthly",
+            category_id=category.id,
+            next_due_date="2026-06-01",
+            contract_id=contract.id,
+        )
+    )
+    session.commit()
+    session.close()
+
+    with engine.connect() as conn:
+        indexes = {idx["name"] for idx in inspect(engine).get_indexes("transactions")}
+        assert "ix_transactions_contract_id" in indexes
+        assert "ix_transactions_recurring_bill_id" in indexes
+        bill_indexes = {
+            idx["name"] for idx in inspect(engine).get_indexes("recurring_bills")
+        }
+        assert "ix_recurring_bills_contract_id" in bill_indexes
+        with pytest.raises(IntegrityError):
+            conn.execute(
+                text(
+                    "INSERT INTO contracts (name, provider, service, bill_delivery, "
+                    "created_at, updated_at) VALUES ("
+                    "'Gas', 'Supplier', 'gas', 'email', '2026-01-01', '2026-01-01')"
+                )
+            )
+            conn.commit()
+        conn.rollback()
+    engine.dispose()
+
+    alembic("downgrade", "j1k2l3m4n5o6")
+    engine = create_engine(url)
+    inspector = inspect(engine)
+    assert "contracts" not in inspector.get_table_names()
+    bill_columns = {
+        column["name"] for column in inspector.get_columns("recurring_bills")
+    }
+    txn_columns = {column["name"] for column in inspector.get_columns("transactions")}
+    assert "contract_id" not in bill_columns
+    assert "contract_id" not in txn_columns
+    txn_indexes = {idx["name"] for idx in inspector.get_indexes("transactions")}
+    assert "ix_transactions_recurring_bill_id" not in txn_indexes
+    engine.dispose()
+
+    alembic("upgrade", "head")
+    engine = create_engine(url)
+    inspector = inspect(engine)
+    assert "contracts" in inspector.get_table_names()
+    bill_columns = {
+        column["name"] for column in inspector.get_columns("recurring_bills")
+    }
+    txn_columns = {column["name"] for column in inspector.get_columns("transactions")}
+    assert "contract_id" in bill_columns
+    assert "contract_id" in txn_columns
+    engine.dispose()

@@ -290,6 +290,7 @@ def update_bill_fields(
     """Apply a schema update, including paid-from rules."""
     updates = data.model_dump(exclude_unset=True)
     updates.pop("payment_method_id", None)
+    updates.pop("contract_id", None)
     paid_from_set = "paid_from" in updates
     paid_from = _plain(updates.pop("paid_from", None)) if paid_from_set else None
     fund_set = "paid_from_fund_id" in updates
@@ -546,6 +547,7 @@ def _insert_confirm(
     source: ResolvedSource,
     amount: Decimal,
     due_date: str,
+    contract_id: int | None,
 ) -> ConfirmResult:
     description = f"Bill payment: {bill.name} to {bill.debtor_provider}"
     due = date.fromisoformat(due_date)
@@ -567,6 +569,7 @@ def _insert_confirm(
             transaction_type="budget_expense",
             budget_id=source.budget.id,
             recurring_bill_id=bill.id,
+            contract_id=contract_id,
             is_paid=True,
         )
         db.add(txn)
@@ -576,6 +579,7 @@ def _insert_confirm(
         if overflow is not None and month_was_swept(db, due):
             transfer = _transfer_category(db)
             if transfer is not None:
+                # A clawback is not a payment, so it does not stamp contract_id.
                 back = Transaction(
                     date=_today().isoformat(),
                     description=(
@@ -623,6 +627,7 @@ def _insert_confirm(
             transaction_type="regular",
             sinking_fund_id=source.fund.id,
             recurring_bill_id=bill.id,
+            contract_id=contract_id,
             is_paid=True,
         )
         db.add(txn)
@@ -643,13 +648,15 @@ def confirm_payment(
     if amount <= 0:
         raise PaymentBlocked("invalid_amount", "Amount must be greater than zero.")
     due = date.fromisoformat(due_date)
+    # Copy the plan before the due-date update expires the bill.
+    contract_id = bill.contract_id
     source = _require_source(db, bill, due) if needs_confirm(bill) else None
     if not _cas(db, bill, due_date, pay=False):
         _reject(db, bill, due_date, pay=False)
     if source is None:
         _reject(db, bill, due_date, pay=False)
     assert source is not None
-    return _insert_confirm(db, bill, source, amount, due_date)
+    return _insert_confirm(db, bill, source, amount, due_date, contract_id)
 
 
 def skip_payment(db: Session, bill: RecurringBill, due_date: str) -> SkipResult:
@@ -684,6 +691,7 @@ def pay_bills_fund(
         raise PaymentBlocked("source_missing", "The Bills fund is missing.")
     description = f"Bill payment: {bill.name} to {bill.debtor_provider}"
     category_id = bill.category_id
+    contract_id = bill.contract_id
     if not _cas(db, bill, loaded_due, pay=True):
         _reject(db, bill, loaded_due, pay=True)
     if fund is None:
@@ -698,6 +706,7 @@ def pay_bills_fund(
         transaction_type="regular",
         sinking_fund_id=fund.id,
         recurring_bill_id=bill.id,
+        contract_id=contract_id,
         is_paid=True,
     )
     db.add(txn)

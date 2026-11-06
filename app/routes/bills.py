@@ -21,6 +21,7 @@ from app.schemas import (
     RecurringBillSkip,
     RecurringBillUpdate,
 )
+from app.services.contracts import ContractError, assign_contract, contract_choices
 from app.services.payment_methods import (
     PaymentMethodError,
     assign_payment_method,
@@ -147,6 +148,7 @@ def _bill_context(db: Session) -> dict[str, Any]:
         "bills_fund_id": bills_fund.id if bills_fund else None,
         "paid_with": paid_with_for(db, bills),
         "unset_count": sum(1 for bill in bills if bill.payment_method_id is None),
+        "contracts": contract_choices(db, None),
     }
 
 
@@ -211,6 +213,7 @@ def _render_edit_row(
                 "categories": categories,
                 "frequency_labels": FREQUENCY_LABELS,
                 "payment_methods": payment_method_choices(db, bill.payment_method_id),
+                "contracts": contract_choices(db, bill.contract_id),
                 "budget_categories": _budget_categories(db),
                 "payable_funds": _payable_funds(db),
                 "bills_category_id": (
@@ -459,6 +462,24 @@ async def bills_create(request: Request, db: Session = Depends(get_db)):
         db.rollback()
         return _html_error(exc)
     db.add(bill)
+    if "contract_id" in form:
+        raw_contract = str(form.get("contract_id") or "").strip()
+        try:
+            contract_id = int(raw_contract) if raw_contract else None
+        except ValueError:
+            db.rollback()
+            return HTMLResponse(
+                '<p class="text-red-600 text-sm">Contract not found or ended.</p>',
+                status_code=422,
+            )
+        try:
+            assign_contract(db, bill, contract_id)
+        except ContractError as exc:
+            db.rollback()
+            return HTMLResponse(
+                f'<p class="text-red-600 text-sm">{exc.message}</p>',
+                status_code=exc.status,
+            )
     db.commit()
 
     ctx = _bill_context(db)
@@ -651,6 +672,25 @@ async def bills_update(request: Request, bill_id: int, db: Session = Depends(get
                 status_code=exc.status,
             )
 
+    if "contract_id" in form:
+        raw_contract = str(form.get("contract_id") or "").strip()
+        try:
+            contract_id = int(raw_contract) if raw_contract else None
+        except ValueError:
+            db.rollback()
+            return HTMLResponse(
+                '<p class="text-red-600 text-sm">Contract not found or ended.</p>',
+                status_code=422,
+            )
+        try:
+            assign_contract(db, bill, contract_id)
+        except ContractError as exc:
+            db.rollback()
+            return HTMLResponse(
+                f'<p class="text-red-600 text-sm">{exc.message}</p>',
+                status_code=exc.status,
+            )
+
     if "paid_from" in form:
         try:
             paid_from, fund_id, category_id = _resolve_paid_from_form(
@@ -768,6 +808,12 @@ async def api_create_bill(request: Request, db: Session = Depends(get_db)):
         except PaymentMethodError as exc:
             db.rollback()
             return JSONResponse({"detail": exc.message}, status_code=exc.status)
+    if data.contract_id is not None:
+        try:
+            assign_contract(db, bill, data.contract_id)
+        except ContractError as exc:
+            db.rollback()
+            return JSONResponse({"detail": exc.message}, status_code=exc.status)
     db.commit()
     db.refresh(bill)
 
@@ -805,10 +851,18 @@ async def api_update_bill(
     updates = data.model_dump(exclude_unset=True)
     payment_method_set = "payment_method_id" in updates
     payment_method_id = updates.pop("payment_method_id", None)
+    contract_set = "contract_id" in updates
+    contract_id = updates.pop("contract_id", None)
     if payment_method_set:
         try:
             assign_payment_method(db, bill, payment_method_id)
         except PaymentMethodError as exc:
+            db.rollback()
+            return JSONResponse({"detail": exc.message}, status_code=exc.status)
+    if contract_set:
+        try:
+            assign_contract(db, bill, contract_id)
+        except ContractError as exc:
             db.rollback()
             return JSONResponse({"detail": exc.message}, status_code=exc.status)
 

@@ -1,0 +1,161 @@
+{% extends "base.html" %}
+{% block title %}Contracts — Glow Worm{% endblock %}
+{% block content %}
+<style>
+.contract-actions form { display: inline; }
+.contract-actions { white-space: nowrap; }
+</style>
+
+{% if page == "list" %}
+<div style="max-width: 1100px;">
+    <div style="display: flex; align-items: center; justify-content: space-between;">
+        <h2 class="gw-page-header" style="margin-bottom: 0;">Contracts</h2>
+        {% if show_ended %}
+        <a href="/contracts">Hide ended</a>
+        {% else %}
+        <a href="/contracts?ended=1">Show ended</a>
+        {% endif %}
+    </div>
+
+    {% if flash %}
+    <p class="gw-msg-success" id="contract-flash">{{ flash }}</p>
+    {% endif %}
+    {% if error %}
+    <p class="gw-msg-error" id="contract-error">{{ error }}</p>
+    {% endif %}
+
+    <div class="gw-card gw-section" id="add-contract">
+        <h3 style="font-family: var(--font-display); font-size: 1.05rem; margin-bottom: 12px;">Add contract</h3>
+        <form hx-post="/contracts" class="gw-grid-2" autocomplete="off" id="contract-form">
+            {% include "contract_fields.html" %}
+            <div style="grid-column: 1 / -1;">
+                <button type="submit" class="gw-btn gw-btn-primary">Add contract</button>
+            </div>
+        </form>
+        <p class="gw-text-muted" style="margin-top: 12px;">Linking a bill only marks payments from now on. Payments already recorded stay off this plan.</p>
+    </div>
+
+    <div class="gw-table-wrap">
+        <div class="gw-overflow-x">
+            <table id="contracts-table">
+                <thead>
+                    <tr>
+                        <th>Name</th>
+                        <th>Provider</th>
+                        <th>Plan</th>
+                        <th>Service</th>
+                        <th>Delivery</th>
+                        <th>Bills</th>
+                        <th>Status</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for row in rows %}
+                    <tr id="contract-row-{{ row.contract.id }}">
+                        <td><a href="/contracts/{{ row.contract.id }}">{{ row.contract.name }}</a></td>
+                        <td>{{ row.contract.provider }}</td>
+                        <td>{{ row.plan }}</td>
+                        <td>{{ row.service_label }}</td>
+                        <td>{{ row.delivery_label }}</td>
+                        <td>{{ row.linked_count }}</td>
+                        <td>
+                            <span class="gw-badge {% if row.contract.ended_on %}gw-badge--pending{% else %}gw-badge--paid{% endif %}">{{ row.status }}</span>
+                        </td>
+                        <td><a class="gw-btn gw-btn-ghost gw-btn-sm" href="/contracts/{{ row.contract.id }}">Open</a></td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+{% elif page == "detail" %}
+<div style="max-width: 900px;" id="contract-detail">
+    <p><a href="/contracts">&larr; Contracts</a></p>
+    <h2 class="gw-page-header">{{ label }}</h2>
+    <p><span class="gw-badge {% if contract.ended_on %}gw-badge--pending{% else %}gw-badge--paid{% endif %}">{{ status }}</span></p>
+
+    {% if flash %}
+    <p class="gw-msg-success" id="contract-flash">{{ flash }}</p>
+    {% endif %}
+    {% if error %}
+    <p class="gw-msg-error" id="contract-error">{{ error }}</p>
+    {% endif %}
+
+    <p>Changing the plan name or provider here is for typos. For a real plan or provider change, end this contract, add a new one, and point the same bill at the new contract.</p>
+    <p>Linking a bill only marks payments from now on. Payments already recorded stay off this plan.</p>
+
+    <form hx-post="/contracts/{{ contract.id }}" class="gw-grid-2 gw-section" autocomplete="off" id="contract-form">
+        {% set value_name = contract.name %}
+        {% set value_provider = contract.provider %}
+        {% set value_plan_name = contract.plan_name or "" %}
+        {% set value_service = contract.service %}
+        {% set value_delivery = contract.bill_delivery %}
+        {% set value_delivery_detail = contract.delivery_detail or "" %}
+        {% set value_started_on = contract.started_on or "" %}
+        {% set value_ended_on = contract.ended_on or "" %}
+        {% set value_notes = contract.notes or "" %}
+        {% include "contract_fields.html" %}
+        <div style="grid-column: 1 / -1;">
+            <button type="submit" class="gw-btn gw-btn-primary">Save</button>
+            <a href="/contracts" class="gw-btn gw-btn-ghost">Back</a>
+        </div>
+    </form>
+
+    <div class="gw-section">
+        <h3 style="font-family: var(--font-display); font-size: 1.05rem;">Linked bills</h3>
+        <p class="gw-text-muted">{{ linked_count }} linked, including inactive bills.</p>
+        {% if bills %}
+        <div class="gw-table-wrap">
+            <table id="contract-bills">
+                <thead>
+                    <tr>
+                        <th>Bill</th>
+                        <th>Provider</th>
+                        <th>Status</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for bill in bills %}
+                    <tr id="contract-bill-{{ bill.id }}">
+                        <td>{{ bill.name }}</td>
+                        <td>{{ bill.debtor_provider }}</td>
+                        <td>{% if bill.is_active %}Active{% else %}Inactive{% endif %}</td>
+                        <td>
+                            <form hx-post="/contracts/{{ contract.id }}/unlink">
+                                <input type="hidden" name="bill_id" value="{{ bill.id }}">
+                                <button type="submit" class="gw-btn gw-btn-ghost gw-btn-sm">Unlink</button>
+                            </form>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <p>No bills linked.</p>
+        {% endif %}
+    </div>
+
+    <div class="gw-section contract-actions" id="contract-end">
+        {% if not contract.ended_on %}
+        <form hx-post="/contracts/{{ contract.id }}/end"
+              hx-confirm="End this contract? Linked bills are unchanged and will still be paid / forecast as usual.">
+            <button type="submit" class="gw-btn gw-btn-ghost">End contract</button>
+        </form>
+        <p class="gw-text-muted">Ending a contract does not stop its bills. Linked bills are unchanged and will still be paid / forecast as usual.</p>
+        {% endif %}
+        {% if linked_count == 0 %}
+        <form hx-post="/contracts/{{ contract.id }}/delete" hx-confirm="Delete this contract?">
+            <button type="submit" class="gw-action-delete">Delete</button>
+        </form>
+        {% else %}
+        <p class="gw-text-muted">Unlink every bill before deleting. End leaves the bills running.</p>
+        {% endif %}
+    </div>
+</div>
+{% endif %}
+{% endblock %}
