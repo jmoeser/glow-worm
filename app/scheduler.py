@@ -9,6 +9,7 @@ from apscheduler.triggers.date import DateTrigger
 
 import app.config as app_config
 from app.config import TIMEZONE
+from app.services.household_months import recover_current_month
 from app.tasks import (
     clear_market_data_stop,
     process_due_bills,
@@ -31,6 +32,27 @@ def register_jobs(target=scheduler) -> None:
         CronTrigger(day=1, hour=0, minute=5, timezone=TIMEZONE),
         id="income_allocation",
         replace_existing=True,
+        max_instances=1,
+        coalesce=True,
+        misfire_grace_time=None,
+    )
+    # Current month only. A missed 1st is not replayed from the in-memory store.
+    run_at = datetime.now(TIMEZONE) + timedelta(seconds=60)
+    target.add_job(
+        recover_current_month,
+        DateTrigger(run_date=run_at),
+        id="income_allocation_catchup",
+        replace_existing=True,
+        max_instances=1,
+    )
+    target.add_job(
+        recover_current_month,
+        CronTrigger(minute=0, timezone=TIMEZONE),
+        id="income_allocation_retry",
+        replace_existing=True,
+        max_instances=1,
+        coalesce=True,
+        misfire_grace_time=None,
     )
 
     # Bill processing: daily at 06:00 in TIMEZONE

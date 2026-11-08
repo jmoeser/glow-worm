@@ -3,21 +3,23 @@
 import calendar
 import logging
 import threading
+import time
 import traceback
 from collections.abc import Iterator
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 
 import httpx
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 
 import app.config as app_config
-from app.config import TIMEZONE
 from app.database import SessionLocal
 from app.models import (
     Budget,
     Category,
     FxRate,
+    HouseholdMonth,
     IncomeAllocation,
     MarketDataRun,
     MonthlyUnallocatedIncome,
@@ -28,14 +30,25 @@ from app.models import (
 )
 from app.schemas import FREQUENCY_ANNUAL_MULTIPLIER
 from app.services.bills_secondary import bills_secondary_goal, secondary_recorded
+from app.services.clock import today as _clock_today
+from app.services.household_months import (
+    claim_processed,
+    claim_settlement,
+    clear_hold,
+    ensure_backfill,
+    is_held,
+    is_processed,
+    record_attempt,
+)
 from app.services.market_data import FxProvider, PriceProvider, RequestGate
+from app.services.sweep_descriptions import income_description, sweep_descriptions
 
 logger = logging.getLogger(__name__)
 
 
 def _today() -> date:
     """Return today's date in the configured timezone."""
-    return datetime.now(TIMEZONE).date()
+    return _clock_today()
 
 
 def advance_due_date(current: date, frequency: str) -> date:
@@ -303,300 +316,40 @@ def generate_bills_forecast(
     return result
 
 
-def process_income_allocation(db: Session | None = None) -> None:
-    """Monthly task (1st): distribute income per IncomeAllocation config.
+def process_income_allocation(
+    db: Session | None = None, *, force: bool = False
+) -> None:
+    """Distribute this month's income and settle the previous month.
+
+    ``force`` is the operator review path. Cron, startup, and the hourly
+    retry leave it false so the ambiguous upgrade month stays paused.
+    A locked database is retried a few times. Any other failure rolls the
+    money transaction back and raises. The attempt flag is committed first,
+    so a retry can run while this process stays up.
 
     Args:
         db: Optional database session for testing. If None, creates one
             from SessionLocal and manages its lifecycle.
+        force: Bypass the upgrade-month hold. Still claims the month once.
     """
     _managed = db is None
     if _managed:
         db = SessionLocal()
     assert db is not None
     try:
-        today = _today()
-        month, year = today.month, today.year
-        date_str = today.isoformat()
-        month_start = f"{year}-{month:02d}-01"
-        month_end = f"{year}-{month:02d}-{calendar.monthrange(year, month)[1]:02d}"
-
-        # Idempotency: skip if income already processed this month
-        existing = (
-            db.query(Transaction)
-            .filter(
-                Transaction.transaction_type == "income",
-                Transaction.date >= month_start,
-                Transaction.date <= month_end,
-            )
-            .first()
-        )
-        if existing:
-            logger.info("Income already processed for %s-%02d, skipping", year, month)
-            return
-
-        allocation = db.query(IncomeAllocation).first()
-        if not allocation:
-            logger.warning("No income allocation config found, skipping")
-            return
-
-        income_amount = Decimal(str(allocation.monthly_income_amount))
-        budget_amount = Decimal(str(allocation.monthly_budget_allocation))
-
-        # Find required categories
-        income_cat = (
-            db.query(Category)
-            .filter(Category.type == "income", Category.is_deleted == False)
-            .first()
-        )
-        if not income_cat:
-            logger.warning("No income category found, skipping income processing")
-            return
-
-        transfer_cat = (
-            db.query(Category)
-            .filter(Category.type == "transfer", Category.is_deleted == False)
-            .first()
-        )
-        if not transfer_cat:
-            logger.warning("No Transfer category found, skipping income processing")
-            return
-
-        # 1. Create income transaction
-        db.add(
-            Transaction(
-                date=date_str,
-                description=f"Monthly income \u2014 {today.strftime('%B %Y')}",
-                amount=income_amount,
-                category_id=income_cat.id,
-                type="income",
-                transaction_type="income",
-            )
-        )
-
-        total_allocated = Decimal(0)
-
-        # Identify the Bills fund (handled separately)
-        bills_fund = (
-            db.query(SinkingFund)
-            .filter(SinkingFund.name == "Bills", SinkingFund.is_deleted == False)
-            .first()
-        )
-        bills_fund_id = bills_fund.id if bills_fund else None
-
-        # 2. Distribute to sinking funds per junction table (skip Bills)
-        for junction in allocation.sinking_fund_allocations:
-            if junction.sinking_fund_id == bills_fund_id:
-                continue
-
-            fund = (
-                db.query(SinkingFund)
-                .filter(
-                    SinkingFund.id == junction.sinking_fund_id,
-                    SinkingFund.is_deleted == False,
+        for attempt in range(5):
+            try:
+                _process_income_allocation(db, force=force)
+                return
+            except OperationalError:
+                db.rollback()
+                if attempt == 4:
+                    raise
+                logger.warning(
+                    "Monthly processing database was busy; retrying (%s)",
+                    attempt + 1,
                 )
-                .first()
-            )
-            if not fund:
-                continue
-
-            amount = Decimal(str(junction.allocation_amount))
-            if amount <= 0:
-                continue
-
-            db.add(
-                Transaction(
-                    date=date_str,
-                    description=f"Income allocation to {fund.name}",
-                    amount=amount,
-                    category_id=transfer_cat.id,
-                    type="transfer",
-                    transaction_type="income_allocation",
-                    sinking_fund_id=fund.id,
-                )
-            )
-            fund.current_balance = float(Decimal(str(fund.current_balance)) + amount)
-            total_allocated += amount
-
-        # 3. Handle Bills fund allocation
-        if bills_fund:
-            if allocation.bills_fund_allocation_type == "fixed":
-                bills_amount = Decimal(str(allocation.bills_fund_fixed_amount or 0))
-            else:
-                bills_amount = _compute_bills_recommended(db)
-
-            if bills_amount > 0:
-                db.add(
-                    Transaction(
-                        date=date_str,
-                        description="Income allocation to Bills fund",
-                        amount=bills_amount,
-                        category_id=transfer_cat.id,
-                        type="transfer",
-                        transaction_type="income_allocation",
-                        sinking_fund_id=bills_fund.id,
-                    )
-                )
-                bills_fund.current_balance = float(
-                    Decimal(str(bills_fund.current_balance)) + bills_amount
-                )
-                total_allocated += bills_amount
-
-        # 3b. Recurring transfers (money that leaves the household budget entirely)
-        month_name = today.strftime("%B")
-        for transfer in allocation.recurring_transfers:
-            transfer_amount = Decimal(str(transfer.amount))
-            db.add(
-                Transaction(
-                    date=date_str,
-                    description=f"{transfer.description} \u2014 {month_name} {year}",
-                    amount=float(transfer_amount),
-                    category_id=transfer_cat.id,
-                    type="expense",
-                    transaction_type="income_allocation",
-                )
-            )
-            total_allocated += transfer_amount
-
-        # 3c. Sweep prior-month budget surplus to overflow sinking fund
-        prev_month = month - 1 if month > 1 else 12
-        prev_year = year if month > 1 else year - 1
-
-        overflow_fund = None
-        if allocation.overflow_sinking_fund_id:
-            overflow_fund = (
-                db.query(SinkingFund)
-                .filter(
-                    SinkingFund.id == allocation.overflow_sinking_fund_id,
-                    SinkingFund.is_deleted == False,
-                )
-                .first()
-            )
-
-        if overflow_fund:
-            prev_budgets = (
-                db.query(Budget)
-                .filter(Budget.month == prev_month, Budget.year == prev_year)
-                .all()
-            )
-            total_surplus = Decimal(0)
-            for pb in prev_budgets:
-                surplus = (
-                    Decimal(str(pb.allocated_amount))
-                    - Decimal(str(pb.spent_amount))
-                    + Decimal(str(pb.fund_balance))
-                )
-                total_surplus += surplus
-
-            prev_month_name = calendar.month_name[prev_month]
-            if total_surplus > 0:
-                db.add(
-                    Transaction(
-                        date=date_str,
-                        description=f"Budget surplus sweep \u2014 {prev_month_name} {prev_year}",
-                        amount=float(total_surplus),
-                        category_id=transfer_cat.id,
-                        type="transfer",
-                        transaction_type="contribution",
-                        sinking_fund_id=overflow_fund.id,
-                    )
-                )
-                overflow_fund.current_balance = float(
-                    Decimal(str(overflow_fund.current_balance)) + total_surplus
-                )
-            elif total_surplus < 0:
-                shortfall = abs(total_surplus)
-                db.add(
-                    Transaction(
-                        date=date_str,
-                        description=f"Budget shortfall \u2014 {prev_month_name} {prev_year}",
-                        amount=float(shortfall),
-                        category_id=transfer_cat.id,
-                        type="expense",
-                        transaction_type="withdrawal",
-                        sinking_fund_id=overflow_fund.id,
-                    )
-                )
-                overflow_fund.current_balance = float(
-                    Decimal(str(overflow_fund.current_balance)) - shortfall
-                )
-
-        # 4. Ensure Budget rows exist for this month
-
-        budget_cats = (
-            db.query(Category)
-            .filter(
-                Category.is_budget_category == True,
-                Category.is_deleted == False,
-            )
-            .all()
-        )
-        for cat in budget_cats:
-            existing_budget = (
-                db.query(Budget)
-                .filter(
-                    Budget.category_id == cat.id,
-                    Budget.month == month,
-                    Budget.year == year,
-                )
-                .first()
-            )
-            if not existing_budget:
-                prev_budget = (
-                    db.query(Budget)
-                    .filter(
-                        Budget.category_id == cat.id,
-                        Budget.month == prev_month,
-                        Budget.year == prev_year,
-                    )
-                    .first()
-                )
-                allocated = prev_budget.allocated_amount if prev_budget else 0
-                db.add(
-                    Budget(
-                        category_id=cat.id,
-                        month=month,
-                        year=year,
-                        allocated_amount=allocated,
-                        spent_amount=0,
-                        fund_balance=0,
-                    )
-                )
-
-        total_allocated += budget_amount
-
-        # 5. Record unallocated income
-        unallocated = income_amount - total_allocated
-        existing_unalloc = (
-            db.query(MonthlyUnallocatedIncome)
-            .filter(
-                MonthlyUnallocatedIncome.month == month,
-                MonthlyUnallocatedIncome.year == year,
-            )
-            .first()
-        )
-        if existing_unalloc:
-            existing_unalloc.unallocated_amount = float(unallocated)
-        else:
-            db.add(
-                MonthlyUnallocatedIncome(
-                    month=month,
-                    year=year,
-                    unallocated_amount=unallocated,
-                )
-            )
-
-        db.commit()
-        logger.info(
-            "Income allocation completed for %s-%02d: "
-            "income=%s, allocated=%s, unallocated=%s",
-            year,
-            month,
-            income_amount,
-            total_allocated,
-            unallocated,
-        )
-
+                time.sleep(0.05 * (attempt + 1))
     except Exception:
         db.rollback()
         logger.exception("Error processing income allocation")
@@ -604,6 +357,370 @@ def process_income_allocation(db: Session | None = None) -> None:
     finally:
         if _managed:
             db.close()
+
+
+def _load_allocation_parts(
+    db: Session,
+) -> tuple[IncomeAllocation, Category, Category] | None:
+    allocation = db.query(IncomeAllocation).first()
+    if not allocation:
+        logger.warning("No income allocation config found, skipping")
+        return None
+    income_cat = (
+        db.query(Category)
+        .filter(Category.type == "income", Category.is_deleted == False)
+        .first()
+    )
+    if not income_cat:
+        logger.warning("No income category found, skipping income processing")
+        return None
+    transfer_cat = (
+        db.query(Category)
+        .filter(Category.type == "transfer", Category.is_deleted == False)
+        .first()
+    )
+    if not transfer_cat:
+        logger.warning("No Transfer category found, skipping income processing")
+        return None
+    return allocation, income_cat, transfer_cat
+
+
+def _process_income_allocation(db: Session, *, force: bool) -> None:
+    today = _today()
+    month, year = today.month, today.year
+    date_str = today.isoformat()
+    ensure_backfill(db, today_value=today)
+    if is_processed(db, year, month):
+        logger.info("Income already processed for %s-%02d, skipping", year, month)
+        return
+    if not force and is_held(db, year, month):
+        logger.info(
+            "Monthly processing paused for %s-%02d until it is reviewed",
+            year,
+            month,
+        )
+        return
+    if _load_allocation_parts(db) is None:
+        record_attempt(db, year, month)
+        return
+    record_attempt(db, year, month)
+    loaded = _load_allocation_parts(db)
+    if loaded is None:
+        return
+    allocation, income_cat, transfer_cat = loaded
+    if not claim_processed(db, year, month):
+        db.rollback()
+        logger.info("Income already processed for %s-%02d, skipping", year, month)
+        return
+
+    income_amount = Decimal(str(allocation.monthly_income_amount))
+    budget_amount = Decimal(str(allocation.monthly_budget_allocation))
+
+    # 1. Create income transaction
+    income_txn = Transaction(
+        date=date_str,
+        description=income_description(month, year),
+        amount=income_amount,
+        category_id=income_cat.id,
+        type="income",
+        transaction_type="income",
+    )
+    db.add(income_txn)
+    db.flush()
+    current_month = (
+        db.query(HouseholdMonth)
+        .filter(HouseholdMonth.year == year, HouseholdMonth.month == month)
+        .one()
+    )
+    current_month.income_transaction_id = income_txn.id
+
+    total_allocated = Decimal(0)
+
+    # Identify the Bills fund (handled separately)
+    bills_fund = (
+        db.query(SinkingFund)
+        .filter(SinkingFund.name == "Bills", SinkingFund.is_deleted == False)
+        .first()
+    )
+    bills_fund_id = bills_fund.id if bills_fund else None
+
+    # 2. Distribute to sinking funds per junction table (skip Bills)
+    for junction in allocation.sinking_fund_allocations:
+        if junction.sinking_fund_id == bills_fund_id:
+            continue
+
+        fund = (
+            db.query(SinkingFund)
+            .filter(
+                SinkingFund.id == junction.sinking_fund_id,
+                SinkingFund.is_deleted == False,
+            )
+            .first()
+        )
+        if not fund:
+            continue
+
+        amount = Decimal(str(junction.allocation_amount))
+        if amount <= 0:
+            continue
+
+        db.add(
+            Transaction(
+                date=date_str,
+                description=f"Income allocation to {fund.name}",
+                amount=amount,
+                category_id=transfer_cat.id,
+                type="transfer",
+                transaction_type="income_allocation",
+                sinking_fund_id=fund.id,
+            )
+        )
+        fund.current_balance = float(Decimal(str(fund.current_balance)) + amount)
+        total_allocated += amount
+
+    # 3. Handle Bills fund allocation
+    if bills_fund:
+        if allocation.bills_fund_allocation_type == "fixed":
+            bills_amount = Decimal(str(allocation.bills_fund_fixed_amount or 0))
+        else:
+            bills_amount = _compute_bills_recommended(db)
+
+        if bills_amount > 0:
+            db.add(
+                Transaction(
+                    date=date_str,
+                    description="Income allocation to Bills fund",
+                    amount=bills_amount,
+                    category_id=transfer_cat.id,
+                    type="transfer",
+                    transaction_type="income_allocation",
+                    sinking_fund_id=bills_fund.id,
+                )
+            )
+            bills_fund.current_balance = float(
+                Decimal(str(bills_fund.current_balance)) + bills_amount
+            )
+            total_allocated += bills_amount
+
+    # 3b. Recurring transfers (money that leaves the household budget entirely)
+    month_name = calendar.month_name[month]
+    for transfer in allocation.recurring_transfers:
+        transfer_amount = Decimal(str(transfer.amount))
+        db.add(
+            Transaction(
+                date=date_str,
+                description=f"{transfer.description} \u2014 {month_name} {year}",
+                amount=float(transfer_amount),
+                category_id=transfer_cat.id,
+                type="expense",
+                transaction_type="income_allocation",
+            )
+        )
+        total_allocated += transfer_amount
+
+    # 3c. Sweep prior-month budget surplus to overflow sinking fund
+    prev_month = month - 1 if month > 1 else 12
+    prev_year = year if month > 1 else year - 1
+
+    overflow_fund = None
+    if allocation.overflow_sinking_fund_id:
+        overflow_fund = (
+            db.query(SinkingFund)
+            .filter(
+                SinkingFund.id == allocation.overflow_sinking_fund_id,
+                SinkingFund.is_deleted == False,
+            )
+            .first()
+        )
+
+    if overflow_fund:
+        prev_budgets = (
+            db.query(Budget)
+            .filter(Budget.month == prev_month, Budget.year == prev_year)
+            .all()
+        )
+        total_surplus = Decimal(0)
+        for pb in prev_budgets:
+            surplus = (
+                Decimal(str(pb.allocated_amount))
+                - Decimal(str(pb.spent_amount))
+                + Decimal(str(pb.fund_balance))
+            )
+            total_surplus += surplus
+
+        surplus_description, shortfall_description = sweep_descriptions(
+            prev_month, prev_year
+        )
+        if total_surplus > 0:
+            if claim_settlement(
+                db,
+                prev_year,
+                prev_month,
+                "surplus",
+                overflow_fund.id,
+                total_surplus,
+                date_str,
+            ):
+                sweep_txn = Transaction(
+                    date=date_str,
+                    description=surplus_description,
+                    amount=float(total_surplus),
+                    category_id=transfer_cat.id,
+                    type="transfer",
+                    transaction_type="contribution",
+                    sinking_fund_id=overflow_fund.id,
+                )
+                db.add(sweep_txn)
+                db.flush()
+                settled = (
+                    db.query(HouseholdMonth)
+                    .filter(
+                        HouseholdMonth.year == prev_year,
+                        HouseholdMonth.month == prev_month,
+                    )
+                    .one()
+                )
+                settled.settlement_transaction_id = sweep_txn.id
+                overflow_fund.current_balance = float(
+                    Decimal(str(overflow_fund.current_balance)) + total_surplus
+                )
+        elif total_surplus < 0:
+            shortfall = abs(total_surplus)
+            if claim_settlement(
+                db,
+                prev_year,
+                prev_month,
+                "shortfall",
+                overflow_fund.id,
+                shortfall,
+                date_str,
+            ):
+                sweep_txn = Transaction(
+                    date=date_str,
+                    description=shortfall_description,
+                    amount=float(shortfall),
+                    category_id=transfer_cat.id,
+                    type="expense",
+                    transaction_type="withdrawal",
+                    sinking_fund_id=overflow_fund.id,
+                )
+                db.add(sweep_txn)
+                db.flush()
+                settled = (
+                    db.query(HouseholdMonth)
+                    .filter(
+                        HouseholdMonth.year == prev_year,
+                        HouseholdMonth.month == prev_month,
+                    )
+                    .one()
+                )
+                settled.settlement_transaction_id = sweep_txn.id
+                overflow_fund.current_balance = float(
+                    Decimal(str(overflow_fund.current_balance)) - shortfall
+                )
+        elif claim_settlement(
+            db,
+            prev_year,
+            prev_month,
+            "zero",
+            overflow_fund.id,
+            Decimal(0),
+            date_str,
+        ):
+            pass
+    else:
+        claim_settlement(
+            db,
+            prev_year,
+            prev_month,
+            "no_overflow",
+            None,
+            Decimal(0),
+            date_str,
+        )
+
+    # 4. Ensure Budget rows exist for this month
+
+    budget_cats = (
+        db.query(Category)
+        .filter(
+            Category.is_budget_category == True,
+            Category.is_deleted == False,
+        )
+        .all()
+    )
+    for cat in budget_cats:
+        existing_budget = (
+            db.query(Budget)
+            .filter(
+                Budget.category_id == cat.id,
+                Budget.month == month,
+                Budget.year == year,
+            )
+            .first()
+        )
+        if not existing_budget:
+            prev_budget = (
+                db.query(Budget)
+                .filter(
+                    Budget.category_id == cat.id,
+                    Budget.month == prev_month,
+                    Budget.year == prev_year,
+                )
+                .first()
+            )
+            allocated = prev_budget.allocated_amount if prev_budget else 0
+            db.add(
+                Budget(
+                    category_id=cat.id,
+                    month=month,
+                    year=year,
+                    allocated_amount=allocated,
+                    spent_amount=0,
+                    fund_balance=0,
+                )
+            )
+
+    total_allocated += budget_amount
+
+    # 5. Record unallocated income. An existing row is a secondary-income
+    # remainder (or seed). Add the primary figure instead of replacing it.
+    unallocated = income_amount - total_allocated
+    existing_unalloc = (
+        db.query(MonthlyUnallocatedIncome)
+        .filter(
+            MonthlyUnallocatedIncome.month == month,
+            MonthlyUnallocatedIncome.year == year,
+        )
+        .first()
+    )
+    if existing_unalloc:
+        combined = (
+            Decimal(str(existing_unalloc.unallocated_amount)) + unallocated
+        ).quantize(Decimal("0.01"))
+        existing_unalloc.unallocated_amount = float(combined)
+        unallocated = combined
+    else:
+        db.add(
+            MonthlyUnallocatedIncome(
+                month=month,
+                year=year,
+                unallocated_amount=unallocated,
+            )
+        )
+
+    if force:
+        clear_hold(db, year, month)
+    db.commit()
+    logger.info(
+        "Income allocation completed for %s-%02d: "
+        "income=%s, allocated=%s, unallocated=%s",
+        year,
+        month,
+        income_amount,
+        total_allocated,
+        unallocated,
+    )
 
 
 def process_due_bills(db: Session | None = None) -> None:

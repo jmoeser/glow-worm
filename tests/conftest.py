@@ -18,6 +18,7 @@ os.environ["SECRET_KEY"] = "test-secret-key-do-not-use-in-production-1234567890"
 os.environ["SECURE_COOKIES"] = "false"
 
 
+import app.database as _app_database
 import app.mcp_server as _app_mcp
 import app.middleware as _app_middleware
 import app.routes.auth as _app_auth
@@ -49,6 +50,7 @@ TestingSessionLocal = sessionmaker(bind=engine, autocommit=False, autoflush=Fals
 # Redirect all direct SessionLocal references to our test engine.
 # These modules use `from app.database import SessionLocal` (local reference),
 # so patching the module attribute here is required.
+_app_database.SessionLocal = TestingSessionLocal
 _app_middleware.SessionLocal = TestingSessionLocal
 _app_mcp.SessionLocal = TestingSessionLocal
 _app_tasks.SessionLocal = TestingSessionLocal

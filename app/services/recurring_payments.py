@@ -24,7 +24,6 @@ from app.config import TIMEZONE
 from app.models import (
     Budget,
     Category,
-    IncomeAllocation,
     RecurringBill,
     SinkingFund,
     Transaction,
@@ -501,44 +500,30 @@ def _transfer_category(db: Session) -> Category | None:
     )
 
 
-def _next_month(due: date) -> tuple[int, int]:
-    if due.month == 12:
-        return due.year + 1, 1
-    return due.year, due.month + 1
-
-
 def month_was_swept(db: Session, due: date) -> bool:
-    """True when the month after the due month already has an income transaction.
+    """True when that due month was settled with a fund that can be debited.
 
-    That is the same signal ``process_income_allocation`` uses to skip a month.
+    ``surplus``, ``shortfall``, and ``zero`` count. ``no_overflow``,
+    ``unresolved``, a missing row, and a month with no sweep record do not.
+    Callers that move money must already have run ``ensure_backfill``.
     """
-    year, month = _next_month(due)
-    start = date(year, month, 1).isoformat()
-    end = date(year, month, calendar.monthrange(year, month)[1]).isoformat()
-    found = (
-        db.query(Transaction.id)
-        .filter(
-            Transaction.transaction_type == "income",
-            Transaction.date >= start,
-            Transaction.date <= end,
-        )
-        .first()
-    )
-    return found is not None
+    from app.services.household_months import clawback_outcome
+
+    return clawback_outcome(db, due.year, due.month) is not None
 
 
-def _overflow_fund(db: Session) -> SinkingFund | None:
-    allocation = db.query(IncomeAllocation).first()
-    if allocation is None or allocation.overflow_sinking_fund_id is None:
+def _clawback_fund(db: Session, due: date) -> SinkingFund | None:
+    """Overflow fund recorded on the due month, not today's setting."""
+    from app.services.household_months import clawback_outcome
+
+    found = clawback_outcome(db, due.year, due.month)
+    if found is None:
         return None
-    return (
-        db.query(SinkingFund)
-        .filter(
-            SinkingFund.id == allocation.overflow_sinking_fund_id,
-            SinkingFund.is_deleted == False,
-        )
-        .first()
-    )
+    _outcome, fund_id = found
+    fund = db.get(SinkingFund, fund_id)
+    if fund is None or fund.is_deleted:
+        return None
+    return fund
 
 
 def _insert_confirm(
@@ -575,8 +560,8 @@ def _insert_confirm(
         db.add(txn)
         db.flush()
         _apply(db, txn)
-        overflow = _overflow_fund(db)
-        if overflow is not None and month_was_swept(db, due):
+        overflow = _clawback_fund(db, due)
+        if overflow is not None:
             transfer = _transfer_category(db)
             if transfer is not None:
                 # A clawback is not a payment, so it does not stamp contract_id.
@@ -644,6 +629,9 @@ def confirm_payment(
     db: Session, bill: RecurringBill, amount: Decimal, due_date: str
 ) -> ConfirmResult:
     """Log one occurrence dated on its due date, then step next_due_date."""
+    from app.services.household_months import ensure_backfill
+
+    ensure_backfill(db, today_value=_today())
     amount = money(amount)
     if amount <= 0:
         raise PaymentBlocked("invalid_amount", "Amount must be greater than zero.")

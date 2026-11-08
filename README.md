@@ -4,7 +4,7 @@ An opinionated, single-tenant household budgeting app built with Python and Fast
 
 ## Features
 
-- **Income Allocation** -- Configure how your monthly income is automatically distributed across budgets, sinking funds, bills, and recurring transfers on the 1st of each month. Includes a live Sankey diagram showing the breakdown.
+- **Income Allocation** -- Configure how your monthly income is automatically distributed across budgets, sinking funds, bills, and recurring transfers on the 1st of each month. A missed 1st can still run for the current month after 00:05. The month that was already ambiguous when this version first started waits until you review it. Includes a live Sankey diagram showing the breakdown.
 - **Monthly Budgets** -- Track spending against allocated amounts for repeating categories (Groceries, Eating Out, etc.) with color-coded progress bars. Any unspent surplus is automatically swept into your overflow sinking fund at month-end; net overspend is automatically withdrawn from it so your fund balances always reflect reality. Advisory **budget suggestions** compare each category's allocation to its average spend over the last few completed months (shown on the budgets page and as a dashboard teaser).
 - **Sinking Funds** -- Savings pots (Bills, Savings, Emergency, etc.) that accumulate a balance over time via monthly contributions. A fund's detail page shows how long that balance lasts at the recent rate, or how long a negative balance takes to get back to zero. The Bills fund points to its forecast instead. On that forecast, "Include secondary income" (off on every visit unless the address has `?secondary=1`) adds the Bills secondary-income goal to each month.
 - **Shares** -- Record US share buys and sells (CMC Markets style: USD price, optional fee, broker FX as AUD/USD or USD/AUD). FIFO realised gains are shown in AUD, with unrealised gains in AUD and USD and a portfolio total. A value-over-time chart plots market value and cost base in AUD from stored daily closes and FX rates. Daily closes come from Alpha Vantage; the AUD/USD rate comes from Frankfurter, with Alpha Vantage FX as a fallback. Informational only — share trades are not household budget transactions.
@@ -118,6 +118,13 @@ To repair stored budget spent inside the container, dry-run first (prints the ga
 ```bash
 docker exec -it <container-id> python scripts/reconcile_budget_spent.py
 docker exec -it <container-id> python scripts/reconcile_budget_spent.py --apply
+```
+
+To see whether this month's income distribution has run, and to post it after reading the warning (dry-run first):
+
+```bash
+docker exec -it <container-id> python scripts/review_monthly_processing.py
+docker exec -it <container-id> python scripts/review_monthly_processing.py --apply
 ```
 
 ## Configuration
@@ -348,7 +355,7 @@ glow-worm/
 │   ├── mcp_server.py      # MCP tool definitions
 │   ├── templating.py      # Jinja2 template helpers
 │   ├── routes/            # Route modules (auth, dashboard, bills, etc.)
-│   ├── services/          # Domain logic (transaction balances, recurring payments, budget recommendations, payment methods, contracts, shares, market data, bills secondary)
+│   ├── services/          # Domain logic (transaction balances, recurring payments, household months, budget recommendations, payment methods, contracts, shares, market data, bills secondary)
 │   ├── templates/         # Jinja2 HTML templates
 │   ├── static/            # CSS, logo, static assets
 │   └── cli/               # glow CLI (pipx-installable)
@@ -357,7 +364,7 @@ glow-worm/
 │       ├── client.py      # httpx wrapper with Bearer auth
 │       └── commands/      # Subcommand modules (bills, tx, funds, budgets, …)
 ├── alembic/               # Database migrations
-├── scripts/               # Utility scripts (create_user, seed_data, reconcile_budget_spent)
+├── scripts/               # Utility scripts (create_user, seed_data, reconcile_budget_spent, review_monthly_processing)
 ├── tests/                 # Test suite (includes test_cli.py)
 ├── aqua.yaml              # aqua pins (uv CLI, pinact)
 ├── prek.toml              # prek git hook config
