@@ -11,6 +11,7 @@ from app.models import (
     Budget,
     Category,
     Contract,
+    HouseholdMonth,
     IncomeAllocation,
     RecurringBill,
     SinkingFund,
@@ -565,6 +566,16 @@ class TestPaymentStamp:
                 category_id=income.id,
                 type="income",
                 transaction_type="income",
+            )
+        )
+        db_session.add(
+            HouseholdMonth(
+                year=2026,
+                month=10,
+                settlement_outcome="surplus",
+                settlement_fund_id=overflow.id,
+                settlement_amount=20,
+                settled_on="2026-11-01",
             )
         )
         db_session.commit()

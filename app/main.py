@@ -48,8 +48,15 @@ ALLOWED_ORIGINS = [
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    from app.database import SessionLocal
     from app.scheduler import start_scheduler, stop_scheduler
+    from app.services.household_months import ensure_backfill
 
+    db = SessionLocal()
+    try:
+        ensure_backfill(db)
+    finally:
+        db.close()
     start_scheduler()
     yield
     stop_scheduler()

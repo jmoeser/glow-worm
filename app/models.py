@@ -546,3 +546,80 @@ class MonthlyUnallocatedIncome(Base):
     unallocated_amount: Mapped[float] = mapped_column(Numeric(12, 2), default=0)
     created_at: Mapped[datetime] = mapped_column(default=_utcnow)
     updated_at: Mapped[datetime] = mapped_column(default=_utcnow, onupdate=_utcnow)
+
+
+class HouseholdMonth(Base):
+    """One calendar month of distribution and overflow settlement.
+
+    ``processed_at`` and ``settlement_outcome`` are independent. A row may
+    already be settled when distribution is claimed, or processed while
+    settlement is still null. The unique ``(year, month)`` pair is the
+    runners' claim. It does not lock sinking-fund balances.
+    """
+
+    __tablename__ = "household_months"
+    __table_args__ = (
+        UniqueConstraint("year", "month", name="uq_household_months_year_month"),
+        CheckConstraint("month >= 1 AND month <= 12", name="ck_household_months_month"),
+        CheckConstraint(
+            "(settlement_outcome IS NULL AND settlement_fund_id IS NULL) OR "
+            "(settlement_outcome IN ('no_overflow', 'unresolved') "
+            "AND settlement_fund_id IS NULL) OR "
+            "(settlement_outcome IN ('surplus', 'shortfall', 'zero') "
+            "AND settlement_fund_id IS NOT NULL)",
+            name="ck_household_months_settlement",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    year: Mapped[int] = mapped_column(nullable=False)
+    month: Mapped[int] = mapped_column(nullable=False)
+    processed_at: Mapped[datetime | None] = mapped_column(nullable=True)
+    income_transaction_id: Mapped[int | None] = mapped_column(
+        ForeignKey(
+            "transactions.id",
+            name="fk_household_months_income_txn",
+            ondelete="SET NULL",
+        ),
+        nullable=True,
+    )
+    settlement_outcome: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    # No foreign key: a soft-deleted fund must stay as an id, not be nulled.
+    settlement_fund_id: Mapped[int | None] = mapped_column(nullable=True)
+    settlement_transaction_id: Mapped[int | None] = mapped_column(
+        ForeignKey(
+            "transactions.id",
+            name="fk_household_months_settlement_txn",
+            ondelete="SET NULL",
+        ),
+        nullable=True,
+    )
+    settlement_amount: Mapped[float | None] = mapped_column(
+        Numeric(12, 2), nullable=True
+    )
+    settled_on: Mapped[str | None] = mapped_column(String(10), nullable=True)
+
+
+class HouseholdProcessing(Base):
+    """One row: legacy bootstrap flag, upgrade hold, and this month's attempt."""
+
+    __tablename__ = "household_processing"
+    __table_args__ = (
+        CheckConstraint(
+            "(held_year IS NULL AND held_month IS NULL) OR "
+            "(held_year IS NOT NULL AND held_month >= 1 AND held_month <= 12)",
+            name="ck_household_processing_hold",
+        ),
+        CheckConstraint(
+            "(attempt_year IS NULL AND attempt_month IS NULL) OR "
+            "(attempt_year IS NOT NULL AND attempt_month >= 1 AND attempt_month <= 12)",
+            name="ck_household_processing_attempt",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    backfilled_at: Mapped[datetime | None] = mapped_column(nullable=True)
+    held_year: Mapped[int | None] = mapped_column(nullable=True)
+    held_month: Mapped[int | None] = mapped_column(nullable=True)
+    attempt_year: Mapped[int | None] = mapped_column(nullable=True)
+    attempt_month: Mapped[int | None] = mapped_column(nullable=True)

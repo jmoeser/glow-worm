@@ -9,6 +9,7 @@ from sqlalchemy.orm.attributes import set_committed_value
 from app.models import (
     Budget,
     Category,
+    HouseholdMonth,
     IncomeAllocation,
     RecurringBill,
     SinkingFund,
@@ -261,6 +262,16 @@ class TestOverflowTakeBack:
                     sinking_fund_id=household["overflow"].id,
                 )
             )
+            db.add(
+                HouseholdMonth(
+                    year=2026,
+                    month=10,
+                    settlement_outcome="surplus",
+                    settlement_fund_id=household["overflow"].id,
+                    settlement_amount=20,
+                    settled_on="2026-11-01",
+                )
+            )
         elif sweep == "shortfall":
             db.add(
                 Transaction(
@@ -273,11 +284,21 @@ class TestOverflowTakeBack:
                     sinking_fund_id=household["overflow"].id,
                 )
             )
+            db.add(
+                HouseholdMonth(
+                    year=2026,
+                    month=10,
+                    settlement_outcome="shortfall",
+                    settlement_fund_id=household["overflow"].id,
+                    settlement_amount=15,
+                    settled_on="2026-11-01",
+                )
+            )
         db.commit()
 
-    @pytest.mark.parametrize("sweep", ["surplus", "zero", "shortfall"])
+    @pytest.mark.parametrize("sweep", ["surplus", "shortfall"])
     def test_takes_the_amount_back(self, db_session, household, fixed_today, sweep):
-        self._swept(db_session, household, None if sweep == "zero" else sweep)
+        self._swept(db_session, household, sweep)
         bill = _bill(db_session, household)
         result = confirm_payment(db_session, bill, Decimal(90), "2026-10-26")
         db_session.commit()
@@ -294,6 +315,120 @@ class TestOverflowTakeBack:
         assert "Taken back for HelloFresh (October 2026 Groceries)" == back.description
         db_session.refresh(household["overflow"])
         assert Decimal(str(household["overflow"].current_balance)) == Decimal("-80.00")
+
+    def test_old_month_without_a_sweep_records_the_payment_and_does_not_debit(
+        self, db_session, household, fixed_today
+    ):
+        self._swept(db_session, household, None)
+        bill = _bill(db_session, household)
+        result = confirm_payment(db_session, bill, Decimal(90), "2026-10-26")
+        db_session.commit()
+        assert result.taken_back is None
+        assert result.transaction.transaction_type == "budget_expense"
+        assert (
+            db_session.query(Transaction)
+            .filter(Transaction.transaction_type == "withdrawal")
+            .count()
+            == 0
+        )
+        db_session.refresh(household["overflow"])
+        assert Decimal(str(household["overflow"].current_balance)) == Decimal("10.00")
+
+    def test_zero_outcome_debits_the_recorded_fund_after_the_setting_changes(
+        self, db_session, household, fixed_today
+    ):
+        other = SinkingFund(name="Later", color="#abcdef", current_balance=70)
+        db_session.add(other)
+        db_session.flush()
+        _set_overflow(db_session, household, fund=other)
+        db_session.add(
+            HouseholdMonth(
+                year=2026,
+                month=10,
+                settlement_outcome="zero",
+                settlement_fund_id=household["overflow"].id,
+                settlement_amount=0,
+                settled_on="2026-11-01",
+            )
+        )
+        db_session.commit()
+        bill = _bill(db_session, household)
+        result = confirm_payment(db_session, bill, Decimal(90), "2026-10-26")
+        db_session.commit()
+        assert result.taken_back is not None
+        assert result.taken_back["fund_id"] == household["overflow"].id
+        db_session.refresh(household["overflow"])
+        db_session.refresh(other)
+        assert Decimal(str(household["overflow"].current_balance)) == Decimal("-80.00")
+        assert Decimal(str(other.current_balance)) == Decimal("70.00")
+
+    def test_no_overflow_outcome_does_not_debit_after_a_fund_is_configured(
+        self, db_session, household, fixed_today
+    ):
+        _set_overflow(db_session, household)
+        db_session.add(
+            HouseholdMonth(
+                year=2026,
+                month=10,
+                settlement_outcome="no_overflow",
+                settlement_amount=0,
+                settled_on="2026-11-01",
+            )
+        )
+        db_session.commit()
+        bill = _bill(db_session, household)
+        result = confirm_payment(db_session, bill, Decimal(90), "2026-10-26")
+        db_session.commit()
+        assert result.taken_back is None
+        db_session.refresh(household["overflow"])
+        assert Decimal(str(household["overflow"].current_balance)) == Decimal("10.00")
+
+    def test_deleted_stored_fund_skips_the_take_back(
+        self, db_session, household, fixed_today
+    ):
+        household["overflow"].is_deleted = True
+        db_session.add(
+            HouseholdMonth(
+                year=2026,
+                month=10,
+                settlement_outcome="surplus",
+                settlement_fund_id=household["overflow"].id,
+                settlement_amount=20,
+                settled_on="2026-11-01",
+            )
+        )
+        db_session.commit()
+        bill = _bill(db_session, household)
+        result = confirm_payment(db_session, bill, Decimal(90), "2026-10-26")
+        db_session.commit()
+        assert result.taken_back is None
+
+    def test_unresolved_sweeps_do_not_debit(self, db_session, household, fixed_today):
+        db_session.add(
+            HouseholdMonth(
+                year=2026,
+                month=10,
+                settlement_outcome="unresolved",
+                settled_on="2026-11-01",
+            )
+        )
+        db_session.commit()
+        bill = _bill(db_session, household)
+        result = confirm_payment(db_session, bill, Decimal(90), "2026-10-26")
+        db_session.commit()
+        assert result.taken_back is None
+
+    def test_stray_income_in_the_next_month_does_not_claw_back(
+        self, db_session, household, fixed_today
+    ):
+        _set_overflow(db_session, household)
+        _income_in(db_session, household, "2026-11-02")
+        bill = _bill(db_session, household)
+        result = confirm_payment(db_session, bill, Decimal(90), "2026-10-26")
+        db_session.commit()
+        assert result.taken_back is None
+        payment = result.transaction
+        assert payment.transaction_type == "budget_expense"
 
     def test_no_overflow_fund_skips_the_take_back(
         self, db_session, household, fixed_today

@@ -34,7 +34,6 @@ Docker (the image copies ``scripts/`` and puts the venv on ``PATH``):
 """
 
 import argparse
-import calendar
 from dataclasses import dataclass
 from datetime import date, datetime
 from decimal import Decimal
@@ -45,55 +44,27 @@ from sqlalchemy.orm import Session
 from app.config import TIMEZONE
 from app.database import SessionLocal
 from app.models import Budget, Category, SinkingFund, Transaction
+from app.services.sweep_descriptions import (
+    SHORTFALL_PREFIX as _SHORTFALL_PREFIX,
+)
+from app.services.sweep_descriptions import (
+    SURPLUS_PREFIX as _SURPLUS_PREFIX,
+)
+from app.services.sweep_descriptions import (  # noqa: F401
+    correction_description,
+    month_label,
+    parse_sweep,
+    sweep_descriptions,
+)
 from app.services.transaction_balances import _counts_as_budget_spend, _write_spent
 
 _CENT = Decimal("0.01")
-_EM = "\u2014"
-_SURPLUS_PREFIX = f"Budget surplus sweep {_EM} "
-_SHORTFALL_PREFIX = f"Budget shortfall {_EM} "
 _POST_ACTIONS = ("withdrawal", "contribution")
 
 
 def _today() -> date:
     """Return today's date in the configured timezone."""
     return datetime.now(TIMEZONE).date()
-
-
-def month_label(month: int, year: int) -> str:
-    return f"{calendar.month_name[month]} {year}"
-
-
-def sweep_descriptions(month: int, year: int) -> tuple[str, str]:
-    """Surplus-sweep and shortfall descriptions for one month, as posted."""
-    label = month_label(month, year)
-    return (f"{_SURPLUS_PREFIX}{label}", f"{_SHORTFALL_PREFIX}{label}")
-
-
-def correction_description(month: int, year: int) -> str:
-    return f"Budget correction {_EM} {month_label(month, year)}"
-
-
-def parse_sweep(description: str | None) -> tuple[int, int] | None:
-    """Return ``(month, year)`` when ``description`` is a sweep or shortfall."""
-    if not description:
-        return None
-    label = None
-    for prefix in (_SURPLUS_PREFIX, _SHORTFALL_PREFIX):
-        if description.startswith(prefix):
-            label = description[len(prefix) :]
-            break
-    if label is None:
-        return None
-    name, sep, year_text = label.partition(" ")
-    if sep == "" or name not in calendar.month_name:
-        return None
-    month = list(calendar.month_name).index(name)
-    if month == 0 or not year_text.isdigit():
-        return None
-    year = int(year_text)
-    if label != month_label(month, year):
-        return None
-    return month, year
 
 
 def _money(value: object) -> Decimal:
