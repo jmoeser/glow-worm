@@ -127,6 +127,13 @@ docker exec -it <container-id> python scripts/review_monthly_processing.py
 docker exec -it <container-id> python scripts/review_monthly_processing.py --apply
 ```
 
+To inspect past months for sweeps, shortfalls, and possible manual transfers (read only; it does not change the database):
+
+```bash
+docker exec -it <container-id> python scripts/audit_settlement_history.py
+docker exec -it <container-id> python scripts/audit_settlement_history.py --from 2026-01 --to 2026-06
+```
+
 ## Configuration
 
 All configuration is via environment variables (see `.env.example`):
@@ -364,7 +371,7 @@ glow-worm/
 │       ├── client.py      # httpx wrapper with Bearer auth
 │       └── commands/      # Subcommand modules (bills, tx, funds, budgets, …)
 ├── alembic/               # Database migrations
-├── scripts/               # Utility scripts (create_user, seed_data, reconcile_budget_spent, review_monthly_processing)
+├── scripts/               # Utility scripts (create_user, seed_data, reconcile_budget_spent, review_monthly_processing, audit_settlement_history)
 ├── tests/                 # Test suite (includes test_cli.py)
 ├── aqua.yaml              # aqua pins (uv CLI, pinact)
 ├── prek.toml              # prek git hook config

@@ -10,6 +10,7 @@ _EM = "\u2014"
 SURPLUS_PREFIX = f"Budget surplus sweep {_EM} "
 SHORTFALL_PREFIX = f"Budget shortfall {_EM} "
 INCOME_PREFIX = f"Monthly income {_EM} "
+CORRECTION_PREFIX = f"Budget correction {_EM} "
 
 
 def month_label(month: int, year: int) -> str:
@@ -28,7 +29,7 @@ def sweep_descriptions(month: int, year: int) -> tuple[str, str]:
 
 
 def correction_description(month: int, year: int) -> str:
-    return f"Budget correction {_EM} {month_label(month, year)}"
+    return f"{CORRECTION_PREFIX}{month_label(month, year)}"
 
 
 def _parse_label(
@@ -74,6 +75,17 @@ def parse_sweep_kind(description: str | None) -> tuple[str, int, int] | None:
     prefix, month, year = parsed
     kind = "surplus" if prefix == SURPLUS_PREFIX else "shortfall"
     return kind, month, year
+
+
+def parse_correction(description: str | None) -> tuple[int, int] | None:
+    """Return ``(month, year)`` for an exact budget-spent repair description."""
+    if not description:
+        return None
+    parsed = _parse_label(description, (CORRECTION_PREFIX,))
+    if parsed is None:
+        return None
+    _prefix, month, year = parsed
+    return month, year
 
 
 def parse_income_description(description: str | None) -> tuple[int, int] | None:
