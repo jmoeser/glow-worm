@@ -12,14 +12,36 @@
         {% endfor %}
     </select>
 </div>
-<div>
+<div id="pm-provider-wrap" {% if value_kind|default('card') != 'wallet' %}hidden{% endif %}>
+    <label class="gw-label" for="pm-provider">Provider</label>
+    <select id="pm-provider" name="wallet_provider" class="gw-select"
+            {% if value_kind|default('card') != 'wallet' %}disabled{% endif %}>
+        <option value="">Select</option>
+        {% for value, label in provider_labels.items() %}
+        <option value="{{ value }}" {% if value_provider|default('') == value %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+    </select>
+</div>
+<div id="pm-funding-wrap" {% if value_kind|default('card') != 'wallet' %}hidden{% endif %}>
+    <label class="gw-label" for="pm-funding">Linked card</label>
+    <select id="pm-funding" name="funding_method_id" class="gw-select"
+            {% if value_kind|default('card') != 'wallet' %}disabled{% endif %}>
+        <option value="">Select a card</option>
+        {% for card in funding_cards|default([]) %}
+        <option value="{{ card.id }}" {% if value_funding|default(none) == card.id %}selected{% endif %}>
+            {{ card.owner }} — {{ card.nickname }}{% if card.last4 %} ending {{ card.last4 }}{% endif %}
+        </option>
+        {% endfor %}
+    </select>
+</div>
+<div id="pm-last4-wrap" {% if value_kind|default('card') == 'wallet' %}hidden{% endif %}>
     <label class="gw-label" for="pm-last4">Last 4 digits</label>
     <input type="text" id="pm-last4" name="last4" inputmode="numeric" maxlength="4"
            class="gw-input" autocomplete="off" value="{{ value_last4|default('') }}"
-           {% if value_kind|default('card') == 'manual' %}disabled{% endif %}>
+           {% if value_kind|default('card') in ['manual', 'wallet'] %}disabled{% endif %}>
     <p class="gw-text-muted" style="font-size: 0.75rem; margin-top: 4px;">Only the last 4 digits. Never the full number.</p>
 </div>
-<div>
+<div id="pm-expiry-wrap" {% if value_kind|default('card') == 'wallet' %}hidden{% endif %}>
     <label class="gw-label" for="pm-expiry">Expires</label>
     <input type="month" id="pm-expiry" name="expiry" class="gw-input"
            value="{{ value_expiry|default('') }}"

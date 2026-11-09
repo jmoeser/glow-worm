@@ -14,22 +14,27 @@ from app.models import PaymentMethod, PaymentMethodReplacement
 from app.schemas import (
     FREQUENCY_LABELS,
     PaymentMethodCreate,
-    PaymentMethodResponse,
     PaymentMethodUpdate,
     public_validation_errors,
 )
 from app.services.payment_methods import (
     KIND_LABELS,
+    PROVIDER_LABELS,
     PaymentMethodError,
     _any_linked_bill,
+    also_used_by,
     apply_payment_method,
     archive_method,
     bills_word,
     delete_method,
+    effective_expiry,
     end_of_phrase,
+    expires_label,
     expiry_status,
     finish,
     form_to_payload,
+    funded_wallets,
+    funding_card_choices,
     linked_items,
     local_date,
     merge_payment_method,
@@ -42,12 +47,15 @@ from app.services.payment_methods import (
     progress,
     replacement_payload,
     save_note,
+    serialize_payment_method,
     short_date,
     start,
     stop,
     tick,
+    tick_wallet,
     unarchive_method,
     untick,
+    untick_wallet,
 )
 from app.templating import templates
 
@@ -73,6 +81,34 @@ def _pop_flash(request: Request) -> str | None:
 
 def _error_text(exc: ValidationError) -> str:
     return " ".join(str(err["msg"]) for err in public_validation_errors(exc))
+
+
+def _edit_error(
+    request: Request, db: Session, method_id: int, message: str, status: int
+) -> HTMLResponse:
+    user = get_current_user(request)
+    method = _get_method(db, method_id)
+    return templates.TemplateResponse(
+        request,
+        "payment_methods.html",
+        {
+            "username": user.username,
+            "page": "edit",
+            "method": method,
+            "month_value": _month_value(method) if method else "",
+            "owners": owner_suggestions(db, user.username),
+            "kind_labels": KIND_LABELS,
+            "provider_labels": PROVIDER_LABELS,
+            "funding_cards": funding_card_choices(
+                db,
+                current_id=method.funding_method_id if method else None,
+                editing_id=method.id if method else None,
+            ),
+            "also_used_by": also_used_by(db, method) if method else None,
+            "error": message,
+        },
+        status_code=status,
+    )
 
 
 def _html_error(message: str, status: int) -> HTMLResponse:
@@ -112,9 +148,7 @@ def _month_value(method: PaymentMethod) -> str:
 
 
 def _expires_text(method: PaymentMethod) -> str:
-    if method.kind == "card" and method.expiry_month and method.expiry_year:
-        return end_of_phrase(method.expiry_month, method.expiry_year)
-    return "—"
+    return expires_label(method)
 
 
 def _start_choices(db: Session, old_id: int) -> list[PaymentMethod]:
@@ -128,6 +162,8 @@ def _start_choices(db: Session, old_id: int) -> list[PaymentMethod]:
         .all()
     )
     chosen = [method for method in methods if method.id not in busy]
+    if funded_wallets(db, old_id):
+        chosen = [method for method in chosen if method.kind == "card"]
     chosen.sort(
         key=lambda method: (method.owner.lower(), method.nickname.lower(), method.id)
     )
@@ -140,10 +176,19 @@ def _method_rows(db: Session, methods: list[PaymentMethod]) -> list[dict]:
     reps = open_replacements(db)
     old_ids = {rep.old_id for rep in reps}
     new_ids = {rep.new_id for rep in reps}
+    funding_ids = {
+        funding_id
+        for (funding_id,) in db.query(PaymentMethod.funding_method_id)
+        .filter(PaymentMethod.funding_method_id.is_not(None))
+        .all()
+        if funding_id is not None
+    }
     rows = []
     for method in methods:
         used = linked_items(db, method)
         linked = _any_linked_bill(db, method.id) is not None
+        funds = funded_wallets(db, method.id) if method.kind == "card" else []
+        wallet_linked = method.id in funding_ids
         open_rep = method.id in old_ids or method.id in new_ids
         blocked: list[str] = []
         replace_href = None
@@ -155,7 +200,7 @@ def _method_rows(db: Session, methods: list[PaymentMethod]) -> list[dict]:
             blocked.append("Finish or stop replacing first.")
         elif method.is_archived:
             pass
-        elif not used:
+        elif not used and not funds:
             blocked.append("No active bills use this. Archive it instead.")
         else:
             replace_href = f"/payment-methods/{method.id}/replace"
@@ -167,6 +212,8 @@ def _method_rows(db: Session, methods: list[PaymentMethod]) -> list[dict]:
             blocked.append(f"Move these bills first: {names}.")
         if linked and not open_rep and not used:
             blocked.append("A bill still links to this.")
+        if wallet_linked:
+            blocked.append("A wallet still links to this.")
         rows.append(
             {
                 "method": method,
@@ -174,6 +221,7 @@ def _method_rows(db: Session, methods: list[PaymentMethod]) -> list[dict]:
                 "kind_label": KIND_LABELS.get(method.kind, method.kind),
                 "expires": _expires_text(method),
                 "used_label": f"{len(used)} {bills_word(len(used))}",
+                "also_used_by": also_used_by(db, method),
                 "status": method_status(
                     method,
                     is_old=method.id in old_ids,
@@ -184,7 +232,7 @@ def _method_rows(db: Session, methods: list[PaymentMethod]) -> list[dict]:
                 "replace_href": replace_href,
                 "replace_label": replace_label,
                 "archive_ok": not open_rep and not used and not method.is_archived,
-                "delete_ok": not open_rep and not linked,
+                "delete_ok": not open_rep and not linked and not wallet_linked,
                 "blocked": blocked,
             }
         )
@@ -232,6 +280,8 @@ def _list_context(
         "boxes": _boxes(db),
         "owners": owner_suggestions(db, user.username),
         "kind_labels": KIND_LABELS,
+        "provider_labels": PROVIDER_LABELS,
+        "funding_cards": funding_card_choices(db),
         "show_archived": show_archived,
         "flash": _pop_flash(request),
         "error": error,
@@ -275,9 +325,14 @@ async def payment_methods_page(
 async def payment_methods_create(request: Request, db: Session = Depends(get_db)):
     form = await request.form()
     try:
-        data, explicit_last4, explicit_expiry = form_to_payload(form, None)
+        payload = form_to_payload(form, None)
         values = prepare_payment_method(
-            data, explicit_last4=explicit_last4, explicit_expiry=explicit_expiry
+            payload.data,
+            explicit_last4=payload.explicit_last4,
+            explicit_expiry=payload.explicit_expiry,
+            explicit_provider=payload.explicit_provider,
+            explicit_funding=payload.explicit_funding,
+            db=db,
         )
         method = PaymentMethod(**values)
         db.add(method)
@@ -313,6 +368,11 @@ async def payment_methods_edit_page(
             "month_value": _month_value(method),
             "owners": owner_suggestions(db, user.username),
             "kind_labels": KIND_LABELS,
+            "provider_labels": PROVIDER_LABELS,
+            "funding_cards": funding_card_choices(
+                db, current_id=method.funding_method_id, editing_id=method.id
+            ),
+            "also_used_by": also_used_by(db, method),
             "error": None,
         },
     )
@@ -327,48 +387,24 @@ async def payment_methods_update(
         return HTMLResponse("Not found", status_code=404)
     form = await request.form()
     try:
-        data, explicit_last4, explicit_expiry = form_to_payload(form, method)
+        payload = form_to_payload(form, method)
         values = prepare_payment_method(
-            data, explicit_last4=explicit_last4, explicit_expiry=explicit_expiry
+            payload.data,
+            explicit_last4=payload.explicit_last4,
+            explicit_expiry=payload.explicit_expiry,
+            explicit_provider=payload.explicit_provider,
+            explicit_funding=payload.explicit_funding,
+            db=db,
+            existing=method,
         )
         apply_payment_method(method, values)
         db.commit()
     except ValidationError as exc:
         db.rollback()
-        user = get_current_user(request)
-        method = _get_method(db, method_id)
-        return templates.TemplateResponse(
-            request,
-            "payment_methods.html",
-            {
-                "username": user.username,
-                "page": "edit",
-                "method": method,
-                "month_value": _month_value(method) if method else "",
-                "owners": owner_suggestions(db, user.username),
-                "kind_labels": KIND_LABELS,
-                "error": _error_text(exc),
-            },
-            status_code=422,
-        )
+        return _edit_error(request, db, method_id, _error_text(exc), 422)
     except PaymentMethodError as exc:
         db.rollback()
-        user = get_current_user(request)
-        method = _get_method(db, method_id)
-        return templates.TemplateResponse(
-            request,
-            "payment_methods.html",
-            {
-                "username": user.username,
-                "page": "edit",
-                "method": method,
-                "month_value": _month_value(method) if method else "",
-                "owners": owner_suggestions(db, user.username),
-                "kind_labels": KIND_LABELS,
-                "error": exc.message,
-            },
-            status_code=exc.status,
-        )
+        return _edit_error(request, db, method_id, exc.message, exc.status)
     return _redirect(request, "/payment-methods", "Saved.")
 
 
@@ -438,8 +474,11 @@ def _replace_template(
         "old_label": method_label(old),
         "error": error,
         "kind_labels": KIND_LABELS,
+        "provider_labels": PROVIDER_LABELS,
+        "funding_cards": funding_card_choices(db),
         "owners": owner_suggestions(db, user.username),
         "choices": _start_choices(db, old.id),
+        "needs_card": bool(funded_wallets(db, old.id)),
     }
     if rep is not None and page == "replace":
         new = db.get(PaymentMethod, rep.new_id)
@@ -453,8 +492,8 @@ def _replace_template(
                 "prog": prog,
                 "expired_warning": expiry_status(old, today, warn_days) == "expired",
                 "expired_when": (
-                    end_of_phrase(old.expiry_month, old.expiry_year)
-                    if old.expiry_month and old.expiry_year
+                    end_of_phrase(pair[0], pair[1])
+                    if (pair := effective_expiry(old)) is not None
                     else ""
                 ),
                 "frequency_labels": FREQUENCY_LABELS,
@@ -490,17 +529,18 @@ async def payment_methods_replace_start(
         if existing:
             start(db, old.id, new_id=int(existing))
         else:
-            data, explicit_last4, explicit_expiry = form_to_payload(form, None)
+            payload = form_to_payload(form, None)
+            data = payload.data
             if "nickname" not in form:
                 data["nickname"] = old.nickname
                 data["owner"] = old.owner
-                data["kind"] = old.kind
+                data["kind"] = "card" if old.kind == "wallet" else old.kind
             start(
                 db,
                 old.id,
                 new_method=data,
-                explicit_last4=explicit_last4,
-                explicit_expiry=explicit_expiry,
+                explicit_last4=payload.explicit_last4,
+                explicit_expiry=payload.explicit_expiry,
             )
         db.commit()
     except (ValidationError, PaymentMethodError, ValueError) as exc:
@@ -519,6 +559,10 @@ async def payment_methods_replace_start(
 
 def _bill_id_from_form(form) -> int:
     return int(str(form.get("bill_id") or "0"))
+
+
+def _wallet_id_from_form(form) -> int:
+    return int(str(form.get("wallet_method_id") or "0"))
 
 
 @router.post("/payment-methods/{method_id}/replace/tick", response_class=HTMLResponse)
@@ -554,6 +598,50 @@ async def payment_methods_untick(
     form = await request.form()
     try:
         untick(db, rep, _bill_id_from_form(form))
+        db.commit()
+    except PaymentMethodError as exc:
+        db.rollback()
+        return _html_error(exc.message, exc.status)
+    return _redirect(request, f"/payment-methods/{old.id}/replace")
+
+
+@router.post(
+    "/payment-methods/{method_id}/replace/wallet-tick", response_class=HTMLResponse
+)
+async def payment_methods_wallet_tick(
+    request: Request, method_id: int, db: Session = Depends(get_db)
+):
+    old = _get_method(db, method_id)
+    if old is None:
+        return HTMLResponse("Not found", status_code=404)
+    rep = _open_for_old(db, old.id)
+    if rep is None:
+        return _html_error("This replacement is not open.", 409)
+    form = await request.form()
+    try:
+        tick_wallet(db, rep, _wallet_id_from_form(form))
+        db.commit()
+    except PaymentMethodError as exc:
+        db.rollback()
+        return _html_error(exc.message, exc.status)
+    return _redirect(request, f"/payment-methods/{old.id}/replace")
+
+
+@router.post(
+    "/payment-methods/{method_id}/replace/wallet-untick", response_class=HTMLResponse
+)
+async def payment_methods_wallet_untick(
+    request: Request, method_id: int, db: Session = Depends(get_db)
+):
+    old = _get_method(db, method_id)
+    if old is None:
+        return HTMLResponse("Not found", status_code=404)
+    rep = _open_for_old(db, old.id)
+    if rep is None:
+        return _html_error("This replacement is not open.", 409)
+    form = await request.form()
+    try:
+        untick_wallet(db, rep, _wallet_id_from_form(form))
         db.commit()
     except PaymentMethodError as exc:
         db.rollback()
@@ -653,7 +741,11 @@ async def payment_methods_stop(
     except PaymentMethodError as exc:
         db.rollback()
         return _html_error(exc.message, exc.status)
-    return _redirect(request, "/payment-methods", "Stopped. No bills were changed.")
+    return _redirect(
+        request,
+        "/payment-methods",
+        "Stopped. Bills stay where you left them, and ticked Apple Pay stays on the new card.",
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -662,7 +754,7 @@ async def payment_methods_stop(
 
 
 def _dump_method(method: PaymentMethod) -> dict:
-    return PaymentMethodResponse.model_validate(method).model_dump(mode="json")
+    return serialize_payment_method(method)
 
 
 @router.get("/api/payment-methods")
@@ -691,6 +783,8 @@ async def api_create_payment_method(request: Request, db: Session = Depends(get_
     explicit_expiry = (
         body.get("expiry_month") is not None or body.get("expiry_year") is not None
     )
+    explicit_provider = body.get("wallet_provider") not in (None, "")
+    explicit_funding = body.get("funding_method_id") is not None
     try:
         values = prepare_payment_method(
             {
@@ -700,9 +794,16 @@ async def api_create_payment_method(request: Request, db: Session = Depends(get_
                 "expiry_month": parsed.expiry_month,
                 "expiry_year": parsed.expiry_year,
                 "owner": parsed.owner,
+                "wallet_provider": (
+                    parsed.wallet_provider.value if parsed.wallet_provider else None
+                ),
+                "funding_method_id": parsed.funding_method_id,
             },
             explicit_last4=explicit_last4,
             explicit_expiry=explicit_expiry,
+            explicit_provider=explicit_provider,
+            explicit_funding=explicit_funding,
+            db=db,
         )
     except PaymentMethodError as exc:
         return _json_error(exc.message, exc.status)
@@ -754,15 +855,31 @@ async def api_update_payment_method(
         patch["expiry_month"] = parsed.expiry_month
     if "expiry_year" in fields:
         patch["expiry_year"] = parsed.expiry_year
+    if "wallet_provider" in fields:
+        patch["wallet_provider"] = (
+            parsed.wallet_provider.value if parsed.wallet_provider else None
+        )
+    if "funding_method_id" in fields:
+        patch["funding_method_id"] = parsed.funding_method_id
     explicit_last4 = "last4" in fields and parsed.last4 is not None
     explicit_expiry = (
         "expiry_month" in fields and parsed.expiry_month is not None
     ) or ("expiry_year" in fields and parsed.expiry_year is not None)
+    explicit_provider = (
+        "wallet_provider" in fields and parsed.wallet_provider is not None
+    )
+    explicit_funding = (
+        "funding_method_id" in fields and parsed.funding_method_id is not None
+    )
     try:
         values = prepare_payment_method(
             merge_payment_method(method, patch),
             explicit_last4=explicit_last4,
             explicit_expiry=explicit_expiry,
+            explicit_provider=explicit_provider,
+            explicit_funding=explicit_funding,
+            db=db,
+            existing=method,
         )
     except ValidationError as exc:
         return _validation_json(exc)

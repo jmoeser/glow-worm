@@ -119,7 +119,7 @@
             <option value="" {{ 'selected' if not bill.payment_method_id }}>Not set</option>
             {% for method in payment_methods %}
             <option value="{{ method.id }}" {{ 'selected' if bill.payment_method_id == method.id }}>
-                {{ method.owner }} — {{ method.nickname }}{% if method.last4 %} ending {{ method.last4 }}{% endif %}
+                {{ choice_label(method) }}
             </option>
             {% endfor %}
         </select>

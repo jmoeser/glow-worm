@@ -6,6 +6,7 @@ from typing import Any, cast
 from fastapi.templating import Jinja2Templates
 
 from app.services.contracts import contract_choice_label, contract_label
+from app.services.payment_methods import choice_label
 from app.services.recurring_payments import (
     format_due_date,
     format_month_year,
@@ -70,3 +71,4 @@ cast(MutableMapping[str, Any], templates.env.globals)["contract_label"] = contra
 cast(MutableMapping[str, Any], templates.env.globals)["contract_choice_label"] = (
     contract_choice_label
 )
+cast(MutableMapping[str, Any], templates.env.globals)["choice_label"] = choice_label

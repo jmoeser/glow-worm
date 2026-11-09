@@ -82,6 +82,33 @@ def test_sqlite_payment_method_migration_round_trip(tmp_path):
         )
     )
     session.commit()
+    inspector = inspect(engine)
+    pay_columns = {
+        column["name"] for column in inspector.get_columns("payment_methods")
+    }
+    assert "wallet_provider" in pay_columns
+    assert "funding_method_id" in pay_columns
+    item_columns = inspector.get_columns("payment_method_replacement_items")
+    item_names = {column["name"] for column in item_columns}
+    assert "wallet_method_id" in item_names
+    bill_column = next(
+        column for column in item_columns if column["name"] == "recurring_bill_id"
+    )
+    assert bill_column["nullable"] is True
+    from sqlalchemy import text
+    from sqlalchemy.exc import IntegrityError
+
+    with pytest.raises(IntegrityError):
+        session.execute(
+            text(
+                "INSERT INTO payment_methods (nickname, kind, owner, is_archived, "
+                "created_at, updated_at, wallet_provider, funding_method_id) "
+                "VALUES ('Phone', 'wallet', 'Jordan', 0, '2026-01-01', "
+                "'2026-01-01', NULL, NULL)"
+            )
+        )
+        session.commit()
+    session.rollback()
     session.close()
     engine.dispose()
 
@@ -102,6 +129,10 @@ def test_sqlite_payment_method_migration_round_trip(tmp_path):
     assert "payment_methods" in inspector.get_table_names()
     columns = {column["name"] for column in inspector.get_columns("recurring_bills")}
     assert "payment_method_id" in columns
+    pay_columns = {
+        column["name"] for column in inspector.get_columns("payment_methods")
+    }
+    assert "funding_method_id" in pay_columns
     engine.dispose()
 
 

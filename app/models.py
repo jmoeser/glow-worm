@@ -416,6 +416,15 @@ class MarketDataRun(Base):
 
 class PaymentMethod(Base):
     __tablename__ = "payment_methods"
+    __table_args__ = (
+        CheckConstraint(
+            "(kind = 'wallet' AND wallet_provider IN ('apple_pay', 'google_pay') "
+            "AND funding_method_id IS NOT NULL AND funding_method_id != id) "
+            "OR (kind != 'wallet' AND wallet_provider IS NULL "
+            "AND funding_method_id IS NULL)",
+            name="ck_payment_methods_wallet",
+        ),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     nickname: Mapped[str] = mapped_column(String(60), nullable=False)
@@ -425,10 +434,23 @@ class PaymentMethod(Base):
     expiry_year: Mapped[int | None] = mapped_column(nullable=True)
     owner: Mapped[str] = mapped_column(String(60), nullable=False)
     is_archived: Mapped[bool] = mapped_column(default=False)
+    wallet_provider: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    funding_method_id: Mapped[int | None] = mapped_column(
+        ForeignKey(
+            "payment_methods.id",
+            name="fk_payment_methods_funding_method_id",
+        ),
+        nullable=True,
+        index=True,
+    )
     created_at: Mapped[datetime] = mapped_column(default=_utcnow)
     updated_at: Mapped[datetime] = mapped_column(default=_utcnow, onupdate=_utcnow)
 
     bills: Mapped[list[RecurringBill]] = relationship(back_populates="payment_method")
+    funding_method: Mapped[PaymentMethod | None] = relationship(
+        foreign_keys=[funding_method_id],
+        remote_side="PaymentMethod.id",
+    )
     replacements_as_old: Mapped[list[PaymentMethodReplacement]] = relationship(
         back_populates="old",
         foreign_keys="PaymentMethodReplacement.old_id",
@@ -484,10 +506,20 @@ class PaymentMethodReplacement(Base):
 class PaymentMethodReplacementItem(Base):
     __tablename__ = "payment_method_replacement_items"
     __table_args__ = (
+        CheckConstraint(
+            "(recurring_bill_id IS NOT NULL AND wallet_method_id IS NULL) OR "
+            "(recurring_bill_id IS NULL AND wallet_method_id IS NOT NULL)",
+            name="ck_pm_replacement_items_one_target",
+        ),
         UniqueConstraint(
             "replacement_id",
             "recurring_bill_id",
             name="uq_pm_replacement_items_rep_bill",
+        ),
+        UniqueConstraint(
+            "replacement_id",
+            "wallet_method_id",
+            name="uq_pm_replacement_items_rep_wallet",
         ),
     )
 
@@ -495,14 +527,24 @@ class PaymentMethodReplacementItem(Base):
     replacement_id: Mapped[int] = mapped_column(
         ForeignKey("payment_method_replacements.id"), nullable=False
     )
-    recurring_bill_id: Mapped[int] = mapped_column(
-        ForeignKey("recurring_bills.id"), nullable=False
+    recurring_bill_id: Mapped[int | None] = mapped_column(
+        ForeignKey("recurring_bills.id"), nullable=True
+    )
+    wallet_method_id: Mapped[int | None] = mapped_column(
+        ForeignKey(
+            "payment_methods.id",
+            name="fk_pm_replacement_items_wallet_method_id",
+        ),
+        nullable=True,
     )
     updated_on: Mapped[str | None] = mapped_column(String(10), nullable=True)
     note: Mapped[str | None] = mapped_column(String(200), nullable=True)
 
     replacement: Mapped[PaymentMethodReplacement] = relationship(back_populates="items")
-    recurring_bill: Mapped[RecurringBill] = relationship()
+    recurring_bill: Mapped[RecurringBill | None] = relationship()
+    wallet_method: Mapped[PaymentMethod | None] = relationship(
+        foreign_keys=[wallet_method_id]
+    )
 
 
 class Contract(Base):

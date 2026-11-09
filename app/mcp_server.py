@@ -19,7 +19,6 @@ from app.middleware import get_current_user_context
 from app.models import Category, PaymentMethod, RecurringBill, Transaction
 from app.schemas import (
     PaymentMethodCreate,
-    PaymentMethodResponse,
     PaymentMethodUpdate,
     RecurringBillCreate,
     RecurringBillUpdate,
@@ -36,6 +35,7 @@ from app.services.payment_methods import (
     merge_payment_method,
     prepare_payment_method,
     replacement_payload,
+    serialize_payment_method,
     unarchive_method,
 )
 from app.services.recurring_payments import (
@@ -857,10 +857,7 @@ def list_payment_methods(include_archived: bool = False) -> list[dict]:
         if not include_archived:
             query = query.filter(PaymentMethod.is_archived == False)
         methods = query.order_by(PaymentMethod.owner, PaymentMethod.nickname).all()
-        return [
-            PaymentMethodResponse.model_validate(method).model_dump(mode="json")
-            for method in methods
-        ]
+        return [serialize_payment_method(method) for method in methods]
     finally:
         db.close()
 
@@ -880,7 +877,7 @@ def get_payment_method(payment_method_id: int) -> dict | str:
         method = db.get(PaymentMethod, payment_method_id)
         if method is None:
             return f"Payment method {payment_method_id} not found."
-        data = PaymentMethodResponse.model_validate(method).model_dump(mode="json")
+        data = serialize_payment_method(method)
         data["replacement"] = replacement_payload(db, method)
         db.commit()
         return data
@@ -901,7 +898,7 @@ def create_payment_method(
 
     Args:
         nickname: Short name, such as Everyday Visa.
-        kind: ``card``, ``bank``, or ``manual``.
+        kind: ``card``, ``bank``, or ``manual``. A wallet is added on the payment methods page.
         owner: Who the method belongs to.
         last4: Last 4 digits. Required for a card. Not used for manual.
         expiry_month: 1–12. Cards only.
@@ -910,6 +907,8 @@ def create_payment_method(
     Returns:
         The created payment method, or an error that does not repeat the input.
     """
+    if kind == "wallet":
+        return "Add a wallet on the payment methods page."
     try:
         parsed = PaymentMethodCreate(
             nickname=nickname,
@@ -947,7 +946,7 @@ def create_payment_method(
             _audit_username(),
             method.id,
         )
-        return PaymentMethodResponse.model_validate(method).model_dump(mode="json")
+        return serialize_payment_method(method)
     except Exception:
         logger.exception(
             "MCP [user=%s]: error creating payment method", _audit_username()
@@ -985,7 +984,7 @@ def update_payment_method(
     Args:
         payment_method_id: The payment method to update.
         nickname: New nickname.
-        kind: ``card``, ``bank``, or ``manual``.
+        kind: ``card``, ``bank``, or ``manual``. A wallet is added on the payment methods page.
         last4: New last 4 digits. Null clears it when the type allows that.
         expiry_month: New expiry month. Null clears it when the type allows that.
         expiry_year: New four-digit expiry year.
@@ -994,6 +993,8 @@ def update_payment_method(
     Returns:
         The updated payment method, or an error that does not repeat the input.
     """
+    if kind == "wallet":
+        return "Add a wallet on the payment methods page."
     patch: dict[str, Any] = {}
     if nickname is not None:
         patch["nickname"] = nickname
@@ -1039,6 +1040,8 @@ def update_payment_method(
                 merge_payment_method(method, merged_patch),
                 explicit_last4=explicit_last4,
                 explicit_expiry=explicit_expiry,
+                db=db,
+                existing=method,
             )
         except ValidationError as exc:
             return _payment_validation(exc)
@@ -1052,7 +1055,7 @@ def update_payment_method(
             _audit_username(),
             method.id,
         )
-        return PaymentMethodResponse.model_validate(method).model_dump(mode="json")
+        return serialize_payment_method(method)
     except Exception:
         logger.exception(
             "MCP [user=%s]: error updating payment method id=%d",
@@ -1102,7 +1105,7 @@ def archive_payment_method(
             "unarchived" if unarchive else "archived",
             method.id,
         )
-        return PaymentMethodResponse.model_validate(method).model_dump(mode="json")
+        return serialize_payment_method(method)
     except Exception:
         logger.exception(
             "MCP [user=%s]: error archiving payment method id=%d",
