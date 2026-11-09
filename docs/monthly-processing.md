@@ -1,0 +1,22 @@
+# Income allocation, scheduler, and month-end reconciliation
+
+Read this before changing recurring transfers, the scheduler, month-end budget reconciliation, or `scripts/review_monthly_processing.py`. `AGENTS.md` only points here. The Bills fund is not the overflow fund; bills allocation is a separate step, found by the fund name `Bills` (see `docs/bills-and-forecast.md`).
+
+## Recurring transfers
+
+Defined on `IncomeAllocation` via the `IncomeAllocationRecurringTransfer` model. Each has a `description` and `amount`. During `process_income_allocation()`, one `expense`/`income_allocation` transaction is created per transfer (using the transfer category). The amount is deducted from `total_allocated`, reducing the unallocated remainder. No sinking fund balance is updated — the money leaves the household budget entirely. Configured via the `/income` page.
+
+## Scheduler
+
+Use `APScheduler`. Handle Leap Years by defaulting to the last day of the month for invalid February dates (e.g., Feb 29th -> Feb 28th). Jobs: income allocation (1st 00:05 `TIMEZONE`, `max_instances=1`, `coalesce=True`, `misfire_grace_time=None`), an hourly current-month retry, a 60-second startup catch-up, bill processing, and `share_market_data` (default 18:00 `America/New_York`, Mon–Fri, `max_instances=1`, `coalesce=True`, `misfire_grace_time=3600`). The income catch-up is not gated by `SHARES_CATCHUP_ON_STARTUP`. The 00:05 threshold is `TIMEZONE.localize`, not `tzinfo=TIMEZONE`. A cold start does not replay missed months. When `SHARES_CATCHUP_ON_STARTUP` is true, a one-shot share catch-up is scheduled 60 seconds after startup if the newest market-data run is older than 20 hours (or there is no run) and there is an open holding or no stored AUD/USD row.
+
+## Month-end budget reconciliation
+
+During `process_income_allocation()`, the prior month's net budget surplus/shortfall is reconciled against the configured overflow sinking fund. `household_months` records distribution (`processed_at`) separately from settlement. The claim is `INSERT … ON CONFLICT DO UPDATE … WHERE` the target column is null, so a settlement-only or processed-only row can still be completed. The same transaction posts the money. Legacy descriptions are copied once by `ensure_backfill` before the scheduler, the processor, confirm, and `scripts/review_monthly_processing.py`. After `backfilled_at` is set, descriptions are not evidence. The month that is current at that scan and has an Income row but no system income description and no sweep dated in it is held: cron, startup, and the hourly retry do not post it. `--apply` is the review. Later Income rows do not block a month. Conflicting sweep funds become `unresolved` (no second sweep, no clawback). No `zero` or `no_overflow` is invented for old months.
+
+- **Net positive** (unspent money): creates a `contribution`/`transfer` transaction into the overflow fund and increments its balance. Outcome `surplus` stores that fund id.
+- **Net negative** (overspend): creates a `withdrawal`/`expense` transaction from the overflow fund and decrements its balance (can go negative, reflecting reality). Outcome `shortfall` stores that fund id.
+- **Net zero**: no transaction. Outcome `zero` stores that fund id.
+- **No live overflow fund**: no transaction. Outcome `no_overflow`.
+- The net surplus formula per budget row: `allocated_amount - spent_amount + fund_balance`. All rows are summed (including negatives) before deciding whether to contribute or withdraw. Bills allocation stays a separate step, found by the fund name `Bills`.
+- Direct `current_balance` assignments in this job are unchanged. The month-row upsert does not stop another writer from saving a stale balance. A late confirm can still miss a debit if it overlaps settlement; it does not double-debit while each side is one transaction. This does not close payment compare-and-set.
