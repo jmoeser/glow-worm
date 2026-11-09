@@ -11,7 +11,6 @@ from app.database import get_db
 from app.middleware import get_current_user
 from app.models import Category, RecurringBill, SinkingFund
 from app.schemas import (
-    FREQUENCY_ANNUAL_MULTIPLIER,
     FREQUENCY_LABELS,
     BillFrequency,
     DuePaymentResponse,
@@ -20,6 +19,7 @@ from app.schemas import (
     RecurringBillPay,
     RecurringBillSkip,
     RecurringBillUpdate,
+    annual_multiplier,
 )
 from app.services.contracts import ContractError, assign_contract, contract_choices
 from app.services.payment_methods import (
@@ -68,8 +68,7 @@ def _expense_categories(db: Session):
 
 
 def _compute_annual_cost(amount, frequency: str) -> Decimal:
-    multiplier = FREQUENCY_ANNUAL_MULTIPLIER.get(frequency, 1)
-    return Decimal(str(amount)) * Decimal(str(multiplier))
+    return Decimal(str(amount)) * annual_multiplier(frequency)
 
 
 def _bills_category(db: Session) -> Category | None:

@@ -39,7 +39,11 @@
     <!-- Forecast table -->
     <div class="gw-table-wrap gw-section">
         <div class="gw-overflow-x">
-            {% if forecast %}
+            {% if forecast_error %}
+            <div class="gw-card" style="color: var(--negative); padding: 16px;">
+                {{ forecast_error }}
+            </div>
+            {% elif forecast %}
             <table>
                 <thead>
                     <tr>
