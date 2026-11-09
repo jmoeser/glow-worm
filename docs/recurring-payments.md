@@ -1,0 +1,7 @@
+# Recurring payments
+
+Read this before changing confirm, skip, pay, or `paid_from`. `AGENTS.md` only points here. Contract stamping is summarized here and specified in `docs/contracts-and-payment-methods.md`. Overflow debit rules depend on month-end settlement in `docs/monthly-processing.md`.
+
+## Recurring payments
+
+`app/services/recurring_payments.py`. Each bill has `paid_from` (`bills_fund` by default, `budget`, or `sinking_fund` with `paid_from_fund_id`). Only Bills-fund rows feed the forecast, the recommended amount, the cover banner, and the scheduler. Weekly and fortnightly step by 7 and 14 days. `iter_bill_due_dates` stops after `end_date`; confirm, skip, and the scheduler do too. Payments from a budget or another fund, and variable Bills-fund bills, wait in Due to confirm. Confirm is dated on the due date. A budget confirm raises `spent_amount`. It debits overflow only when that due month's `household_months.settlement_outcome` is `surplus`, `shortfall`, or `zero` and the stored fund still exists and is not soft-deleted. The debit is the confirm amount, from that stored fund, not from today's overflow setting. Old months with no sweep record, `no_overflow`, and `unresolved` record the payment and do not debit. Skip writes no transaction. `GET /api/bills/due`, `POST /api/bills/{id}/confirm`, and `POST /api/bills/{id}/skip` share the service with the web UI, MCP, and CLI. Confirm, pay, and scheduler auto-pay copy `bill.contract_id` onto the payment (see Contracts). The overflow clawback withdrawal does not.

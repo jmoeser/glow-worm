@@ -371,6 +371,7 @@ glow-worm/
 │       ├── client.py      # httpx wrapper with Bearer auth
 │       └── commands/      # Subcommand modules (bills, tx, funds, budgets, …)
 ├── alembic/               # Database migrations
+├── docs/                  # Feature notes for coding agents (see AGENTS.md)
 ├── scripts/               # Utility scripts (create_user, seed_data, reconcile_budget_spent, review_monthly_processing, audit_settlement_history)
 ├── tests/                 # Test suite (includes test_cli.py)
 ├── aqua.yaml              # aqua pins (uv CLI, pinact)
