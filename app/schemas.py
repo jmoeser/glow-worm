@@ -82,6 +82,12 @@ class PaymentMethodKind(str, Enum):
     card = "card"
     bank = "bank"
     manual = "manual"
+    wallet = "wallet"
+
+
+class WalletProvider(str, Enum):
+    apple_pay = "apple_pay"
+    google_pay = "google_pay"
 
 
 class ContractService(str, Enum):
@@ -488,6 +494,21 @@ class DuePaymentResponse(BaseModel):
     problem: dict[str, str] | None = None
 
 
+def _clean_wallet_provider(value: object) -> str | None:
+    if value is None:
+        return None
+    if isinstance(value, WalletProvider):
+        return value.value
+    if not isinstance(value, str):
+        raise PydanticCustomError("wallet_provider", "Pick Apple Pay or Google Pay.")
+    text = value.strip()
+    if text == "":
+        return None
+    if text not in (WalletProvider.apple_pay.value, WalletProvider.google_pay.value):
+        raise PydanticCustomError("wallet_provider", "Pick Apple Pay or Google Pay.")
+    return text
+
+
 class PaymentMethodCreate(BaseModel):
     nickname: str = Field(..., max_length=60)
     kind: PaymentMethodKind
@@ -495,6 +516,8 @@ class PaymentMethodCreate(BaseModel):
     expiry_month: int | None = Field(None, ge=1, le=12)
     expiry_year: int | None = Field(None, ge=2000, le=2100)
     owner: str = Field(..., max_length=60)
+    wallet_provider: WalletProvider | None = None
+    funding_method_id: int | None = None
 
     @field_validator("nickname", "owner", mode="before")
     @classmethod
@@ -506,6 +529,11 @@ class PaymentMethodCreate(BaseModel):
     def _clean_last4(cls, value: object) -> str | None:
         return _optional_last4(value)
 
+    @field_validator("wallet_provider", mode="before")
+    @classmethod
+    def _clean_provider(cls, value: object) -> str | None:
+        return _clean_wallet_provider(value)
+
 
 class PaymentMethodUpdate(BaseModel):
     nickname: str | None = Field(None, max_length=60)
@@ -514,6 +542,8 @@ class PaymentMethodUpdate(BaseModel):
     expiry_month: int | None = Field(None, ge=1, le=12)
     expiry_year: int | None = Field(None, ge=2000, le=2100)
     owner: str | None = Field(None, max_length=60)
+    wallet_provider: WalletProvider | None = None
+    funding_method_id: int | None = None
 
     @field_validator("nickname", "owner", mode="before")
     @classmethod
@@ -527,6 +557,11 @@ class PaymentMethodUpdate(BaseModel):
     def _clean_last4(cls, value: object) -> str | None:
         return _optional_last4(value)
 
+    @field_validator("wallet_provider", mode="before")
+    @classmethod
+    def _clean_provider(cls, value: object) -> str | None:
+        return _clean_wallet_provider(value)
+
 
 class PaymentMethodResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
@@ -539,6 +574,10 @@ class PaymentMethodResponse(BaseModel):
     expiry_year: int | None = None
     owner: str
     is_archived: bool
+    wallet_provider: WalletProvider | None = None
+    funding_method_id: int | None = None
+    effective_expiry_month: int | None = None
+    effective_expiry_year: int | None = None
     created_at: datetime
     updated_at: datetime
 
@@ -627,12 +666,16 @@ class ContractResponse(BaseModel):
 
 
 class ReplacementItemResponse(BaseModel):
-    bill_id: int
+    kind: str
+    bill_id: int | None = None
     name: str
     done: bool
     due_soon: bool
     updated_on: str | None = None
     note: str | None = None
+    wallet_method_id: int | None = None
+    wallet_provider: str | None = None
+    funding_method_id: int | None = None
 
 
 class ReplacementProgressResponse(BaseModel):

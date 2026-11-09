@@ -483,7 +483,10 @@ class TestFinishAndStop:
         stopped = _post(authed_client, f"/payment-methods/{old.id}/replace/stop", {})
         assert stopped.status_code == 303
         page = authed_client.get("/payment-methods")
-        assert "Stopped. No bills were changed." in page.text
+        assert (
+            "Stopped. Bills stay where you left them, and ticked Apple Pay stays on the new card."
+            in page.text
+        )
         db_session.refresh(bill)
         db_session.refresh(other)
         assert bill.payment_method_id == new.id

@@ -27,6 +27,7 @@ from app.models import (
 from app.schemas import (
     PaymentMethodCreate,
     PaymentMethodKind,
+    PaymentMethodResponse,
     ReplacementItemResponse,
     ReplacementNoteInput,
     ReplacementProgressResponse,
@@ -40,6 +41,12 @@ KIND_LABELS = {
     "card": "Card",
     "bank": "Bank account",
     "manual": "BPAY / pay myself",
+    "wallet": "Wallet",
+}
+
+PROVIDER_LABELS = {
+    "apple_pay": "Apple Pay",
+    "google_pay": "Google Pay",
 }
 
 # YYYY-MM from <input type="month">, or a typed MM/YY, MM/YYYY, MM-YY, MM-YYYY.
@@ -60,9 +67,23 @@ class PaymentMethodError(Exception):
 
 
 def method_label(method: PaymentMethod) -> str:
+    if method.kind == "wallet":
+        provider = PROVIDER_LABELS.get(method.wallet_provider or "", "Wallet")
+        card = method.funding_method
+        if card is None or card.kind == "wallet":
+            return provider
+        return f"{provider} ({method_label(card)})"
     if method.last4:
         return f"{method.nickname} ending {method.last4}"
     return method.nickname
+
+
+def choice_label(method: PaymentMethod) -> str:
+    """Bill picker and replacement dropdown. Wallets use the card's last 4."""
+    if method.kind == "wallet":
+        return method_label(method)
+    suffix = f" ending {method.last4}" if method.last4 else ""
+    return f"{method.owner} — {method.nickname}{suffix}"
 
 
 def expires_on(month: int, year: int) -> date:
@@ -71,18 +92,45 @@ def expires_on(month: int, year: int) -> date:
     return date(year, month, last)
 
 
+def effective_expiry(method: PaymentMethod) -> tuple[int, int] | None:
+    """Month and year behind every expiry display.
+
+    A card uses its own expiry. A wallet uses the card it is linked to.
+    The banner, the Expires column, the list badge, and the bill badge all
+    go through this.
+    """
+    card = method
+    if method.kind == "wallet":
+        funded = method.funding_method
+        if funded is None or funded.kind != "card":
+            return None
+        card = funded
+    elif method.kind != "card":
+        return None
+    if card.expiry_month is None or card.expiry_year is None:
+        return None
+    return card.expiry_month, card.expiry_year
+
+
 def expiry_status(method: PaymentMethod, today: date, warn_days: int) -> str | None:
-    """``expired``, ``expiring``, or None. Cards only."""
-    if method.kind != "card":
+    """``expired``, ``expiring``, or None. Wallets follow the linked card."""
+    pair = effective_expiry(method)
+    if pair is None:
         return None
-    if method.expiry_month is None or method.expiry_year is None:
-        return None
-    end = expires_on(method.expiry_month, method.expiry_year)
+    month, year = pair
+    end = expires_on(month, year)
     if today > end:
         return "expired"
     if end <= today + timedelta(days=warn_days):
         return "expiring"
     return None
+
+
+def expires_label(method: PaymentMethod) -> str:
+    pair = effective_expiry(method)
+    if pair is None:
+        return "—"
+    return end_of_phrase(pair[0], pair[1])
 
 
 def end_of_phrase(month: int, year: int) -> str:
@@ -113,6 +161,25 @@ def bills_word(count: int) -> str:
 
 def progress_phrase(done: int, counted: int) -> str:
     return f"{done} of {counted} {bills_word(counted)} moved"
+
+
+def replacement_phrase(
+    bill_done: int,
+    bill_counted: int,
+    wallet_done: int,
+    wallet_counted: int,
+    wallet_noun: str,
+) -> str:
+    """Bills keep the old sentence. Wallets are "N of M moved", or both."""
+    if wallet_counted == 0:
+        return progress_phrase(bill_done, bill_counted)
+    wallet_part = f"{wallet_done} of {wallet_counted} moved"
+    if bill_counted == 0:
+        return wallet_part
+    return (
+        f"{progress_phrase(bill_done, bill_counted)}, "
+        f"{wallet_done} of {wallet_counted} {wallet_noun} moved"
+    )
 
 
 def _date_key(iso: str, bill_id: int) -> tuple[int, str, int]:
@@ -173,23 +240,62 @@ def linked_items(db: Session, method: PaymentMethod) -> list[LinkedItem]:
     ]
 
 
+def _any_funding_wallet(db: Session, method_id: int) -> bool:
+    """True when any wallet, archived or not, is funded by this method."""
+    return (
+        db.query(PaymentMethod.id)
+        .filter(PaymentMethod.funding_method_id == method_id)
+        .first()
+        is not None
+    )
+
+
+def funded_wallets(db: Session, method_id: int) -> list[PaymentMethod]:
+    """Non-archived wallets whose funding card is this method."""
+    return (
+        db.query(PaymentMethod)
+        .filter(
+            PaymentMethod.funding_method_id == method_id,
+            PaymentMethod.kind == "wallet",
+            PaymentMethod.is_archived == False,
+        )
+        .order_by(PaymentMethod.id)
+        .all()
+    )
+
+
 def prepare_payment_method(
     data: dict,
     *,
     explicit_last4: bool,
     explicit_expiry: bool,
+    explicit_provider: bool = False,
+    explicit_funding: bool = False,
+    db: Session | None = None,
+    existing: PaymentMethod | None = None,
 ) -> dict:
     """Validate a create payload, or a patch merged onto the stored row.
 
     An explicit non-null expiry on a non-card, or last 4 digits on a manual
-    method, is rejected. Other non-card results store a null expiry, and a
-    manual result stores a null last 4.
+    method or a wallet, is rejected. A wallet stores no expiry and no last 4.
+    Re-posting the wallet's current funding card is allowed after that card
+    is archived. A nickname edit keeps the provider and the link.
     """
     parsed = PaymentMethodCreate.model_validate(data)
     kind = parsed.kind.value
     last4 = parsed.last4
     month = parsed.expiry_month
     year = parsed.expiry_year
+    provider = parsed.wallet_provider.value if parsed.wallet_provider else None
+    funding_id = parsed.funding_method_id
+    if (
+        existing is not None
+        and existing.kind == PaymentMethodKind.card.value
+        and kind != PaymentMethodKind.card.value
+        and db is not None
+        and _any_funding_wallet(db, existing.id)
+    ):
+        raise PaymentMethodError("A wallet still links to this.", 409)
     if kind != PaymentMethodKind.card.value:
         if explicit_expiry and (month is not None or year is not None):
             raise PaymentMethodError("Only a card has an expiry.")
@@ -199,10 +305,25 @@ def prepare_payment_method(
         if explicit_last4 and last4 is not None:
             raise PaymentMethodError("This type doesn't use last 4 digits.")
         last4 = None
+    if kind == PaymentMethodKind.wallet.value:
+        if explicit_last4 and last4 is not None:
+            raise PaymentMethodError("A wallet doesn't have its own last 4 digits.")
+        last4 = None
     if kind == PaymentMethodKind.card.value and (
         last4 is None or month is None or year is None
     ):
         raise PaymentMethodError("A card needs the last 4 digits and an expiry.")
+    if kind != PaymentMethodKind.wallet.value:
+        if explicit_provider and provider is not None:
+            raise PaymentMethodError("Only a wallet has a provider.")
+        if explicit_funding and funding_id is not None:
+            raise PaymentMethodError("Only a wallet links to a card.")
+        provider = None
+        funding_id = None
+    else:
+        if provider not in ("apple_pay", "google_pay"):
+            raise PaymentMethodError("Pick Apple Pay or Google Pay.")
+        funding_id = _funding_card_id(db, funding_id, existing=existing)
     return {
         "nickname": parsed.nickname,
         "kind": kind,
@@ -210,7 +331,28 @@ def prepare_payment_method(
         "expiry_month": month,
         "expiry_year": year,
         "owner": parsed.owner,
+        "wallet_provider": provider,
+        "funding_method_id": funding_id,
     }
+
+
+def _funding_card_id(
+    db: Session | None,
+    funding_id: int | None,
+    *,
+    existing: PaymentMethod | None,
+) -> int:
+    if funding_id is None or db is None:
+        raise PaymentMethodError("Link the wallet to a card.")
+    card = db.get(PaymentMethod, funding_id)
+    if card is None or card.kind != "card":
+        raise PaymentMethodError("Link the wallet to a card.")
+    if existing is not None and card.id == existing.id:
+        raise PaymentMethodError("A wallet can't link to itself.")
+    same = existing is not None and existing.funding_method_id == funding_id
+    if card.is_archived and not same:
+        raise PaymentMethodError("That card is archived.")
+    return card.id
 
 
 def merge_payment_method(existing: PaymentMethod, patch: dict) -> dict:
@@ -221,6 +363,8 @@ def merge_payment_method(existing: PaymentMethod, patch: dict) -> dict:
         "expiry_month": existing.expiry_month,
         "expiry_year": existing.expiry_year,
         "owner": existing.owner,
+        "wallet_provider": existing.wallet_provider,
+        "funding_method_id": existing.funding_method_id,
     }
     data.update(patch)
     return data
@@ -233,6 +377,17 @@ def apply_payment_method(method: PaymentMethod, values: dict) -> None:
     method.expiry_month = values["expiry_month"]
     method.expiry_year = values["expiry_year"]
     method.owner = values["owner"]
+    method.wallet_provider = values["wallet_provider"]
+    method.funding_method_id = values["funding_method_id"]
+
+
+def serialize_payment_method(method: PaymentMethod) -> dict:
+    """JSON shape shared by the API and MCP, including the card expiry a wallet uses."""
+    pair = effective_expiry(method)
+    payload = PaymentMethodResponse.model_validate(method)
+    payload.effective_expiry_month = pair[0] if pair is not None else None
+    payload.effective_expiry_year = pair[1] if pair is not None else None
+    return payload.model_dump(mode="json")
 
 
 def parse_month_input(raw: str) -> tuple[int, int]:
@@ -260,7 +415,16 @@ def parse_month_input(raw: str) -> tuple[int, int]:
     return month, year
 
 
-def form_to_payload(form, existing: PaymentMethod | None) -> tuple[dict, bool, bool]:
+@dataclass(frozen=True)
+class FormPayload:
+    data: dict
+    explicit_last4: bool
+    explicit_expiry: bool
+    explicit_provider: bool
+    explicit_funding: bool
+
+
+def form_to_payload(form, existing: PaymentMethod | None) -> FormPayload:
     """Read a web form. Disabled fields are absent and keep the stored value."""
     data = {
         "nickname": existing.nickname if existing is not None else "",
@@ -269,6 +433,10 @@ def form_to_payload(form, existing: PaymentMethod | None) -> tuple[dict, bool, b
         "last4": existing.last4 if existing is not None else None,
         "expiry_month": existing.expiry_month if existing is not None else None,
         "expiry_year": existing.expiry_year if existing is not None else None,
+        "wallet_provider": existing.wallet_provider if existing is not None else None,
+        "funding_method_id": (
+            existing.funding_method_id if existing is not None else None
+        ),
     }
     if "nickname" in form:
         data["nickname"] = str(form.get("nickname") or "")
@@ -278,6 +446,8 @@ def form_to_payload(form, existing: PaymentMethod | None) -> tuple[dict, bool, b
         data["kind"] = str(form.get("kind") or "")
     explicit_last4 = False
     explicit_expiry = False
+    explicit_provider = False
+    explicit_funding = False
     if "last4" in form:
         raw = str(form.get("last4") or "").strip()
         if raw == "":
@@ -300,7 +470,31 @@ def form_to_payload(form, existing: PaymentMethod | None) -> tuple[dict, bool, b
     elif existing is None:
         data["expiry_month"] = None
         data["expiry_year"] = None
-    return data, explicit_last4, explicit_expiry
+    if "wallet_provider" in form:
+        raw = str(form.get("wallet_provider") or "").strip()
+        data["wallet_provider"] = raw or None
+        explicit_provider = raw != ""
+    elif existing is None:
+        data["wallet_provider"] = None
+    if "funding_method_id" in form:
+        raw = str(form.get("funding_method_id") or "").strip()
+        explicit_funding = raw != ""
+        if raw == "":
+            data["funding_method_id"] = None
+        else:
+            try:
+                data["funding_method_id"] = int(raw)
+            except ValueError:
+                raise PaymentMethodError("Link the wallet to a card.") from None
+    elif existing is None:
+        data["funding_method_id"] = None
+    return FormPayload(
+        data=data,
+        explicit_last4=explicit_last4,
+        explicit_expiry=explicit_expiry,
+        explicit_provider=explicit_provider,
+        explicit_funding=explicit_funding,
+    )
 
 
 def _in_use_bills(db: Session, method_id: int) -> list[RecurringBill]:
@@ -353,12 +547,16 @@ def replacement_payload(db: Session, method: PaymentMethod) -> dict | None:
         counted=prog.counted,
         items=[
             ReplacementItemResponse(
+                kind=item.kind,
                 bill_id=item.bill_id,
                 name=item.name,
                 done=item.done,
                 due_soon=item.due_soon,
                 updated_on=item.updated_on,
                 note=item.note,
+                wallet_method_id=item.wallet_method_id,
+                wallet_provider=item.wallet_provider,
+                funding_method_id=item.funding_method_id,
             )
             for item in prog.items
         ],
@@ -426,6 +624,8 @@ def delete_method(db: Session, method: PaymentMethod) -> None:
         raise PaymentMethodError("Finish or stop replacing first.", 409)
     if _any_linked_bill(db, method.id) is not None:
         raise PaymentMethodError("A bill still links to this.", 409)
+    if _any_funding_wallet(db, method.id):
+        raise PaymentMethodError("A wallet still links to this.", 409)
     reps = (
         db.query(PaymentMethodReplacement)
         .filter(
@@ -440,6 +640,13 @@ def delete_method(db: Session, method: PaymentMethod) -> None:
         for item in list(rep.items):
             db.delete(item)
         db.delete(rep)
+    pointed = (
+        db.query(PaymentMethodReplacementItem)
+        .filter(PaymentMethodReplacementItem.wallet_method_id == method.id)
+        .all()
+    )
+    for item in pointed:
+        db.delete(item)
     db.delete(method)
 
 
@@ -460,6 +667,43 @@ def payment_method_choices(db: Session, current_id: int | None) -> list[PaymentM
         key=lambda method: (method.owner.lower(), method.nickname.lower(), method.id)
     )
     return chosen
+
+
+def funding_card_choices(
+    db: Session,
+    *,
+    current_id: int | None = None,
+    editing_id: int | None = None,
+) -> list[PaymentMethod]:
+    """Non-archived cards a wallet can link to, plus the current card if archived."""
+    cards = (
+        db.query(PaymentMethod)
+        .filter(PaymentMethod.kind == "card", PaymentMethod.is_archived == False)
+        .all()
+    )
+    if editing_id is not None:
+        cards = [card for card in cards if card.id != editing_id]
+    ids = {card.id for card in cards}
+    if current_id is not None and current_id not in ids:
+        current = db.get(PaymentMethod, current_id)
+        if current is not None and current.kind == "card":
+            cards.append(current)
+    cards.sort(key=lambda card: (card.owner.lower(), card.nickname.lower(), card.id))
+    return cards
+
+
+def also_used_by(db: Session, method: PaymentMethod) -> str | None:
+    """Card detail line. Archived wallets are left out."""
+    if method.kind != "card":
+        return None
+    wallets = funded_wallets(db, method.id)
+    if not wallets:
+        return None
+    names = [
+        PROVIDER_LABELS.get(wallet.wallet_provider or "", "Wallet")
+        for wallet in wallets
+    ]
+    return f"Also used by: {_join_names(names)}"
 
 
 def owner_suggestions(db: Session, username: str) -> list[str]:
@@ -556,10 +800,25 @@ def _add_replacement_item(db: Session, replacement_id: int, bill_id: int) -> Non
         return
 
 
-def sync_replacement_items(db: Session, replacement: PaymentMethodReplacement) -> None:
-    """Add a row for every in-use bill on the old method that doesn't have one.
+def _add_wallet_item(db: Session, replacement_id: int, wallet_id: int) -> None:
+    """Insert a wallet checklist row. A duplicate from a concurrent load is skipped."""
+    item = PaymentMethodReplacementItem(
+        replacement_id=replacement_id,
+        wallet_method_id=wallet_id,
+    )
+    try:
+        with db.begin_nested():
+            db.add(item)
+            db.flush()
+    except IntegrityError:
+        return
 
-    A duplicate insert (two loads at once) is skipped.
+
+def sync_replacement_items(db: Session, replacement: PaymentMethodReplacement) -> None:
+    """Add a row for every in-use bill, and every non-archived wallet, still on the old card.
+
+    A duplicate insert (two loads at once) is skipped. Wallets are never
+    relinked here: the tick is the user updating Wallet on their phone.
     """
     if replacement.status != "open":
         return
@@ -574,7 +833,10 @@ def sync_replacement_items(db: Session, replacement: PaymentMethodReplacement) -
     existing = {
         bill_id
         for (bill_id,) in db.query(PaymentMethodReplacementItem.recurring_bill_id)
-        .filter(PaymentMethodReplacementItem.replacement_id == replacement.id)
+        .filter(
+            PaymentMethodReplacementItem.replacement_id == replacement.id,
+            PaymentMethodReplacementItem.recurring_bill_id.is_not(None),
+        )
         .all()
     }
     for bill in bills:
@@ -582,11 +844,26 @@ def sync_replacement_items(db: Session, replacement: PaymentMethodReplacement) -
             continue
         _add_replacement_item(db, replacement.id, bill.id)
         existing.add(bill.id)
+    existing_wallets = {
+        wallet_id
+        for (wallet_id,) in db.query(PaymentMethodReplacementItem.wallet_method_id)
+        .filter(
+            PaymentMethodReplacementItem.replacement_id == replacement.id,
+            PaymentMethodReplacementItem.wallet_method_id.is_not(None),
+        )
+        .all()
+    }
+    for wallet in funded_wallets(db, replacement.old_id):
+        if wallet.id in existing_wallets:
+            continue
+        _add_wallet_item(db, replacement.id, wallet.id)
+        existing_wallets.add(wallet.id)
 
 
 @dataclass(frozen=True)
 class ItemProgress:
-    bill_id: int
+    kind: str
+    bill_id: int | None
     name: str
     provider: str
     amount: Decimal
@@ -598,9 +875,12 @@ class ItemProgress:
     updated_on: str | None
     note: str | None
     on_new: bool
+    wallet_method_id: int | None = None
+    wallet_provider: str | None = None
+    funding_method_id: int | None = None
 
     def due_text(self) -> str:
-        if not self.due_soon:
+        if not self.due_soon or not self.next_due_date:
             return ""
         return f"Due {short_date(date.fromisoformat(self.next_due_date))}"
 
@@ -617,6 +897,8 @@ class ReplacementProgress:
     items: tuple[ItemProgress, ...]
     not_counted_names: tuple[str, ...]
     can_finish: bool
+    bill_counted: int = 0
+    wallet_counted: int = 0
 
 
 def _due_soon(iso: str, today: date, days: int) -> bool:
@@ -625,6 +907,21 @@ def _due_soon(iso: str, today: date, days: int) -> bool:
     except ValueError:
         return False
     return due <= today + timedelta(days=days)
+
+
+def _wallet_noun(providers: set[str], counted: int) -> str:
+    if providers == {"apple_pay"}:
+        return "Apple Pay"
+    if providers == {"google_pay"}:
+        return "Google Pay"
+    if counted == 1:
+        return "wallet"
+    return "wallets"
+
+
+def _wallet_instruction(new_label: str, provider: str | None) -> str:
+    name = PROVIDER_LABELS.get(provider or "", "Wallet")
+    return f"Add {new_label} to {name} on your phone, then tick"
 
 
 def progress(
@@ -639,53 +936,111 @@ def progress(
         sync_replacement_items(db, replacement)
     today = _today(today)
     rows = (
-        db.query(PaymentMethodReplacementItem, RecurringBill)
-        .join(
-            RecurringBill,
-            PaymentMethodReplacementItem.recurring_bill_id == RecurringBill.id,
-        )
+        db.query(PaymentMethodReplacementItem)
         .filter(PaymentMethodReplacementItem.replacement_id == replacement.id)
         .all()
     )
+    new = db.get(PaymentMethod, replacement.new_id)
+    new_label = method_label(new) if new is not None else "the new card"
     built: list[ItemProgress] = []
-    for item, bill in rows:
-        on_new = bill.payment_method_id == replacement.new_id
-        on_old = bill.payment_method_id == replacement.old_id
-        counted = bool(bill.is_active) and (on_old or on_new)
-        done = counted and on_new
-        due = (
-            counted and not done and _due_soon(bill.next_due_date, today, due_soon_days)
+    for item in rows:
+        if item.recurring_bill_id is not None:
+            bill = item.recurring_bill
+            if bill is None:
+                continue
+            on_new = bill.payment_method_id == replacement.new_id
+            on_old = bill.payment_method_id == replacement.old_id
+            counted = bool(bill.is_active) and (on_old or on_new)
+            done = counted and on_new
+            due = (
+                counted
+                and not done
+                and _due_soon(bill.next_due_date, today, due_soon_days)
+            )
+            built.append(
+                ItemProgress(
+                    kind="bill",
+                    bill_id=bill.id,
+                    name=bill.name,
+                    provider=bill.debtor_provider,
+                    amount=Decimal(str(bill.amount)),
+                    frequency=bill.frequency,
+                    next_due_date=bill.next_due_date,
+                    done=done,
+                    counted=counted,
+                    due_soon=due,
+                    updated_on=item.updated_on,
+                    note=item.note,
+                    on_new=on_new,
+                )
+            )
+            continue
+        wallet = item.wallet_method
+        if wallet is None:
+            continue
+        on_new = wallet.funding_method_id == replacement.new_id
+        on_old = wallet.funding_method_id == replacement.old_id
+        counted = (
+            wallet.kind == "wallet" and not wallet.is_archived and (on_old or on_new)
         )
+        done = counted and on_new
+        provider_name = PROVIDER_LABELS.get(wallet.wallet_provider or "", "Wallet")
         built.append(
             ItemProgress(
-                bill_id=bill.id,
-                name=bill.name,
-                provider=bill.debtor_provider,
-                amount=Decimal(str(bill.amount)),
-                frequency=bill.frequency,
-                next_due_date=bill.next_due_date,
+                kind="wallet",
+                bill_id=None,
+                name=_wallet_instruction(new_label, wallet.wallet_provider),
+                provider=provider_name,
+                amount=Decimal(0),
+                frequency="",
+                next_due_date="",
                 done=done,
                 counted=counted,
-                due_soon=due,
+                due_soon=False,
                 updated_on=item.updated_on,
                 note=item.note,
                 on_new=on_new,
+                wallet_method_id=wallet.id,
+                wallet_provider=wallet.wallet_provider,
+                funding_method_id=wallet.funding_method_id,
             )
         )
-    counted_rows = [row for row in built if row.counted]
-    todo = sorted(
-        (row for row in counted_rows if not row.done),
-        key=lambda row: _date_key(row.next_due_date, row.bill_id),
+    bill_rows = [row for row in built if row.kind == "bill"]
+    wallet_rows = [row for row in built if row.kind == "wallet"]
+    counted_bills = [row for row in bill_rows if row.counted]
+    counted_wallets = [row for row in wallet_rows if row.counted]
+    todo_bills = sorted(
+        (row for row in counted_bills if not row.done),
+        key=lambda row: _date_key(row.next_due_date, row.bill_id or 0),
     )
-    done_rows = sorted(
-        (row for row in counted_rows if row.done),
-        key=lambda row: _date_key(row.next_due_date, row.bill_id),
+    done_bills = sorted(
+        (row for row in counted_bills if row.done),
+        key=lambda row: _date_key(row.next_due_date, row.bill_id or 0),
     )
-    ordered = tuple(todo + done_rows)
-    not_counted = tuple(sorted(row.name for row in built if not row.counted))
-    done_count = len(done_rows)
-    counted_count = len(counted_rows)
-    due_count = sum(1 for row in todo if row.due_soon)
+    todo_wallets = sorted(
+        (row for row in counted_wallets if not row.done),
+        key=lambda row: row.wallet_method_id or 0,
+    )
+    done_wallets = sorted(
+        (row for row in counted_wallets if row.done),
+        key=lambda row: row.wallet_method_id or 0,
+    )
+    ordered = tuple(todo_bills + todo_wallets + done_bills + done_wallets)
+    not_counted = tuple(
+        sorted(
+            row.name if row.kind == "bill" else row.provider
+            for row in built
+            if not row.counted
+        )
+    )
+    bill_done = len(done_bills)
+    bill_counted = len(counted_bills)
+    wallet_done = len(done_wallets)
+    wallet_counted = len(counted_wallets)
+    done_count = bill_done + wallet_done
+    counted_count = bill_counted + wallet_counted
+    providers = {row.wallet_provider for row in counted_wallets if row.wallet_provider}
+    due_count = sum(1 for row in todo_bills if row.due_soon)
     return ReplacementProgress(
         replacement_id=replacement.id,
         old_id=replacement.old_id,
@@ -693,10 +1048,18 @@ def progress(
         done=done_count,
         counted=counted_count,
         due_soon_count=due_count,
-        phrase=progress_phrase(done_count, counted_count),
+        phrase=replacement_phrase(
+            bill_done,
+            bill_counted,
+            wallet_done,
+            wallet_counted,
+            _wallet_noun(providers, wallet_counted),
+        ),
         items=ordered,
         not_counted_names=not_counted,
         can_finish=done_count == counted_count and counted_count > 0,
+        bill_counted=bill_counted,
+        wallet_counted=wallet_counted,
     )
 
 
@@ -750,6 +1113,52 @@ def untick(db: Session, replacement: PaymentMethodReplacement, bill_id: int) -> 
     item.updated_on = None
 
 
+def _wallet_item_for(
+    db: Session, replacement: PaymentMethodReplacement, wallet_id: int
+) -> tuple[PaymentMethodReplacementItem, PaymentMethod]:
+    item = (
+        db.query(PaymentMethodReplacementItem)
+        .filter(
+            PaymentMethodReplacementItem.replacement_id == replacement.id,
+            PaymentMethodReplacementItem.wallet_method_id == wallet_id,
+        )
+        .first()
+    )
+    wallet = db.get(PaymentMethod, wallet_id)
+    if item is None or wallet is None or wallet.kind != "wallet":
+        raise PaymentMethodError("That wallet is not on this list.", 404)
+    return item, wallet
+
+
+def tick_wallet(
+    db: Session,
+    replacement: PaymentMethodReplacement,
+    wallet_id: int,
+    *,
+    today: date | None = None,
+) -> None:
+    """Repoint the wallet at the new card. Nothing else relinks it."""
+    _require_open(replacement)
+    sync_replacement_items(db, replacement)
+    item, wallet = _wallet_item_for(db, replacement, wallet_id)
+    new = db.get(PaymentMethod, replacement.new_id)
+    if new is None or new.is_archived or new.kind != "card":
+        raise PaymentMethodError("Pick a card. Wallets stay linked to a card.")
+    wallet.funding_method_id = replacement.new_id
+    if not item.updated_on:
+        item.updated_on = _today(today).isoformat()
+
+
+def untick_wallet(
+    db: Session, replacement: PaymentMethodReplacement, wallet_id: int
+) -> None:
+    """Point the wallet back at the old card. Clears the date and keeps the note."""
+    _require_open(replacement)
+    item, wallet = _wallet_item_for(db, replacement, wallet_id)
+    wallet.funding_method_id = replacement.old_id
+    item.updated_on = None
+
+
 def save_note(
     db: Session,
     replacement: PaymentMethodReplacement,
@@ -792,7 +1201,9 @@ def start(
         is not None
     ):
         raise PaymentMethodError("Finish or stop replacing first.", 409)
-    if not _in_use_bills(db, old.id):
+    bills = _in_use_bills(db, old.id)
+    wallets = funded_wallets(db, old.id)
+    if not bills and not wallets:
         raise PaymentMethodError("No active bills use this. Archive it instead.")
     if (
         db.query(PaymentMethodReplacement)
@@ -816,6 +1227,9 @@ def start(
             new_method,
             explicit_last4=explicit_last4,
             explicit_expiry=explicit_expiry,
+            explicit_provider=new_method.get("wallet_provider") is not None,
+            explicit_funding=new_method.get("funding_method_id") is not None,
+            db=db,
         )
         new = PaymentMethod(**values)
         db.add(new)
@@ -838,6 +1252,8 @@ def start(
         raise PaymentMethodError(
             "That payment method is already in a replacement.", 409
         )
+    if wallets and new.kind != "card":
+        raise PaymentMethodError("Pick a card. Wallets stay linked to a card.")
 
     replacement = PaymentMethodReplacement(
         old_id=old.id,
@@ -847,11 +1263,18 @@ def start(
     )
     db.add(replacement)
     db.flush()
-    for bill in _in_use_bills(db, old.id):
+    for bill in bills:
         db.add(
             PaymentMethodReplacementItem(
                 replacement_id=replacement.id,
                 recurring_bill_id=bill.id,
+            )
+        )
+    for wallet in wallets:
+        db.add(
+            PaymentMethodReplacementItem(
+                replacement_id=replacement.id,
+                wallet_method_id=wallet.id,
             )
         )
     db.flush()
@@ -871,6 +1294,9 @@ def finish(db: Session, replacement: PaymentMethodReplacement) -> PaymentMethod:
     )
     if still:
         raise PaymentMethodError("A bill is still on the old payment method.", 409)
+    still_wallets = len(funded_wallets(db, replacement.old_id))
+    if still_wallets:
+        raise PaymentMethodError("A wallet is still linked to the old card.", 409)
     replacement.status = "finished"
     replacement.ended_at = _utcnow()
     old = db.get(PaymentMethod, replacement.old_id)
@@ -967,11 +1393,16 @@ def compute_payment_alerts(
             new_label = method_label(new) if new is not None else "the new method"
             old_label = method_label(method)
             status = expiry_status(method, today, warn)
+            pair = effective_expiry(method)
             phrase = _phrase_with_due(prog)
-            if status == "expired" and method.expiry_month and method.expiry_year:
+            still = sum(
+                1
+                for item in prog.items
+                if item.kind == "bill" and item.counted and not item.done
+            )
+            if status == "expired" and pair is not None:
                 rank = 0
-                when = end_of_phrase(method.expiry_month, method.expiry_year)
-                still = prog.counted - prog.done
+                when = end_of_phrase(pair[0], pair[1])
                 if still:
                     text = (
                         f"{old_label} expired at the {when} {_still_sentence(still)}. "
@@ -982,11 +1413,11 @@ def compute_payment_alerts(
                         f"{old_label} expired at the {when}. "
                         f"Moving to {new_label}: {phrase}."
                     )
-            elif status == "expiring" and method.expiry_month and method.expiry_year:
+            elif status == "expiring" and pair is not None:
                 rank = 1
                 text = (
                     f"Replacing {old_label} (expires "
-                    f"{end_of_phrase(method.expiry_month, method.expiry_year)}) "
+                    f"{end_of_phrase(pair[0], pair[1])}) "
                     f"with {new_label}: {phrase}."
                 )
             else:
@@ -1005,7 +1436,8 @@ def compute_payment_alerts(
             continue
         if not used:
             continue
-        if method.is_archived:
+        funding = method.funding_method if method.kind == "wallet" else None
+        if method.is_archived or (funding is not None and funding.is_archived):
             lines.append(
                 PaymentAlertLine(
                     method_id=method.id,
@@ -1018,12 +1450,11 @@ def compute_payment_alerts(
             )
             continue
         status = expiry_status(method, today, warn)
-        if status not in ("expired", "expiring"):
-            continue
-        if method.expiry_month is None or method.expiry_year is None:
+        pair = effective_expiry(method)
+        if status not in ("expired", "expiring") or pair is None:
             continue
         names = _join_names([bill.name for bill in _sorted_bills(used)])
-        when = end_of_phrase(method.expiry_month, method.expiry_year)
+        when = end_of_phrase(pair[0], pair[1])
         label = method_label(method)
         if status == "expired":
             text = (

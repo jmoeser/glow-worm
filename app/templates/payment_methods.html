@@ -64,7 +64,12 @@
                 <tbody>
                     {% for row in rows %}
                     <tr id="pm-row-{{ row.method.id }}">
-                        <td>{{ row.label }}</td>
+                        <td>
+                            {{ row.label }}
+                            {% if row.also_used_by %}
+                            <div class="gw-text-dim" id="also-used-by-{{ row.method.id }}">{{ row.also_used_by }}</div>
+                            {% endif %}
+                        </td>
                         <td>{{ row.method.owner }}</td>
                         <td>{{ row.kind_label }}</td>
                         <td>{{ row.expires }}</td>
@@ -110,6 +115,9 @@
 {% elif page == "edit" %}
 <div style="max-width: 720px;">
     <h2 class="gw-page-header">Edit {{ method.nickname }}</h2>
+    {% if also_used_by %}
+    <p id="also-used-by">{{ also_used_by }}</p>
+    {% endif %}
     {% if error %}
     <p class="gw-msg-error" id="payment-method-error">{{ error }}</p>
     {% endif %}
@@ -119,6 +127,8 @@
         {% set value_kind = method.kind %}
         {% set value_last4 = method.last4 or "" %}
         {% set value_expiry = month_value %}
+        {% set value_provider = method.wallet_provider or "" %}
+        {% set value_funding = method.funding_method_id %}
         {% include "payment_method_fields.html" %}
         <div style="grid-column: 1 / -1;">
             <button type="submit" class="gw-btn gw-btn-primary">Save</button>
@@ -131,6 +141,9 @@
 <div style="max-width: 720px;">
     <h2 class="gw-page-header">Replace {{ old_label }}</h2>
     <p>Add the new card or account, or pick one you already have.</p>
+    {% if needs_card %}
+    <p>This card is behind Apple Pay or Google Pay, so the new one has to be a card. Each wallet is ticked by hand after you add the new card on your phone.</p>
+    {% endif %}
     {% if error %}
     <p class="gw-msg-error" id="payment-method-error">{{ error }}</p>
     {% endif %}
@@ -140,14 +153,14 @@
             <select id="existing-id" name="existing_id" class="gw-select">
                 <option value="">Add a new one instead</option>
                 {% for choice in choices %}
-                <option value="{{ choice.id }}">{{ choice.owner }} — {{ choice.nickname }}{% if choice.last4 %} ending {{ choice.last4 }}{% endif %}</option>
+                <option value="{{ choice.id }}">{{ choice_label(choice) }}</option>
                 {% endfor %}
             </select>
         </div>
         <div class="gw-card gw-section gw-grid-2" id="add-payment-method">
             {% set value_nickname = old.nickname %}
             {% set value_owner = old.owner %}
-            {% set value_kind = old.kind %}
+            {% set value_kind = 'card' if old.kind == 'wallet' else old.kind %}
             {% set value_last4 = "" %}
             {% set value_expiry = "" %}
             {% include "payment_method_fields.html" %}
@@ -161,6 +174,9 @@
 <div style="max-width: 1100px;" id="replacement-checklist">
     <h2 class="gw-page-header">Moving bills to {{ new_label }}</h2>
     <p>Tick each bill once you've updated it with the provider. {{ prog.phrase }}.</p>
+    {% if prog.wallet_counted %}
+    <p>Tick each Apple Pay or Google Pay row after you add the new card on your phone. That tick is the only thing that links the wallet to the new card.</p>
+    {% endif %}
     {% if expired_warning %}
     <div class="gw-warning-banner gw-section">
         <p>{{ old_label }} expired at the {{ expired_when }}. Bills still on it may fail.</p>
@@ -186,6 +202,26 @@
                 </thead>
                 <tbody>
                     {% for item in prog.items %}
+                    {% if item.kind == "wallet" %}
+                    <tr id="replace-row-wallet-{{ item.wallet_method_id }}">
+                        <td>
+                            {% if item.done %}
+                            <form hx-post="/payment-methods/{{ old.id }}/replace/wallet-untick">
+                                <input type="hidden" name="wallet_method_id" value="{{ item.wallet_method_id }}">
+                                <button type="submit" class="gw-btn gw-btn-ghost gw-btn-sm">Undo</button>
+                            </form>
+                            {% else %}
+                            <form hx-post="/payment-methods/{{ old.id }}/replace/wallet-tick">
+                                <input type="hidden" name="wallet_method_id" value="{{ item.wallet_method_id }}">
+                                <button type="submit" class="gw-btn gw-btn-ghost gw-btn-sm">Tick</button>
+                            </form>
+                            {% endif %}
+                        </td>
+                        <td colspan="5">{{ item.name }}</td>
+                        <td>{% if item.updated_on %}{{ item.updated_on }}{% endif %}</td>
+                        <td></td>
+                    </tr>
+                    {% else %}
                     <tr id="replace-row-{{ item.bill_id }}">
                         <td>
                             {% if item.done %}
@@ -219,6 +255,7 @@
                             </form>
                         </td>
                     </tr>
+                    {% endif %}
                     {% endfor %}
                 </tbody>
             </table>
@@ -253,6 +290,7 @@
 <div style="max-width: 640px;">
     <h2 class="gw-page-header">Stop replacing {{ old_label }}</h2>
     <p>Bills you've moved stay on the new one. The rest stay on the old one.</p>
+    <p>Apple Pay you've ticked stays on the new card. The same is true for Google Pay.</p>
     <p>If the new card is wrong, stop, then replace that new card with the right one and replace this card again for the bills still on it.</p>
     <form hx-post="/payment-methods/{{ old.id }}/replace/stop">
         <button type="submit" class="gw-btn gw-btn-primary">Stop replacing</button>
@@ -265,12 +303,25 @@
 function syncPaymentKind(kind) {
     var last4 = document.getElementById("pm-last4");
     var expiry = document.getElementById("pm-expiry");
+    var last4Wrap = document.getElementById("pm-last4-wrap");
+    var expiryWrap = document.getElementById("pm-expiry-wrap");
+    var provider = document.getElementById("pm-provider");
+    var funding = document.getElementById("pm-funding");
+    var providerWrap = document.getElementById("pm-provider-wrap");
+    var fundingWrap = document.getElementById("pm-funding-wrap");
     if (!last4 || !expiry) return;
     var manual = kind === "manual";
     var card = kind === "card";
-    last4.disabled = manual;
+    var wallet = kind === "wallet";
+    last4.disabled = manual || wallet;
     expiry.disabled = !card;
-    if (manual) last4.value = "";
+    if (last4Wrap) last4Wrap.hidden = wallet;
+    if (expiryWrap) expiryWrap.hidden = wallet;
+    if (provider) provider.disabled = !wallet;
+    if (funding) funding.disabled = !wallet;
+    if (providerWrap) providerWrap.hidden = !wallet;
+    if (fundingWrap) fundingWrap.hidden = !wallet;
+    if (manual || wallet) last4.value = "";
     if (!card) expiry.value = "";
 }
 function initPaymentMethodForm() {
