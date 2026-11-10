@@ -4,15 +4,86 @@ The transactions HTML routes, the JSON API, and the MCP transaction tools
 all call these helpers so a sinking fund's stored balance and a budget's
 spent amount stay aligned with the ledger. ``fund_balance`` still moves
 only for a budget transfer.
+
+A sinking-fund change is one ``UPDATE`` of ``current_balance`` by a quantized
+delta, then that attribute is expired on any loaded fund. ``spent_amount``
+stays a read-modify-write. Income allocation still assigns the whole balance
+elsewhere; this helper is not race-free.
 """
 
 from decimal import Decimal
 
+from sqlalchemy import update
 from sqlalchemy.orm import Session
 
-from app.models import Budget, SinkingFund
+from app.models import Budget, SinkingFund, Transaction
+from app.services.money import money
 
 _CENT = Decimal("0.01")
+
+_LOCKED_PAYMENT_FIELDS = (
+    "amount",
+    "type",
+    "transaction_type",
+    "category_id",
+    "sinking_fund_id",
+    "budget_id",
+    "recurring_bill_id",
+)
+
+
+class RecordedPaymentLocked(Exception):
+    """A recorded bill payment or its clawback cannot change money fields."""
+
+    def __init__(self, detail: str | None = None):
+        self.detail = detail or (
+            "This recorded payment can't change its amount, type, category, "
+            "fund, budget, or bill. Delete it and record it again."
+        )
+        super().__init__(self.detail)
+
+
+def is_recorded_bill_payment(txn: Transaction) -> bool:
+    """True when this row settled an occurrence or is its clawback."""
+    return (
+        txn.occurrence_due_date is not None
+        or txn.adjustment_for_transaction_id is not None
+    )
+
+
+def _plain(value: object) -> object:
+    value_attr = getattr(value, "value", None)
+    if isinstance(value_attr, str):
+        return value_attr
+    return value
+
+
+def assert_recorded_payment_unchanged(txn: Transaction, changes: dict) -> None:
+    """Refuse a money-field edit on a recorded bill payment.
+
+    Description, ledger date, and ``is_paid`` are not in ``changes`` checks
+    here. A posted value equal to the stored value is not a change. Rows
+    with both new columns null stay fully editable, including a hand-entered
+    row that names a bill and a one-off Bills fund expense.
+    """
+    if not is_recorded_bill_payment(txn):
+        return
+    for field in _LOCKED_PAYMENT_FIELDS:
+        if field not in changes:
+            continue
+        new = _plain(changes[field])
+        old = getattr(txn, field)
+        if field == "amount":
+            if money(old) != money(new):
+                raise RecordedPaymentLocked()
+        elif new != old:
+            raise RecordedPaymentLocked()
+
+
+def _expire_fund_balance(db: Session, fund_id: int) -> None:
+    fund = db.get(SinkingFund, fund_id)
+    if fund is not None:
+        db.expire(fund, ["current_balance"])
 
 
 def adjust_sinking_fund_balance(
@@ -31,7 +102,7 @@ def adjust_sinking_fund_balance(
     """
     if sinking_fund_id is None:
         return
-    fund = db.query(SinkingFund).filter(SinkingFund.id == sinking_fund_id).first()
+    fund = db.get(SinkingFund, sinking_fund_id)
     if fund is None:
         return
     delta = (
@@ -41,9 +112,18 @@ def adjust_sinking_fund_balance(
     )
     if reverse:
         delta = -delta
-    fund.current_balance = float(
-        Decimal(str(fund.current_balance)).quantize(Decimal("0.01")) + delta
+    delta = delta.quantize(_CENT)
+    # Drop a stale in-memory balance before the statement. Autoflush would
+    # otherwise write that Python value and the increment would apply to it.
+    # ``evaluate`` cannot compile ``column + delta`` back onto the object.
+    _expire_fund_balance(db, sinking_fund_id)
+    db.execute(
+        update(SinkingFund)
+        .where(SinkingFund.id == sinking_fund_id)
+        .values(current_balance=SinkingFund.current_balance + delta)
+        .execution_options(synchronize_session=False)
     )
+    _expire_fund_balance(db, sinking_fund_id)
 
 
 def adjust_budget_fund_balance(
@@ -274,3 +354,50 @@ def replace_transaction_balance_effects(
         new_budget_id=new_budget_id,
         new_transaction_type=new_transaction_type,
     )
+
+
+def _reverse_and_delete(db: Session, txn: Transaction) -> None:
+    apply_transaction_balance_effects(
+        db,
+        sinking_fund_id=txn.sinking_fund_id,
+        txn_type=txn.type,
+        amount=float(txn.amount),
+        budget_id=txn.budget_id,
+        transaction_type=txn.transaction_type,
+        reverse=True,
+    )
+    db.delete(txn)
+
+
+def _linked_partner(db: Session, txn: Transaction) -> Transaction | None:
+    """The other row of a recorded pair, or None when it is already gone."""
+    if txn.occurrence_due_date is not None:
+        return (
+            db.query(Transaction)
+            .filter(Transaction.adjustment_for_transaction_id == txn.id)
+            .one_or_none()
+        )
+    if txn.adjustment_for_transaction_id is None:
+        return None
+    return db.get(Transaction, txn.adjustment_for_transaction_id)
+
+
+def delete_transaction_row(db: Session, txn: Transaction) -> None:
+    """Reverse and delete one transaction, or a linked payment and clawback.
+
+    Deleting either row of a linked pair reverses both and deletes the
+    clawback first. A missing partner is a one-row reverse, not an error.
+    Rows with both new columns null, including old payments and one-off
+    Bills fund expenses, stay a one-row delete. The bill cursor is not moved.
+    """
+    if not is_recorded_bill_payment(txn):
+        _reverse_and_delete(db, txn)
+        return
+    partner = _linked_partner(db, txn)
+    if partner is None:
+        _reverse_and_delete(db, txn)
+        return
+    clawback = txn if txn.adjustment_for_transaction_id is not None else partner
+    payment = partner if clawback is txn else txn
+    _reverse_and_delete(db, clawback)
+    _reverse_and_delete(db, payment)

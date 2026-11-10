@@ -329,6 +329,7 @@ class TransactionResponse(BaseModel):
     sinking_fund_id: int | None = None
     recurring_bill_id: int | None = None
     budget_id: int | None = None
+    occurrence_due_date: str | None = None
     is_paid: bool
     created_at: datetime
 
@@ -425,6 +426,16 @@ class SinkingFundResponse(BaseModel):
 # --- Recurring Bill Schemas ---
 
 
+def _real_iso_date(value: str | None) -> str | None:
+    """Reject strings that match YYYY-MM-DD but are not a calendar date."""
+    if value is None:
+        return None
+    try:
+        return date.fromisoformat(value).isoformat()
+    except ValueError as exc:
+        raise ValueError("Enter a real date.") from exc
+
+
 class RecurringBillCreate(BaseModel):
     name: str = Field(..., min_length=1)
     amount: Decimal = Field(..., gt=Decimal(0))
@@ -443,6 +454,11 @@ class RecurringBillCreate(BaseModel):
     paid_from: PaidFrom = PaidFrom.bills_fund
     paid_from_fund_id: int | None = None
 
+    @field_validator("start_date", "next_due_date", "end_date")
+    @classmethod
+    def _dates_exist(cls, value: str | None) -> str | None:
+        return _real_iso_date(value)
+
 
 class RecurringBillUpdate(BaseModel):
     name: str | None = None
@@ -453,6 +469,7 @@ class RecurringBillUpdate(BaseModel):
     end_date: str | None = Field(None, pattern=r"^\d{4}-\d{2}-\d{2}$")
     is_active: bool | None = None
     next_due_date: str | None = Field(None, pattern=r"^\d{4}-\d{2}-\d{2}$")
+    expected_next_due_date: str | None = None
     bill_type: BillType | None = None
     foreign_amount: Decimal | None = Field(None, gt=Decimal(0))
     foreign_currency: str | None = Field(None, min_length=3, max_length=3)
@@ -460,6 +477,11 @@ class RecurringBillUpdate(BaseModel):
     contract_id: int | None = None
     paid_from: PaidFrom | None = None
     paid_from_fund_id: int | None = None
+
+    @field_validator("next_due_date", "end_date", "expected_next_due_date")
+    @classmethod
+    def _dates_exist(cls, value: str | None) -> str | None:
+        return _real_iso_date(value)
 
 
 class RecurringBillResponse(BaseModel):

@@ -5,7 +5,7 @@ import logging
 import threading
 import time
 import traceback
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 
@@ -14,6 +14,7 @@ from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 
 import app.config as app_config
+import app.services.clock as clock_module
 from app.database import SessionLocal
 from app.models import (
     Budget,
@@ -30,7 +31,6 @@ from app.models import (
 )
 from app.schemas import UnknownFrequencyError, annual_multiplier
 from app.services.bills_secondary import bills_secondary_goal, secondary_recorded
-from app.services.clock import today as _clock_today
 from app.services.household_months import (
     claim_processed,
     claim_settlement,
@@ -49,7 +49,11 @@ logger = logging.getLogger(__name__)
 
 def _today() -> date:
     """Return today's date in the configured timezone."""
-    return _clock_today()
+    return clock_module.today()
+
+
+# Test hook. Runs after a due bill is loaded and before its compare-and-set.
+auto_pay_before_cas: Callable[..., None] | None = None
 
 
 def advance_due_date(current: date, frequency: str) -> date:
@@ -727,7 +731,11 @@ def _process_income_allocation(db: Session, *, force: bool) -> None:
 
 
 def process_due_bills(db: Session | None = None) -> None:
-    """Daily task: process bills due today or overdue.
+    """Pay one overdue fixed Bills-fund occurrence per bill.
+
+    Each bill is its own savepoint and commit. A failure rolls back that
+    savepoint only. The loaded Bills fund balance is expired so a later
+    flush cannot write a stale ``current_balance`` over the atomic debit.
 
     Args:
         db: Optional database session for testing. If None, creates one
@@ -749,63 +757,53 @@ def process_due_bills(db: Session | None = None) -> None:
         if not bills_fund:
             logger.warning("No Bills sinking fund found, skipping bill processing")
             return
+        db.expire(bills_fund, ["current_balance"])
 
-        from app.services.recurring_payments import bills_fund_bills
+        from app.services.recurring_payments import (
+            bills_fund_bills,
+            transition_occurrence,
+        )
+
+        def _selected(due_value: str) -> bool:
+            # A garbage cursor is still attempted. The per-bill try parses it
+            # and fails that bill only. String compare would hide ``not-a-date``.
+            try:
+                return date.fromisoformat(due_value).isoformat() <= today_str
+            except ValueError:
+                return True
 
         due_bills = [
-            bill for bill in bills_fund_bills(db) if bill.next_due_date <= today_str
+            bill
+            for bill in bills_fund_bills(db)
+            if bill.bill_type == "fixed" and _selected(bill.next_due_date)
         ]
+        due_bills.sort(key=lambda row: row.id)
 
         processed = 0
         for bill in due_bills:
-            # Budget and other-fund rows are not in this list. Variable
-            # Bills-fund bills wait in Due to confirm.
-            if getattr(bill, "bill_type", "fixed") == "variable":
-                continue
             if bill.end_date and bill.next_due_date > bill.end_date:
                 continue
-
-            # Idempotency: skip if already paid today for this bill
-            existing = (
-                db.query(Transaction)
-                .filter(
-                    Transaction.recurring_bill_id == bill.id,
-                    Transaction.date == today_str,
-                )
-                .first()
-            )
-            if existing:
+            loaded_due = bill.next_due_date
+            amount = Decimal(str(bill.amount))
+            try:
+                date.fromisoformat(loaded_due)
+                if auto_pay_before_cas is not None:
+                    auto_pay_before_cas(db, bill)
+                with db.begin_nested():
+                    transition_occurrence(
+                        db,
+                        bill,
+                        "auto",
+                        loaded_due,
+                        amount=amount,
+                        ledger_date=today_str,
+                    )
+                db.commit()
+                processed += 1
+            except Exception:
+                logger.exception("Auto-pay failed for bill_id=%s", bill.id)
                 continue
 
-            amount = Decimal(str(bill.amount))
-
-            # Dual-linkage transaction: sinking_fund_id + recurring_bill_id
-            db.add(
-                Transaction(
-                    date=today_str,
-                    description=f"Auto-payment: {bill.name} to {bill.debtor_provider}",
-                    amount=amount,
-                    category_id=bill.category_id,
-                    type="expense",
-                    transaction_type="regular",
-                    sinking_fund_id=bills_fund.id,
-                    recurring_bill_id=bill.id,
-                    contract_id=bill.contract_id,
-                )
-            )
-
-            bills_fund.current_balance = float(
-                Decimal(str(bills_fund.current_balance)) - amount
-            )
-
-            # Advance next_due_date
-            current_due = date.fromisoformat(bill.next_due_date)
-            bill.next_due_date = advance_due_date(
-                current_due, bill.frequency
-            ).isoformat()
-            processed += 1
-
-        db.commit()
         if processed:
             logger.info("Processed %d due bill(s) for %s", processed, today_str)
 

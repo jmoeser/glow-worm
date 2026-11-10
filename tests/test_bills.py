@@ -167,6 +167,7 @@ class TestBillsEditPost:
                 "amount": "2600.00",
                 "frequency": "monthly",
                 "next_due_date": "2026-03-01",
+                "next_due_date_was": "2026-02-01",
             },
             headers={"x-csrftoken": authed_client.csrf_token},
         )
@@ -186,6 +187,7 @@ class TestBillsEditPost:
                 "amount": "2600.00",
                 "frequency": "monthly",
                 "next_due_date": "2026-03-01",
+                "next_due_date_was": "2026-02-01",
             },
             headers={"x-csrftoken": authed_client.csrf_token},
         )
@@ -675,7 +677,11 @@ class TestPaidWith:
         db_session.commit()
         kept = authed_client.post(
             f"/bills/{bill.id}",
-            data={"name": "Rent"},
+            data={
+                "name": "Rent",
+                "next_due_date": "2026-02-01",
+                "next_due_date_was": "2026-02-01",
+            },
             headers={"x-csrftoken": authed_client.csrf_token},
         )
         assert kept.status_code == 200
@@ -683,7 +689,12 @@ class TestPaidWith:
         assert bill.payment_method_id == method.id
         cleared = authed_client.post(
             f"/bills/{bill.id}",
-            data={"name": "Rent", "payment_method_id": ""},
+            data={
+                "name": "Rent",
+                "payment_method_id": "",
+                "next_due_date": "2026-02-01",
+                "next_due_date_was": "2026-02-01",
+            },
             headers={"x-csrftoken": authed_client.csrf_token},
         )
         assert cleared.status_code == 200

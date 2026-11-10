@@ -67,7 +67,16 @@ def add_transaction(
         str, typer.Option(help="Transaction type (default: regular)")
     ] = "regular",
     fund_id: Annotated[int | None, typer.Option(help="Sinking fund ID")] = None,
-    bill_id: Annotated[int | None, typer.Option(help="Recurring bill ID")] = None,
+    bill_id: Annotated[
+        int | None,
+        typer.Option(
+            help=(
+                "Recurring bill ID. This does not record a scheduled "
+                "occurrence. Pay, Confirm, or automatic payment does that. "
+                "A one-off Bills fund expense omits --bill-id."
+            )
+        ),
+    ] = None,
     budget_id: Annotated[int | None, typer.Option(help="Budget ID")] = None,
     tx_date: Annotated[
         str | None, typer.Option("--date", help="Date YYYY-MM-DD (default: today)")

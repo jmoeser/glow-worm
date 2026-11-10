@@ -590,7 +590,12 @@ class TestBillLinkRules:
         html = _post(
             authed_client,
             f"/bills/{power.id}",
-            {"name": "Power", "payment_method_id": str(old.id)},
+            {
+                "name": "Power",
+                "payment_method_id": str(old.id),
+                "next_due_date": "2026-11-05",
+                "next_due_date_was": "2026-11-05",
+            },
         )
         assert html.status_code == 200
         moved = authed_client.put(

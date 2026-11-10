@@ -25,6 +25,7 @@ from app.schemas import (
     TransactionCreate,
     TransactionResponse,
     TransactionUpdate,
+    UnknownFrequencyError,
     public_validation_errors,
 )
 from app.services.payment_methods import (
@@ -55,7 +56,10 @@ from app.services.recurring_payments import (
     skip_payment as skip_payment_service,
 )
 from app.services.transaction_balances import (
+    RecordedPaymentLocked,
     apply_transaction_balance_effects,
+    assert_recorded_payment_unchanged,
+    delete_transaction_row,
     replace_transaction_balance_effects,
 )
 
@@ -342,7 +346,10 @@ def update_transaction(
         old_budget_id = txn.budget_id
         old_amount = txn.amount
 
-        for field, value in data.model_dump(exclude_unset=True).items():
+        changes = data.model_dump(exclude_unset=True)
+        assert_recorded_payment_unchanged(txn, changes)
+
+        for field, value in changes.items():
             if field in ("type", "transaction_type") and value is not None:
                 setattr(txn, field, value.value if hasattr(value, "value") else value)
             else:
@@ -368,6 +375,9 @@ def update_transaction(
             "MCP [user=%s]: updated transaction id=%d", _audit_username(), txn.id
         )
         return TransactionResponse.model_validate(txn).model_dump(mode="json")
+    except RecordedPaymentLocked as exc:
+        db.rollback()
+        return exc.detail
     except Exception:
         logger.exception(
             "MCP [user=%s]: error updating transaction id=%d",
@@ -396,16 +406,7 @@ def delete_transaction(transaction_id: int) -> str:
         if not txn:
             return f"Transaction {transaction_id} not found."
 
-        apply_transaction_balance_effects(
-            db,
-            sinking_fund_id=txn.sinking_fund_id,
-            txn_type=txn.type,
-            amount=txn.amount,
-            budget_id=txn.budget_id,
-            transaction_type=txn.transaction_type,
-            reverse=True,
-        )
-        db.delete(txn)
+        delete_transaction_row(db, txn)
         db.commit()
 
         logger.info(
@@ -600,10 +601,13 @@ def update_bill(
     paid_from_fund_id: int | None = _OMIT,  # pyrefly: ignore[bad-function-definition]
     bill_type: str | None = None,
     category_id: int | None = None,
+    expected_next_due_date: str | None = None,
 ) -> dict | str:
     """Update an existing recurring bill.
 
     Only the provided fields will be updated; omitted fields remain unchanged.
+    Sending ``next_due_date`` requires ``expected_next_due_date``, the date
+    last read. Omitting the date leaves the cursor alone.
 
     Args:
         bill_id: The ID of the bill to update.
@@ -621,6 +625,8 @@ def update_bill(
         bill_type: 'fixed' or 'variable'. Stored for every row; only Bills-fund
             rows use it to decide automatic payment.
         category_id: Expense category. For a budget payment this is the budget.
+        expected_next_due_date: The next due date you last read. Required
+            when next_due_date is sent.
 
     Returns:
         The updated bill object, or an error message.
@@ -640,6 +646,8 @@ def update_bill(
         update_data["is_active"] = is_active
     if next_due_date is not None:
         update_data["next_due_date"] = next_due_date
+    if expected_next_due_date is not None:
+        update_data["expected_next_due_date"] = expected_next_due_date
     if payment_method_id is not _OMIT:
         update_data["payment_method_id"] = payment_method_id
     if paid_from is not None:
@@ -677,6 +685,9 @@ def update_bill(
     except (PaymentMethodError, PaidFromError) as exc:
         db.rollback()
         return exc.message
+    except (PaymentBlocked, PaymentConflict) as exc:
+        db.rollback()
+        return exc.detail
     except Exception:
         logger.exception(
             "MCP [user=%s]: error updating bill id=%d", _audit_username(), bill_id
@@ -779,6 +790,9 @@ def confirm_payment(bill_id: int, due_date: str, amount: float) -> dict | str:
             "taken_back": result.taken_back,
             "message": result.message,
         }
+    except UnknownFrequencyError as exc:
+        db.rollback()
+        return str(exc)
     except (PaymentBlocked, PaymentConflict) as exc:
         db.rollback()
         return exc.detail
@@ -815,6 +829,9 @@ def skip_payment(bill_id: int, due_date: str) -> dict | str:
         db.commit()
         db.refresh(result.bill)
         return {"bill": serialize_bill(result.bill), "message": result.message}
+    except UnknownFrequencyError as exc:
+        db.rollback()
+        return str(exc)
     except (PaymentBlocked, PaymentConflict) as exc:
         db.rollback()
         return exc.detail

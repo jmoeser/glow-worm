@@ -212,6 +212,7 @@ class TestAcceptance:
                 "amount": "240.00",
                 "frequency": "every_2_years",
                 "next_due_date": "2026-06-15",
+                "next_due_date_was": "2026-06-15",
                 "paid_from": "bills_fund",
             },
             headers={"x-csrftoken": authed_client.csrf_token},
@@ -383,7 +384,12 @@ class TestUnknownFrequency:
         assert 'value="weekly" selected' not in form.text
         saved = authed_client.post(
             f"/bills/{bill.id}",
-            data={"frequency": "whenever", "amount": "240.00"},
+            data={
+                "frequency": "whenever",
+                "amount": "240.00",
+                "next_due_date": bill.next_due_date,
+                "next_due_date_was": bill.next_due_date,
+            },
             headers={"x-csrftoken": authed_client.csrf_token},
         )
         assert saved.status_code == 400
@@ -402,29 +408,39 @@ class TestUnknownFrequency:
             bill_type="variable",
             next_due_date="2026-01-31",
         )
-        with pytest.raises(UnknownFrequencyError) as skipped:
-            authed_client.post(
-                f"/bills/{bill.id}/skip",
-                data={"due_date": "2026-01-31"},
-                headers={"x-csrftoken": authed_client.csrf_token},
-            )
-        assert not isinstance(skipped.value, ValueError)
-        with pytest.raises(UnknownFrequencyError) as confirmed:
-            authed_client.post(
-                f"/bills/{bill.id}/confirm",
-                data={"amount": "240.00", "due_date": "2026-01-31"},
-                headers={"x-csrftoken": authed_client.csrf_token},
-            )
-        assert not isinstance(confirmed.value, ValueError)
+        skipped = authed_client.post(
+            f"/bills/{bill.id}/skip",
+            data={"due_date": "2026-01-31"},
+            headers={"x-csrftoken": authed_client.csrf_token},
+        )
+        assert skipped.status_code == 400
+        assert "Unknown bill frequency: nope" in skipped.text
+        assert "Invalid due date" not in skipped.text
+        confirmed = authed_client.post(
+            f"/bills/{bill.id}/confirm",
+            data={"amount": "240.00", "due_date": "2026-01-31"},
+            headers={"x-csrftoken": authed_client.csrf_token},
+        )
+        assert confirmed.status_code == 400
+        assert "Unknown bill frequency: nope" in confirmed.text
+        assert "Invalid due date" not in confirmed.text
         db_session.refresh(bill)
         assert bill.next_due_date == "2026-01-31"
         assert db_session.query(Transaction).count() == 0
         mcp = skip_payment(bill.id, "2026-01-31")
         assert isinstance(mcp, str)
         assert "Validation error" not in mcp
-        assert "Internal error" in mcp
+        assert "Unknown bill frequency: nope" in mcp
+        paid = authed_client.post(
+            f"/api/bills/{bill.id}/pay",
+            json={"amount": "240.00", "date": "2026-01-31"},
+        )
+        assert paid.status_code == 400
+        assert paid.json()["code"] == "unknown_frequency"
+        assert "Invalid due date" not in paid.json()["detail"]
         db_session.refresh(bill)
         assert bill.next_due_date == "2026-01-31"
+        assert db_session.query(Transaction).count() == 0
 
     def test_cover_does_not_skip_it_as_a_bad_date(
         self, db_session, sample_category, sample_sinking_funds
@@ -486,7 +502,9 @@ class TestUnknownFrequency:
         assert Decimal(str(fund.current_balance)) == Decimal("510.00")
 
     @patch("app.tasks._today")
-    def test_autopay_rolls_the_day_back(self, mock_today, db_session, sample_category):
+    def test_autopay_fails_only_the_unknown_bill(
+        self, mock_today, db_session, sample_category
+    ):
         mock_today.return_value = date(2026, 2, 1)
         fund = _bills_fund(db_session, balance=5000)
         good = _bill(
@@ -505,12 +523,23 @@ class TestUnknownFrequency:
             amount=80,
             next_due_date="2026-02-01",
         )
-        with pytest.raises(UnknownFrequencyError):
-            process_due_bills(db=db_session)
-        assert db_session.query(Transaction).count() == 0
+        process_due_bills(db=db_session)
+        db_session.rollback()
         db_session.refresh(fund)
         db_session.refresh(good)
         db_session.refresh(bad)
-        assert Decimal(str(fund.current_balance)) == Decimal(5000)
-        assert good.next_due_date == "2026-02-01"
+        assert Decimal(str(fund.current_balance)) == Decimal(2600)
+        assert good.next_due_date == "2026-03-01"
         assert bad.next_due_date == "2026-02-01"
+        paid = (
+            db_session.query(Transaction)
+            .filter(Transaction.recurring_bill_id == good.id)
+            .one()
+        )
+        assert paid.occurrence_due_date == "2026-02-01"
+        assert (
+            db_session.query(Transaction)
+            .filter(Transaction.recurring_bill_id == bad.id)
+            .count()
+            == 0
+        )

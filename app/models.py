@@ -138,6 +138,7 @@ class RecurringBill(Base):
         ),
         nullable=True,
     )
+    last_auto_settled_on: Mapped[str | None] = mapped_column(String(10), nullable=True)
     created_at: Mapped[datetime] = mapped_column(default=_utcnow)
     updated_at: Mapped[datetime] = mapped_column(default=_utcnow, onupdate=_utcnow)
 
@@ -177,6 +178,25 @@ class Transaction(Base):
     __table_args__ = (
         Index("ix_transactions_contract_id", "contract_id"),
         Index("ix_transactions_recurring_bill_id", "recurring_bill_id"),
+        Index(
+            "uq_transactions_bill_occurrence",
+            "recurring_bill_id",
+            "occurrence_due_date",
+            unique=True,
+            sqlite_where=text("occurrence_due_date IS NOT NULL"),
+            postgresql_where=text("occurrence_due_date IS NOT NULL"),
+        ),
+        Index(
+            "uq_transactions_adjustment_for",
+            "adjustment_for_transaction_id",
+            unique=True,
+            sqlite_where=text("adjustment_for_transaction_id IS NOT NULL"),
+            postgresql_where=text("adjustment_for_transaction_id IS NOT NULL"),
+        ),
+        CheckConstraint(
+            "occurrence_due_date IS NULL OR adjustment_for_transaction_id IS NULL",
+            name="ck_transactions_not_occurrence_and_adjustment",
+        ),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -207,6 +227,8 @@ class Transaction(Base):
         ),
         nullable=True,
     )
+    occurrence_due_date: Mapped[str | None] = mapped_column(String(10), nullable=True)
+    adjustment_for_transaction_id: Mapped[int | None] = mapped_column(nullable=True)
     is_paid: Mapped[bool] = mapped_column(default=True)
     created_at: Mapped[datetime] = mapped_column(default=_utcnow)
 

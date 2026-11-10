@@ -1,4 +1,5 @@
 import json
+from datetime import date
 from decimal import Decimal, InvalidOperation
 from typing import Any
 
@@ -19,6 +20,7 @@ from app.schemas import (
     RecurringBillPay,
     RecurringBillSkip,
     RecurringBillUpdate,
+    UnknownFrequencyError,
     annual_multiplier,
 )
 from app.services.contracts import ContractError, assign_contract, contract_choices
@@ -33,11 +35,13 @@ from app.services.recurring_payments import (
     PaymentBlocked,
     PaymentConflict,
     apply_paid_from,
+    cas_save_bill,
     confirm_payment,
     confirm_transaction_payload,
     due_to_confirm,
     find_bills_fund,
     pay_bills_fund,
+    pending_bill_values,
     serialize_bill,
     skip_payment,
     update_bill_fields,
@@ -300,6 +304,21 @@ def _payment_json(exc: PaymentBlocked | PaymentConflict) -> JSONResponse:
     return JSONResponse({"detail": exc.detail, "code": exc.code}, status_code=status)
 
 
+def _unknown_frequency_html(exc: UnknownFrequencyError) -> HTMLResponse:
+    detail = str(exc)
+    response = HTMLResponse(
+        f'<p class="text-red-600 text-sm">{detail}</p>', status_code=400
+    )
+    response.headers["HX-Trigger"] = json.dumps({"gwError": detail})
+    return response
+
+
+def _unknown_frequency_json(exc: UnknownFrequencyError) -> JSONResponse:
+    return JSONResponse(
+        {"detail": str(exc), "code": "unknown_frequency"}, status_code=400
+    )
+
+
 def _oob(html: str, swap: str) -> str:
     stripped = html.lstrip()
     if stripped.startswith("<tr "):
@@ -410,6 +429,14 @@ async def bills_create(request: Request, db: Session = Depends(get_db)):
     if not start_date or not next_due_date:
         return HTMLResponse(
             '<p class="text-red-600 text-sm">Start date and next due date are required.</p>'
+        )
+    try:
+        date.fromisoformat(start_date)
+        date.fromisoformat(next_due_date)
+    except ValueError:
+        return HTMLResponse(
+            '<p class="text-red-600 text-sm">Enter a real start date and next due date.</p>',
+            status_code=400,
         )
 
     if bill_type not in ("fixed", "variable"):
@@ -556,6 +583,9 @@ async def bills_confirm(
         result = confirm_payment(db, bill, amount, due_date)
         db.commit()
         db.refresh(result.bill)
+    except UnknownFrequencyError as exc:
+        db.rollback()
+        return _unknown_frequency_html(exc)
     except (PaymentBlocked, PaymentConflict) as exc:
         db.rollback()
         return _html_error(exc)
@@ -581,6 +611,9 @@ async def bills_skip(
         result = skip_payment(db, bill, due_date)
         db.commit()
         db.refresh(result.bill)
+    except UnknownFrequencyError as exc:
+        db.rollback()
+        return _unknown_frequency_html(exc)
     except (PaymentBlocked, PaymentConflict) as exc:
         db.rollback()
         return _html_error(exc)
@@ -604,6 +637,17 @@ async def bills_update(request: Request, bill_id: int, db: Session = Depends(get
         bill.is_active,
     )
     form = await request.form()
+
+    next_due_raw = str(form.get("next_due_date") or "").strip()
+    was_raw = str(form.get("next_due_date_was") or "").strip()
+    try:
+        next_due = date.fromisoformat(next_due_raw).isoformat()
+        expected_due = date.fromisoformat(was_raw).isoformat()
+    except ValueError:
+        return HTMLResponse(
+            '<p class="text-red-600 text-sm">Enter a real next due date.</p>',
+            status_code=400,
+        )
 
     name = str(form.get("name") or "").strip()
     provider = str(form.get("debtor_provider") or "").strip()
@@ -631,10 +675,6 @@ async def bills_update(request: Request, bill_id: int, db: Session = Depends(get
                 status_code=400,
             )
         bill.frequency = str(frequency)
-
-    next_due_date = str(form.get("next_due_date") or "").strip()
-    if next_due_date:
-        bill.next_due_date = next_due_date
 
     bill_type = form.get("bill_type")
     if bill_type in ("fixed", "variable"):
@@ -708,6 +748,15 @@ async def bills_update(request: Request, bill_id: int, db: Session = Depends(get
         except ValueError:
             db.rollback()
             return _html_error(PaidFromError("Choose where this is paid from."))
+
+    values = pending_bill_values(bill)
+    values.pop("next_due_date", None)
+    values["next_due_date"] = next_due
+    try:
+        cas_save_bill(db, bill, values, expected_due)
+    except PaymentConflict as exc:
+        db.rollback()
+        return _html_error(exc)
 
     db.commit()
     db.refresh(bill)
@@ -870,6 +919,9 @@ async def api_update_bill(
     except PaidFromError as exc:
         db.rollback()
         return JSONResponse({"detail": exc.message}, status_code=400)
+    except (PaymentBlocked, PaymentConflict) as exc:
+        db.rollback()
+        return _payment_json(exc)
 
     db.commit()
     db.refresh(bill)
@@ -911,6 +963,9 @@ async def api_pay_bill(request: Request, bill_id: int, db: Session = Depends(get
         db.commit()
         db.refresh(bill)
         db.refresh(txn)
+    except UnknownFrequencyError as exc:
+        db.rollback()
+        return _unknown_frequency_json(exc)
     except (PaymentBlocked, PaymentConflict) as exc:
         db.rollback()
         return _payment_json(exc)
@@ -951,6 +1006,9 @@ async def api_confirm_bill(
         db.commit()
         db.refresh(result.transaction)
         db.refresh(result.bill)
+    except UnknownFrequencyError as exc:
+        db.rollback()
+        return _unknown_frequency_json(exc)
     except (PaymentBlocked, PaymentConflict) as exc:
         db.rollback()
         return _payment_json(exc)
@@ -978,6 +1036,9 @@ async def api_skip_bill(request: Request, bill_id: int, db: Session = Depends(ge
         result = skip_payment(db, bill, data.due_date)
         db.commit()
         db.refresh(result.bill)
+    except UnknownFrequencyError as exc:
+        db.rollback()
+        return _unknown_frequency_json(exc)
     except (PaymentBlocked, PaymentConflict) as exc:
         db.rollback()
         return _payment_json(exc)

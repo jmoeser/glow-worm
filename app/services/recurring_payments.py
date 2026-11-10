@@ -4,23 +4,25 @@ Bills-fund rows still feed the Bills forecast, the recommended amount, and
 the scheduler. Anything else, and a variable Bills-fund bill, waits until
 someone confirms or skips that one occurrence.
 
-Confirm and skip advance ``next_due_date`` with one compare-and-set update.
-The transaction is written only when that update changes a row, so a retry
-cannot log the same occurrence twice.
+Confirm, skip, manual pay, and auto-pay settle one occurrence through
+``transition_occurrence``. That function flushes and does not commit.
 """
 
 from __future__ import annotations
 
 import calendar
 import logging
+from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import date, datetime
+from datetime import UTC, date, datetime
 from decimal import Decimal
 
+from sqlalchemy import inspect as sa_inspect
 from sqlalchemy import or_, update
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.config import TIMEZONE
+import app.services.clock as clock_module
 from app.models import (
     Budget,
     Category,
@@ -91,7 +93,28 @@ class SkipResult:
 
 
 def _today() -> date:
-    return datetime.now(TIMEZONE).date()
+    return clock_module.today()
+
+
+# Test hook. Runs inside the caller's transaction, just before a payment insert.
+payment_insert_hook: Callable[[RecurringBill], None] | None = None
+
+_BILL_EDIT_COLUMNS = (
+    "name",
+    "amount",
+    "debtor_provider",
+    "frequency",
+    "category_id",
+    "end_date",
+    "is_active",
+    "bill_type",
+    "foreign_amount",
+    "foreign_currency",
+    "payment_method_id",
+    "contract_id",
+    "paid_from",
+    "paid_from_fund_id",
+)
 
 
 def format_due_date(value: date | str) -> str:
@@ -283,13 +306,67 @@ def _plain(value: object) -> object:
     return value
 
 
+def pending_bill_values(bill: RecurringBill) -> dict[str, object]:
+    """Column values changed on this instance since it was loaded."""
+    state = sa_inspect(bill)
+    values: dict[str, object] = {}
+    for key in _BILL_EDIT_COLUMNS:
+        if state.attrs[key].history.has_changes():
+            values[key] = getattr(bill, key)
+    return values
+
+
+def cas_save_bill(
+    db: Session, bill: RecurringBill, values: dict[str, object], expected_due: str
+) -> None:
+    """Write every edited column only while the stored due date is unchanged.
+
+    The bill is expired before the statement so a dirty ``next_due_date``
+    cannot flush without the predicate. Zero matched rows saves nothing.
+    """
+    stored = dict(values)
+    stored.pop("last_auto_settled_on", None)
+    stored["updated_at"] = datetime.now(UTC)
+    db.expire(bill)
+    result = db.execute(
+        update(RecurringBill)
+        .where(RecurringBill.id == bill.id)
+        .where(RecurringBill.next_due_date == expected_due)
+        .values(**stored)
+        .execution_options(synchronize_session=False)
+    )
+    db.expire(bill)
+    if getattr(result, "rowcount", 0) != 1:
+        raise PaymentConflict("stale", "This schedule changed. Reload the page.")
+
+
 def update_bill_fields(
     db: Session, bill: RecurringBill, data: RecurringBillUpdate
 ) -> None:
-    """Apply a schema update, including paid-from rules."""
+    """Apply a schema update, including paid-from rules.
+
+    When ``next_due_date`` is present, ``expected_next_due_date`` is required
+    and every edited column is one conditional update. Omitting the date
+    leaves the cursor alone.
+    """
     updates = data.model_dump(exclude_unset=True)
     updates.pop("payment_method_id", None)
     updates.pop("contract_id", None)
+    expected = updates.pop("expected_next_due_date", None)
+    date_set = "next_due_date" in updates
+    new_due = updates.pop("next_due_date", None) if date_set else None
+    expected_due: str | None = None
+    if date_set:
+        if expected is None or not str(expected).strip():
+            raise PaymentBlocked(
+                "expected_due",
+                "Send the due date you last read.",
+            )
+        try:
+            new_due = date.fromisoformat(str(new_due)).isoformat()
+            expected_due = date.fromisoformat(str(expected)).isoformat()
+        except ValueError as exc:
+            raise PaymentBlocked("invalid_date", "Enter a real date.") from exc
     paid_from_set = "paid_from" in updates
     paid_from = _plain(updates.pop("paid_from", None)) if paid_from_set else None
     fund_set = "paid_from_fund_id" in updates
@@ -310,6 +387,13 @@ def update_bill_fields(
         paid_from_fund_id=fund_id if fund_set else UNSET,
         category_id=category_id if category_set else None,
     )
+    if date_set:
+        if expected_due is None or new_due is None:
+            raise PaymentBlocked("invalid_date", "Enter a real date.")
+        values = pending_bill_values(bill)
+        values.pop("next_due_date", None)
+        values["next_due_date"] = new_due
+        cas_save_bill(db, bill, values, expected_due)
 
 
 def serialize_bill(bill: RecurringBill) -> dict:
@@ -422,37 +506,61 @@ def _step(due_date: str, frequency: str) -> str:
     return advance_due_date(date.fromisoformat(due_date), frequency).isoformat()
 
 
-def _cas(db: Session, bill: RecurringBill, due_date: str, *, pay: bool) -> bool:
-    """Move next_due_date one step when the loaded occurrence is still current."""
-    nxt = _step(due_date, bill.frequency)
+def _end_open(due_date: str):
+    return or_(
+        RecurringBill.end_date.is_(None),
+        RecurringBill.end_date >= due_date,
+    )
+
+
+def _cas(
+    db: Session,
+    bill: RecurringBill,
+    due_date: str,
+    frequency: str,
+    action: str,
+    auto_today: date | None,
+) -> bool:
+    """Move next_due_date one step when this occurrence is still current."""
+    nxt = _step(due_date, frequency)
+    values: dict[str, object] = {"next_due_date": nxt}
     stmt = (
         update(RecurringBill)
         .where(RecurringBill.id == bill.id)
         .where(RecurringBill.is_active == True)
         .where(RecurringBill.next_due_date == due_date)
     )
-    if pay:
-        stmt = stmt.where(RecurringBill.paid_from == PaidFrom.bills_fund.value)
-    else:
+    if action in ("confirm", "skip"):
         stmt = stmt.where(
             or_(
                 RecurringBill.paid_from != PaidFrom.bills_fund.value,
                 RecurringBill.bill_type == "variable",
             )
-        ).where(
-            or_(
-                RecurringBill.end_date.is_(None),
-                RecurringBill.end_date >= due_date,
-            )
+        ).where(_end_open(due_date))
+    elif action == "manual_pay":
+        stmt = stmt.where(RecurringBill.paid_from == PaidFrom.bills_fund.value).where(
+            _end_open(due_date)
         )
-    result = db.execute(
-        stmt.values(next_due_date=nxt).execution_options(synchronize_session=False)
-    )
-    changed = getattr(result, "rowcount", 0)
-    if changed != 1:
-        return False
+    else:
+        today_str = auto_today.isoformat() if auto_today is not None else due_date
+        stmt = stmt.where(
+            RecurringBill.paid_from == PaidFrom.bills_fund.value,
+            RecurringBill.bill_type == "fixed",
+            _end_open(due_date),
+            RecurringBill.next_due_date <= today_str,
+            or_(
+                RecurringBill.last_auto_settled_on.is_(None),
+                RecurringBill.last_auto_settled_on != today_str,
+            ),
+        )
+        values["last_auto_settled_on"] = today_str
+    # A dirty cursor must not flush before this predicate runs.
     db.expire(bill)
-    return True
+    result = db.execute(
+        stmt.values(**values).execution_options(synchronize_session=False)
+    )
+    db.expire(bill)
+    return getattr(result, "rowcount", 0) == 1
 
 
 def _reject(db: Session, bill: RecurringBill, due_date: str, *, pay: bool) -> None:
@@ -466,6 +574,15 @@ def _reject(db: Session, bill: RecurringBill, due_date: str, *, pay: bool) -> No
             raise PaymentConflict(
                 "wrong_source",
                 f"This is paid from {source_short_name(bill)}. Confirm it instead.",
+            )
+        if (
+            bill.end_date
+            and due_date > bill.end_date
+            and bill.next_due_date == due_date
+        ):
+            raise PaymentConflict(
+                "ended",
+                f"This payment ended on {format_due_date(bill.end_date)}.",
             )
         raise PaymentConflict("stale", "Already done. Showing what's next.")
     if not needs_confirm(bill):
@@ -526,103 +643,233 @@ def _clawback_fund(db: Session, due: date) -> SinkingFund | None:
     return fund
 
 
-def _insert_confirm(
+@dataclass
+class _BillSnapshot:
+    """Scalars copied before the bill is expired. The cursor is not included."""
+
+    contract_id: int | None
+    name: str
+    provider: str
+    category_id: int
+    frequency: str
+
+
+def _copy_bill(bill: RecurringBill) -> _BillSnapshot:
+    return _BillSnapshot(
+        contract_id=bill.contract_id,
+        name=bill.name,
+        provider=bill.debtor_provider,
+        category_id=bill.category_id,
+        frequency=bill.frequency,
+    )
+
+
+def _add_payment(db: Session, txn: Transaction, bill: RecurringBill) -> None:
+    if payment_insert_hook is not None:
+        payment_insert_hook(bill)
+    try:
+        db.add(txn)
+        db.flush()
+    except IntegrityError as exc:
+        raise PaymentConflict("stale", "Already done. Showing what's next.") from exc
+    _apply(db, txn)
+
+
+def _insert_clawback(
     db: Session,
     bill: RecurringBill,
-    source: ResolvedSource,
+    payment: Transaction,
     amount: Decimal,
-    due_date: str,
-    contract_id: int | None,
-) -> ConfirmResult:
-    description = f"Bill payment: {bill.name} to {bill.debtor_provider}"
-    due = date.fromisoformat(due_date)
-    taken: dict | None = None
+    due: date,
+    name: str,
+    category_name: str,
+) -> dict | None:
+    overflow = _clawback_fund(db, due)
+    if overflow is None:
+        return None
+    transfer = _transfer_category(db)
+    if transfer is None:
+        return None
+    back = Transaction(
+        date=_today().isoformat(),
+        description=(
+            f"Taken back for {name} ({format_month_year(due)} {category_name})"
+        ),
+        amount=amount,
+        category_id=transfer.id,
+        type="expense",
+        transaction_type="withdrawal",
+        sinking_fund_id=overflow.id,
+        recurring_bill_id=bill.id,
+        adjustment_for_transaction_id=payment.id,
+        is_paid=True,
+    )
+    db.add(back)
+    db.flush()
+    _apply(db, back)
+    return {
+        "fund_id": overflow.id,
+        "fund_name": overflow.name,
+        "amount": float(amount),
+        "transaction_id": back.id,
+    }
 
-    if bill.paid_from == PaidFrom.budget.value:
-        if source.budget is None:
+
+def transition_occurrence(
+    db: Session,
+    bill: RecurringBill,
+    action: str,
+    due_date: str,
+    amount: Decimal | None = None,
+    ledger_date: str | None = None,
+) -> ConfirmResult | SkipResult | Transaction:
+    """Settle one occurrence. Flush only. The caller commits.
+
+    ``action`` is ``confirm``, ``skip``, ``manual_pay``, or ``auto``.
+    A payment stores ``due_date`` as ``occurrence_due_date``. Skip writes
+    no row. Does not call ``ensure_backfill``.
+    """
+    if action not in ("confirm", "skip", "manual_pay", "auto"):
+        raise PaymentBlocked("invalid_action", "Unknown payment action.")
+    paid_amount: Decimal | None = None
+    if action != "skip":
+        if amount is None:
+            raise PaymentBlocked("invalid_amount", "Amount must be greater than zero.")
+        paid_amount = money(amount)
+        if paid_amount <= 0:
+            raise PaymentBlocked("invalid_amount", "Amount must be greater than zero.")
+    due = date.fromisoformat(due_date)
+    due_date = due.isoformat()
+    copied = _copy_bill(bill)
+    # Drop a dirty cursor before any query. ensure_backfill already ran
+    # for confirm, and it must not have committed this date.
+    db.expire(bill)
+
+    auto_today: date | None = None
+    source: ResolvedSource | None = None
+    if action == "confirm":
+        if needs_confirm(bill):
+            source = _require_source(db, bill, due)
+    elif action == "manual_pay":
+        fund = (
+            find_bills_fund(db) if bill.paid_from == PaidFrom.bills_fund.value else None
+        )
+        if bill.paid_from == PaidFrom.bills_fund.value and fund is None:
+            raise PaymentBlocked("source_missing", "The Bills fund is missing.")
+        if fund is not None:
+            db.expire(fund, ["current_balance"])
+            source = ResolvedSource(fund=fund)
+    elif action == "auto":
+        auto_today = date.fromisoformat(ledger_date) if ledger_date else _today()
+        fund = find_bills_fund(db)
+        if fund is None:
+            raise PaymentBlocked("source_missing", "The Bills fund is missing.")
+        db.expire(fund, ["current_balance"])
+        source = ResolvedSource(fund=fund)
+
+    frequency = copied.frequency
+    if not _cas(db, bill, due_date, frequency, action, auto_today):
+        _reject(db, bill, due_date, pay=action in ("manual_pay", "auto"))
+    if action == "confirm" and source is None:
+        _reject(db, bill, due_date, pay=False)
+    if action == "manual_pay" and (source is None or source.fund is None):
+        _reject(db, bill, due_date, pay=True)
+
+    if action == "skip":
+        logger.info(
+            "Skipped recurring payment bill_id=%s due_date=%s", bill.id, due_date
+        )
+        db.expire(bill)
+        db.refresh(bill)
+        message = (
+            f"Skipped {format_due_date(due_date)}. "
+            f"Next due {format_due_date(bill.next_due_date)}."
+        )
+        return SkipResult(bill=bill, message=message)
+
+    assert paid_amount is not None
+    name = copied.name
+    provider = copied.provider
+    category_id = copied.category_id
+    contract_id = copied.contract_id
+    category = db.get(Category, category_id)
+    category_name = category.name if category is not None else "budget"
+    if action == "auto":
+        description = f"Auto-payment: {name} to {provider}"
+        ledger = (
+            auto_today.isoformat() if auto_today is not None else _today().isoformat()
+        )
+    elif action == "manual_pay":
+        description = f"Bill payment: {name} to {provider}"
+        ledger = ledger_date or _today().isoformat()
+    else:
+        description = f"Bill payment: {name} to {provider}"
+        ledger = due_date
+
+    taken: dict | None = None
+    if action == "confirm" and bill.paid_from == PaidFrom.budget.value:
+        if source is None or source.budget is None:
             raise PaymentBlocked(
                 "no_budget",
                 "There's no budget for that month. Set it on the Budgets page first.",
             )
-        category_name = bill.category.name if bill.category is not None else "budget"
         txn = Transaction(
-            date=due_date,
+            date=ledger,
             description=description,
-            amount=amount,
-            category_id=bill.category_id,
+            amount=paid_amount,
+            category_id=category_id,
             type="expense",
             transaction_type="budget_expense",
             budget_id=source.budget.id,
             recurring_bill_id=bill.id,
             contract_id=contract_id,
+            occurrence_due_date=due_date,
             is_paid=True,
         )
-        db.add(txn)
-        db.flush()
-        _apply(db, txn)
-        overflow = _clawback_fund(db, due)
-        if overflow is not None:
-            transfer = _transfer_category(db)
-            if transfer is not None:
-                # A clawback is not a payment, so it does not stamp contract_id.
-                back = Transaction(
-                    date=_today().isoformat(),
-                    description=(
-                        f"Taken back for {bill.name} "
-                        f"({format_month_year(due)} {category_name})"
-                    ),
-                    amount=amount,
-                    category_id=transfer.id,
-                    type="expense",
-                    transaction_type="withdrawal",
-                    sinking_fund_id=overflow.id,
-                    recurring_bill_id=bill.id,
-                    is_paid=True,
-                )
-                db.add(back)
-                db.flush()
-                _apply(db, back)
-                taken = {
-                    "fund_id": overflow.id,
-                    "fund_name": overflow.name,
-                    "amount": float(amount),
-                    "transaction_id": back.id,
-                }
+        _add_payment(db, txn, bill)
+        taken = _insert_clawback(db, bill, txn, paid_amount, due, name, category_name)
         if taken is not None:
             message = (
                 f"Logged to {calendar.month_name[due.month]} {category_name}; "
-                f"{format_money(amount)} taken back from {taken['fund_name']}."
+                f"{format_money(paid_amount)} taken back from {taken['fund_name']}."
             )
         else:
             message = (
-                f"Logged {format_money(amount)} from {category_name} budget "
+                f"Logged {format_money(paid_amount)} from {category_name} budget "
                 f"({format_month_year(due)})."
             )
-    else:
-        if source.fund is None:
-            raise PaymentBlocked(
-                "source_missing", "The fund for this payment is missing."
-            )
-        txn = Transaction(
-            date=due_date,
-            description=description,
-            amount=amount,
-            category_id=bill.category_id,
-            type="expense",
-            transaction_type="regular",
-            sinking_fund_id=source.fund.id,
-            recurring_bill_id=bill.id,
-            contract_id=contract_id,
-            is_paid=True,
-        )
-        db.add(txn)
+        db.expire(bill)
+        db.refresh(bill)
         db.flush()
-        _apply(db, txn)
-        message = f"Logged {format_money(amount)} from {source_label(bill)}."
+        return ConfirmResult(
+            transaction=txn, bill=bill, taken_back=taken, message=message
+        )
 
+    if source is None or source.fund is None:
+        raise PaymentBlocked("source_missing", "The fund for this payment is missing.")
+    txn = Transaction(
+        date=ledger,
+        description=description,
+        amount=paid_amount,
+        category_id=category_id,
+        type="expense",
+        transaction_type="regular",
+        sinking_fund_id=source.fund.id,
+        recurring_bill_id=bill.id,
+        contract_id=contract_id,
+        occurrence_due_date=due_date,
+        is_paid=True,
+    )
+    _add_payment(db, txn, bill)
     db.expire(bill)
     db.refresh(bill)
-    return ConfirmResult(transaction=txn, bill=bill, taken_back=taken, message=message)
+    db.flush()
+    if action == "confirm":
+        message = f"Logged {format_money(paid_amount)} from {source_label(bill)}."
+        return ConfirmResult(
+            transaction=txn, bill=bill, taken_back=None, message=message
+        )
+    return txn
 
 
 def confirm_payment(
@@ -631,76 +878,42 @@ def confirm_payment(
     """Log one occurrence dated on its due date, then step next_due_date."""
     from app.services.household_months import ensure_backfill
 
+    # The backfill commit must not store a cursor move or a payment.
+    db.expire(bill, ["next_due_date"])
     ensure_backfill(db, today_value=_today())
-    amount = money(amount)
-    if amount <= 0:
-        raise PaymentBlocked("invalid_amount", "Amount must be greater than zero.")
-    due = date.fromisoformat(due_date)
-    # Copy the plan before the due-date update expires the bill.
-    contract_id = bill.contract_id
-    source = _require_source(db, bill, due) if needs_confirm(bill) else None
-    if not _cas(db, bill, due_date, pay=False):
-        _reject(db, bill, due_date, pay=False)
-    if source is None:
-        _reject(db, bill, due_date, pay=False)
-    assert source is not None
-    return _insert_confirm(db, bill, source, amount, due_date, contract_id)
+    result = transition_occurrence(
+        db, bill, "confirm", due_date, amount=amount, ledger_date=due_date
+    )
+    assert isinstance(result, ConfirmResult)
+    return result
 
 
 def skip_payment(db: Session, bill: RecurringBill, due_date: str) -> SkipResult:
     """Step past this occurrence without writing a transaction."""
-    if not _cas(db, bill, due_date, pay=False):
-        _reject(db, bill, due_date, pay=False)
-    logger.info("Skipped recurring payment bill_id=%s due_date=%s", bill.id, due_date)
-    db.expire(bill)
-    db.refresh(bill)
-    message = (
-        f"Skipped {format_due_date(due_date)}. "
-        f"Next due {format_due_date(bill.next_due_date)}."
-    )
-    return SkipResult(bill=bill, message=message)
+    result = transition_occurrence(db, bill, "skip", due_date)
+    assert isinstance(result, SkipResult)
+    return result
 
 
 def pay_bills_fund(
     db: Session, bill: RecurringBill, amount: Decimal, payment_date: str
 ) -> Transaction:
-    """Pay a Bills-fund bill on a caller-supplied date.
+    """Pay the current Bills-fund occurrence on a caller-supplied ledger date.
 
-    The compare-and-set uses the loaded next due date, so a confirm that
-    already moved that date leaves this call with nothing to insert.
-    The balance is assigned directly, matching the scheduler.
+    The occurrence is the cursor at call time, which may differ from the
+    ledger date. Manual pay does not read or write ``last_auto_settled_on``.
     """
-    amount = money(amount)
-    if amount <= 0:
-        raise PaymentBlocked("invalid_amount", "Amount must be greater than zero.")
     loaded_due = bill.next_due_date
-    fund = find_bills_fund(db) if bill.paid_from == PaidFrom.bills_fund.value else None
-    if bill.paid_from == PaidFrom.bills_fund.value and fund is None:
-        raise PaymentBlocked("source_missing", "The Bills fund is missing.")
-    description = f"Bill payment: {bill.name} to {bill.debtor_provider}"
-    category_id = bill.category_id
-    contract_id = bill.contract_id
-    if not _cas(db, bill, loaded_due, pay=True):
-        _reject(db, bill, loaded_due, pay=True)
-    if fund is None:
-        _reject(db, bill, loaded_due, pay=True)
-    assert fund is not None
-    txn = Transaction(
-        date=payment_date,
-        description=description,
+    result = transition_occurrence(
+        db,
+        bill,
+        "manual_pay",
+        loaded_due,
         amount=amount,
-        category_id=category_id,
-        type="expense",
-        transaction_type="regular",
-        sinking_fund_id=fund.id,
-        recurring_bill_id=bill.id,
-        contract_id=contract_id,
-        is_paid=True,
+        ledger_date=payment_date,
     )
-    db.add(txn)
-    fund.current_balance = float(money(fund.current_balance) - amount)
-    db.expire(bill)
-    return txn
+    assert isinstance(result, Transaction)
+    return result
 
 
 def due_to_confirm(db: Session, today: date | None = None) -> list[dict]:
@@ -761,4 +974,5 @@ def confirm_transaction_payload(txn: Transaction) -> dict:
         "date": txn.date,
         "amount": float(txn.amount),
         "description": txn.description,
+        "occurrence_due_date": txn.occurrence_due_date,
     }
