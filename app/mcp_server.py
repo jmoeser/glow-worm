@@ -497,7 +497,7 @@ def create_bill(
         debtor_provider: Who the bill is paid to.
         start_date: When the bill started, in YYYY-MM-DD format.
         frequency: One of: 'weekly', 'fortnightly', '28_days', 'monthly',
-            'quarterly', 'yearly'.
+            'quarterly', 'yearly', 'every_2_years'.
         category_id: ID of the expense category. For a budget payment this
             is the budget category.
         next_due_date: Next payment date in YYYY-MM-DD format.
@@ -611,7 +611,7 @@ def update_bill(
         amount: New monetary amount per occurrence.
         debtor_provider: New provider name.
         frequency: New frequency ('weekly', 'fortnightly', '28_days',
-            'monthly', 'quarterly', 'yearly').
+            'monthly', 'quarterly', 'yearly', 'every_2_years').
         end_date: New end date in YYYY-MM-DD format.
         is_active: New active status.
         next_due_date: New next due date in YYYY-MM-DD format.
