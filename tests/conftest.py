@@ -92,11 +92,13 @@ def _app_client(setup_schema, disable_scheduler):
 def setup_database(setup_schema):
     """Delete all rows after each test to ensure isolation between tests."""
     _app_auth._fail_times.clear()
+    _app_auth._lock_until.clear()
     yield
     with engine.begin() as conn:
         for table in reversed(Base.metadata.sorted_tables):
             conn.execute(table.delete())
     _app_auth._fail_times.clear()
+    _app_auth._lock_until.clear()
 
 
 @pytest.fixture

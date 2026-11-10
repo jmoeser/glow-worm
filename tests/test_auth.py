@@ -1,3 +1,39 @@
+from app.routes import auth
+
+
+class _LoginClock:
+    """Frozen stand-in for time.monotonic in the login limiter."""
+
+    def __init__(self) -> None:
+        self.now = 1_000_000.0
+
+    def monotonic(self) -> float:
+        return self.now
+
+
+def _use_login_clock(monkeypatch) -> _LoginClock:
+    clock = _LoginClock()
+    monkeypatch.setattr(auth, "time", clock)
+    return clock
+
+
+def _failed_login(client):
+    return client.post(
+        "/login",
+        data={"username": "alice", "password": "wrongpassword"},
+    )
+
+
+def _trip_lockout(client) -> None:
+    """Five failures inside the window. The fifth is counted; the next is locked."""
+    for _ in range(5):
+        response = _failed_login(client)
+        assert "Invalid credentials" in response.text
+        assert "Too many failed attempts" not in response.text
+    response = _failed_login(client)
+    assert "Too many failed attempts" in response.text
+
+
 class TestLoginPage:
     def test_renders_login_form(self, client):
         response = client.get("/login")
@@ -62,6 +98,45 @@ class TestLoginPost:
             data={"username": "nobody", "password": "somepassword"},
         )
         assert resp_bad_pass.text == resp_no_user.text
+
+
+class TestLoginLockout:
+    def test_still_locked_after_fourteen_minutes(self, client, test_user, monkeypatch):
+        clock = _use_login_clock(monkeypatch)
+        _trip_lockout(client)
+
+        clock.now += 14 * 60
+        response = _failed_login(client)
+        assert response.status_code == 200
+        assert "Too many failed attempts" in response.text
+
+    def test_lock_clears_after_fifteen_minutes(self, client, test_user, monkeypatch):
+        clock = _use_login_clock(monkeypatch)
+        _trip_lockout(client)
+
+        clock.now += 15 * 60
+        response = _failed_login(client)
+        assert response.status_code == 200
+        assert "Too many failed attempts" not in response.text
+        assert "Invalid credentials" in response.text
+
+    def test_failures_outside_the_five_minute_window_do_not_count(
+        self, client, test_user, monkeypatch
+    ):
+        """The counting window stays 5 minutes, separate from the 15-minute lock."""
+        clock = _use_login_clock(monkeypatch)
+        for _ in range(4):
+            response = _failed_login(client)
+            assert "Invalid credentials" in response.text
+
+        clock.now += 5 * 60
+
+        # Those four attempts have aged out, so a new failure does not lock.
+        response = _failed_login(client)
+        assert "Invalid credentials" in response.text
+        response = _failed_login(client)
+        assert "Too many failed attempts" not in response.text
+        assert "Invalid credentials" in response.text
 
 
 class TestLogout:

@@ -13,11 +13,14 @@ from app.templating import templates
 
 router = APIRouter()
 
-# In-memory login rate limiter: ip -> [timestamp, ...]
+# In-memory login rate limiter.
+# Failures count inside a sliding window. Crossing the threshold locks the IP
+# for _LOCKOUT_SECONDS, which is longer than the counting window.
 _MAX_ATTEMPTS = 5
 _WINDOW_SECONDS = 300  # 5-minute sliding window
 _LOCKOUT_SECONDS = 900  # 15-minute lockout
 _fail_times: dict[str, list[float]] = defaultdict(list)
+_lock_until: dict[str, float] = {}
 _lock = threading.Lock()
 
 
@@ -31,8 +34,14 @@ def _client_ip(request: Request) -> str:
 def _is_rate_limited(ip: str) -> bool:
     now = time.monotonic()
     with _lock:
+        until = _lock_until.get(ip)
+        if until is not None:
+            if now < until:
+                return True
+            _lock_until.pop(ip, None)
         times = _fail_times[ip]
-        # Drop attempts outside the window
+        # Drop attempts outside the counting window. This does not end a
+        # lockout early: once tripped, the lock above lasts _LOCKOUT_SECONDS.
         times[:] = [t for t in times if now - t < _WINDOW_SECONDS]
         return len(times) >= _MAX_ATTEMPTS
 
@@ -40,12 +49,17 @@ def _is_rate_limited(ip: str) -> bool:
 def _record_failure(ip: str) -> None:
     now = time.monotonic()
     with _lock:
-        _fail_times[ip].append(now)
+        times = _fail_times[ip]
+        times.append(now)
+        recent = [t for t in times if now - t < _WINDOW_SECONDS]
+        if len(recent) >= _MAX_ATTEMPTS:
+            _lock_until.setdefault(ip, now + _LOCKOUT_SECONDS)
 
 
 def _clear_failures(ip: str) -> None:
     with _lock:
         _fail_times.pop(ip, None)
+        _lock_until.pop(ip, None)
 
 
 @router.get("/login", response_class=HTMLResponse)
