@@ -55,12 +55,29 @@ def register_jobs(target=scheduler) -> None:
         misfire_grace_time=None,
     )
 
-    # Bill processing: daily at 06:00 in TIMEZONE
+    # Bill processing: daily at 06:00 in TIMEZONE.
+    # misfire_grace_time=None runs a late fire once. It does not replay
+    # days the process was down. The in-memory store has forgotten them.
     target.add_job(
         process_due_bills,
         CronTrigger(hour=6, minute=0, timezone=TIMEZONE),
         id="bill_processing",
         replace_existing=True,
+        max_instances=1,
+        coalesce=True,
+        misfire_grace_time=None,
+    )
+    # Three minutes, not 60 seconds. Income recovery is already at 60 seconds
+    # and assigns the whole Bills balance. This one-shot is not gated by
+    # SHARES_CATCHUP_ON_STARTUP. A boot that posts income can still overwrite
+    # a Bills balance; this only separates the two moments.
+    bill_catchup_at = datetime.now(TIMEZONE) + timedelta(minutes=3)
+    target.add_job(
+        process_due_bills,
+        DateTrigger(run_date=bill_catchup_at),
+        id="bill_processing_catchup",
+        replace_existing=True,
+        max_instances=1,
     )
 
     # Share prices and FX: after the US close, on US trading days.

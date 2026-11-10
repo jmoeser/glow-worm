@@ -749,7 +749,45 @@ class TestRecovery:
         assert retry["misfire_grace_time"] is None
         assert "income_allocation_catchup" in by_id
         bill = by_id["bill_processing"]
-        assert "misfire_grace_time" not in bill
+        assert bill["misfire_grace_time"] is None
+        assert bill["coalesce"] is True
+        assert bill["max_instances"] == 1
+        catchup = by_id["bill_processing_catchup"]
+        assert catchup["max_instances"] == 1
+
+    def test_bill_catchup_runs_about_three_minutes_after_boot(self, monkeypatch):
+        from datetime import datetime, timedelta
+
+        from app.config import TIMEZONE
+        from app.scheduler import register_jobs
+        from app.tasks import process_due_bills
+
+        monkeypatch.setattr("app.config.SHARES_CATCHUP_ON_STARTUP", False)
+        recorded: list[tuple] = []
+
+        class _Recorder:
+            def add_job(self, func, trigger, **kwargs):
+                recorded.append((func, trigger, kwargs))
+
+        before = datetime.now(TIMEZONE)
+        register_jobs(_Recorder())
+        after = datetime.now(TIMEZONE)
+        by_id = {
+            kwargs["id"]: (func, trigger, kwargs) for func, trigger, kwargs in recorded
+        }
+        func, trigger, kwargs = by_id["bill_processing_catchup"]
+        assert func is process_due_bills
+        assert kwargs["max_instances"] == 1
+        run_at = trigger.run_date
+        earliest = before + timedelta(minutes=3) - timedelta(seconds=2)
+        latest = after + timedelta(minutes=3) + timedelta(seconds=2)
+        assert earliest <= run_at <= latest
+        cron_func, _cron_trigger, cron_kwargs = by_id["bill_processing"]
+        assert cron_func is process_due_bills
+        assert cron_kwargs["misfire_grace_time"] is None
+        assert cron_kwargs["coalesce"] is True
+        assert cron_kwargs["max_instances"] == 1
+        assert "share_market_data_catchup" not in by_id
 
 
 class TestOperatorScript:

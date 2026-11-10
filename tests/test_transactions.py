@@ -1,6 +1,6 @@
 from decimal import Decimal
 
-from app.models import Budget, Transaction
+from app.models import Budget, Category, Transaction
 from app.routes.transactions import PAGE_SIZE
 
 
@@ -812,3 +812,438 @@ class TestFundTransfer:
         )
         txns = db_session.query(Transaction).all()
         assert all(t.category_id == transfer_category.id for t in txns)
+
+
+class TestRecordedPaymentLock:
+    def _payment(self, db, sample_category, sample_sinking_funds, monkeypatch):
+        from datetime import date
+
+        from app.models import RecurringBill
+        from app.services.recurring_payments import pay_bills_fund
+
+        monkeypatch.setattr(
+            "app.services.recurring_payments._today", lambda: date(2026, 11, 3)
+        )
+
+        fund = sample_sinking_funds[0]
+        fund.current_balance = 200
+        other = sample_sinking_funds[1]
+        bill = RecurringBill(
+            name="Power",
+            amount=40,
+            debtor_provider="Grid",
+            start_date="2026-01-01",
+            frequency="monthly",
+            category_id=sample_category.id,
+            next_due_date="2026-11-03",
+            paid_from="bills_fund",
+            bill_type="fixed",
+        )
+        other_bill = RecurringBill(
+            name="Water",
+            amount=10,
+            debtor_provider="City",
+            start_date="2026-01-01",
+            frequency="monthly",
+            category_id=sample_category.id,
+            next_due_date="2026-12-01",
+            paid_from="bills_fund",
+        )
+        groceries = Category(
+            name="Groceries", type="expense", color="#22C55E", is_budget_category=True
+        )
+        db.add_all([bill, other_bill, groceries])
+        db.flush()
+        budget = Budget(
+            category_id=groceries.id,
+            month=11,
+            year=2026,
+            allocated_amount=100,
+            spent_amount=0,
+            fund_balance=0,
+        )
+        db.add(budget)
+        db.commit()
+        txn = pay_bills_fund(db, bill, Decimal(40), "2026-11-03")
+        db.commit()
+        db.refresh(txn)
+        return {
+            "txn": txn,
+            "bill": bill,
+            "other_bill": other_bill,
+            "fund": fund,
+            "other_fund": other,
+            "groceries": groceries,
+            "budget": budget,
+        }
+
+    def _snap(self, txn):
+        return (
+            str(txn.amount),
+            txn.type,
+            txn.transaction_type,
+            txn.category_id,
+            txn.sinking_fund_id,
+            txn.budget_id,
+            txn.recurring_bill_id,
+            txn.description,
+            txn.date,
+            txn.is_paid,
+            txn.occurrence_due_date,
+        )
+
+    def test_json_html_and_mcp_refuse_money_fields(
+        self,
+        authed_client,
+        db_session,
+        sample_category,
+        sample_sinking_funds,
+        monkeypatch,
+    ):
+        from app.mcp_server import update_transaction
+
+        built = self._payment(
+            db_session, sample_category, sample_sinking_funds, monkeypatch
+        )
+        txn = built["txn"]
+        changes = [
+            {"amount": "1.00"},
+            {"type": "income"},
+            {"transaction_type": "withdrawal"},
+            {"category_id": built["groceries"].id},
+            {"sinking_fund_id": built["other_fund"].id},
+            {"budget_id": built["budget"].id},
+            {"recurring_bill_id": built["other_bill"].id},
+        ]
+        for payload in changes:
+            before = self._snap(txn)
+            body = {"description": "should not stick", **payload}
+            response = authed_client.put(f"/api/transactions/{txn.id}", json=body)
+            assert response.status_code == 409, payload
+            db_session.refresh(txn)
+            assert self._snap(txn) == before
+            html = authed_client.post(
+                f"/transactions/{txn.id}",
+                data={
+                    "description": "should not stick",
+                    "date": "2026-11-04",
+                    **{key: str(value) for key, value in payload.items()},
+                },
+                headers={"x-csrftoken": authed_client.csrf_token},
+            )
+            assert html.status_code == 409, payload
+            db_session.refresh(txn)
+            assert self._snap(txn) == before
+            mcp_kwargs = {}
+            for key, value in payload.items():
+                mcp_kwargs[key] = float(value) if key == "amount" else value
+            mcp = update_transaction(txn.id, **mcp_kwargs)
+            assert isinstance(mcp, str)
+            assert "can't change" in mcp
+            db_session.refresh(txn)
+            assert self._snap(txn) == before
+
+    def test_description_and_date_still_save(
+        self,
+        authed_client,
+        db_session,
+        sample_category,
+        sample_sinking_funds,
+        monkeypatch,
+    ):
+        from app.mcp_server import update_transaction
+
+        built = self._payment(
+            db_session, sample_category, sample_sinking_funds, monkeypatch
+        )
+        txn = built["txn"]
+        occurrence = txn.occurrence_due_date
+        saved = authed_client.put(
+            f"/api/transactions/{txn.id}",
+            json={"description": "Noted", "date": "2026-11-04", "is_paid": False},
+        )
+        assert saved.status_code == 200
+        db_session.refresh(txn)
+        assert txn.description == "Noted"
+        assert txn.date == "2026-11-04"
+        assert txn.is_paid is False
+        assert txn.occurrence_due_date == occurrence
+        html = authed_client.post(
+            f"/transactions/{txn.id}",
+            data={"description": "From the form", "date": "2026-11-05"},
+            headers={"x-csrftoken": authed_client.csrf_token},
+        )
+        assert html.status_code == 200
+        db_session.refresh(txn)
+        assert txn.description == "From the form"
+        assert txn.date == "2026-11-05"
+        assert txn.occurrence_due_date == occurrence
+        mcp = update_transaction(txn.id, description="From MCP", date="2026-11-06")
+        assert isinstance(mcp, dict)
+        db_session.refresh(txn)
+        assert txn.description == "From MCP"
+        assert txn.occurrence_due_date == occurrence
+        edit = authed_client.get(f"/transactions/{txn.id}/edit")
+        assert 'name="amount"' not in edit.text
+        assert "Choosing a bill here" not in edit.text
+
+    def test_clawback_money_fields_are_locked(
+        self, authed_client, db_session, sample_category, monkeypatch
+    ):
+        from datetime import date
+
+        from app.models import (
+            HouseholdMonth,
+            IncomeAllocation,
+            RecurringBill,
+            SinkingFund,
+        )
+        from app.services.recurring_payments import confirm_payment
+
+        groceries = Category(
+            name="Groceries", type="expense", color="#22C55E", is_budget_category=True
+        )
+        transfer = Category(
+            name="Transfer", type="transfer", color="#888888", is_system=True
+        )
+        income = Category(name="Income", type="income", color="#00aa00", is_system=True)
+        db_session.add_all([groceries, transfer, income])
+        db_session.flush()
+        overflow = SinkingFund(name="Overflow", color="#0000ff", current_balance=50)
+        db_session.add(overflow)
+        db_session.flush()
+        budget = Budget(
+            category_id=groceries.id,
+            month=10,
+            year=2026,
+            allocated_amount=100,
+            spent_amount=0,
+            fund_balance=0,
+        )
+        db_session.add(budget)
+        db_session.add(
+            IncomeAllocation(
+                monthly_income_amount=1000,
+                monthly_budget_allocation=100,
+                bills_fund_allocation_type="fixed",
+                bills_fund_fixed_amount=0,
+                overflow_sinking_fund_id=overflow.id,
+            )
+        )
+        db_session.add(
+            HouseholdMonth(
+                year=2026,
+                month=10,
+                settlement_outcome="surplus",
+                settlement_fund_id=overflow.id,
+                settlement_amount=10,
+                settled_on="2026-11-03",
+            )
+        )
+        bill = RecurringBill(
+            name="HelloFresh",
+            amount=20,
+            debtor_provider="HelloFresh",
+            start_date="2026-01-01",
+            frequency="weekly",
+            category_id=groceries.id,
+            next_due_date="2026-10-26",
+            paid_from="budget",
+        )
+        db_session.add(bill)
+        db_session.commit()
+        monkeypatch.setattr(
+            "app.services.recurring_payments._today", lambda: date(2026, 11, 3)
+        )
+        result = confirm_payment(db_session, bill, Decimal(20), "2026-10-26")
+        db_session.commit()
+        claw = db_session.get(Transaction, result.taken_back["transaction_id"])
+        before = (
+            str(claw.amount),
+            claw.type,
+            claw.transaction_type,
+            claw.category_id,
+            claw.sinking_fund_id,
+            claw.budget_id,
+            claw.recurring_bill_id,
+            claw.description,
+        )
+        refused = authed_client.put(
+            f"/api/transactions/{claw.id}",
+            json={"amount": "1.00", "description": "nope"},
+        )
+        assert refused.status_code == 409
+        db_session.refresh(claw)
+        assert (
+            str(claw.amount),
+            claw.type,
+            claw.transaction_type,
+            claw.category_id,
+            claw.sinking_fund_id,
+            claw.budget_id,
+            claw.recurring_bill_id,
+            claw.description,
+        ) == before
+
+
+class TestOneOffBillsFundExpense:
+    def test_create_edit_and_delete_leave_the_schedule_alone(
+        self,
+        authed_client,
+        db_session,
+        sample_category,
+        sample_sinking_funds,
+        monkeypatch,
+    ):
+        from datetime import date
+
+        from app.models import RecurringBill
+        from app.tasks import process_due_bills
+
+        bills, savings = sample_sinking_funds
+        bills.current_balance = 500
+        other = Category(
+            name="Groceries", type="expense", color="#22C55E", is_budget_category=True
+        )
+        db_session.add(other)
+        db_session.flush()
+        budget = Budget(
+            category_id=other.id,
+            month=2,
+            year=2026,
+            allocated_amount=100,
+            spent_amount=0,
+            fund_balance=0,
+        )
+        due = RecurringBill(
+            name="Power",
+            amount=40,
+            debtor_provider="Grid",
+            start_date="2026-01-01",
+            frequency="monthly",
+            category_id=sample_category.id,
+            next_due_date="2026-02-01",
+            paid_from="bills_fund",
+            bill_type="fixed",
+        )
+        parked = RecurringBill(
+            name="Later",
+            amount=10,
+            debtor_provider="Later",
+            start_date="2026-01-01",
+            frequency="monthly",
+            category_id=sample_category.id,
+            next_due_date="2026-06-01",
+            paid_from="bills_fund",
+        )
+        db_session.add_all([budget, due, parked])
+        db_session.commit()
+        page = authed_client.get("/transactions")
+        assert "one-off" in page.text
+        assert "does not change any bill" in page.text
+
+        api = authed_client.post(
+            "/api/transactions",
+            json={
+                "date": "2026-02-01",
+                "amount": "10.00",
+                "category_id": sample_category.id,
+                "type": "expense",
+                "transaction_type": "withdrawal",
+                "sinking_fund_id": bills.id,
+                "description": "One-off API",
+            },
+        )
+        assert api.status_code == 201
+        api_id = api.json()["id"]
+        html = authed_client.post(
+            "/transactions",
+            data={
+                "date": "2026-02-01",
+                "description": "One-off form",
+                "amount": "15.00",
+                "category_id": str(sample_category.id),
+                "type": "expense",
+                "transaction_type": "withdrawal",
+                "sinking_fund_id": str(bills.id),
+                "month": "2",
+                "year": "2026",
+                "is_paid": "on",
+            },
+            headers={"x-csrftoken": authed_client.csrf_token},
+        )
+        assert html.status_code == 200
+        db_session.refresh(bills)
+        assert Decimal(str(bills.current_balance)) == Decimal("475.00")
+        rows = (
+            db_session.query(Transaction)
+            .filter(Transaction.recurring_bill_id.is_(None))
+            .all()
+        )
+        assert len(rows) == 2
+        for row in rows:
+            assert row.occurrence_due_date is None
+            assert row.adjustment_for_transaction_id is None
+        db_session.refresh(due)
+        db_session.refresh(parked)
+        assert due.next_due_date == "2026-02-01"
+        assert parked.next_due_date == "2026-06-01"
+
+        form_row = (
+            db_session.query(Transaction)
+            .filter(Transaction.description == "One-off form")
+            .one()
+        )
+        edit = authed_client.get(f"/transactions/{form_row.id}/edit")
+        assert 'name="amount"' in edit.text
+        assert "Choosing a bill here does not record a scheduled payment" in edit.text
+
+        steps = [
+            {"amount": "12.00"},
+            {"type": "income"},
+            {"transaction_type": "contribution"},
+            {"category_id": other.id},
+            {"sinking_fund_id": savings.id},
+            {"budget_id": budget.id},
+            {"description": "Edited", "date": "2026-02-02"},
+            {"is_paid": False},
+            {"recurring_bill_id": due.id},
+            {"recurring_bill_id": None},
+        ]
+        for payload in steps:
+            response = authed_client.put(f"/api/transactions/{api_id}", json=payload)
+            assert response.status_code == 200, payload
+            db_session.refresh(db_session.get(Transaction, api_id))
+            row = db_session.get(Transaction, api_id)
+            assert row.occurrence_due_date is None
+            assert row.adjustment_for_transaction_id is None
+            db_session.refresh(due)
+            db_session.refresh(parked)
+            assert due.next_due_date == "2026-02-01"
+            assert parked.next_due_date == "2026-06-01"
+
+        day = date(2026, 2, 1)
+        monkeypatch.setattr("app.tasks._today", lambda: day)
+        monkeypatch.setattr("app.services.recurring_payments._today", lambda: day)
+        process_due_bills(db=db_session)
+        db_session.rollback()
+        auto = (
+            db_session.query(Transaction)
+            .filter(Transaction.occurrence_due_date == "2026-02-01")
+            .one()
+        )
+        assert auto.recurring_bill_id == due.id
+        one_off = db_session.get(Transaction, api_id)
+        assert one_off is not None
+        assert one_off.occurrence_due_date is None
+        before_ids = {row.id for row in db_session.query(Transaction).all()}
+        deleted = authed_client.delete(f"/api/transactions/{api_id}")
+        assert deleted.status_code == 200
+        after_ids = {row.id for row in db_session.query(Transaction).all()}
+        assert before_ids - after_ids == {api_id}
+        assert auto.id in after_ids
+        db_session.refresh(due)
+        stepped = due.next_due_date
+        assert stepped == "2026-03-01"
+        db_session.refresh(due)
+        assert due.next_due_date == stepped

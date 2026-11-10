@@ -87,26 +87,42 @@
         <input type="text" name="description" value="{{ txn.description or '' }}" form="edit-form-{{ txn.id }}"
                class="gw-edit-input">
     </td>
+    {% set recorded = txn.occurrence_due_date or txn.adjustment_for_transaction_id %}
     <td>
+        {% if recorded %}
+        <span>{{ "%.2f"|format(txn.amount) }}</span>
+        {% else %}
         <input type="number" name="amount" value="{{ "%.2f"|format(txn.amount) }}" step="0.01" min="0.01"
                form="edit-form-{{ txn.id }}"
                class="gw-edit-input" style="text-align: right;">
+        {% endif %}
     </td>
     <td>
+        {% if recorded %}
+        <span>{{ txn.category.name if txn.category else "" }}</span>
+        {% else %}
         <select name="category_id" form="edit-form-{{ txn.id }}" class="gw-edit-input">
             {% for cat in categories %}
             <option value="{{ cat.id }}" {{ 'selected' if txn.category_id == cat.id }}>{{ cat.name }}</option>
             {% endfor %}
         </select>
+        {% endif %}
     </td>
     <td>
+        {% if recorded %}
+        <span>{{ transaction_type_labels.get(txn.transaction_type, txn.transaction_type) }}</span>
+        {% else %}
         <select name="transaction_type" form="edit-form-{{ txn.id }}" class="gw-edit-input">
             {% for val, label in transaction_type_labels.items() %}
             <option value="{{ val }}" {{ 'selected' if txn.transaction_type == val }}>{{ label }}</option>
             {% endfor %}
         </select>
+        {% endif %}
     </td>
     <td>
+        {% if recorded %}
+        <span>{{ txn.sinking_fund.name if txn.sinking_fund else "None" }}</span>
+        {% else %}
         <select name="sinking_fund_id" form="edit-form-{{ txn.id }}" class="gw-edit-input">
             <option value="">None</option>
             {% for sf in sinking_funds %}
@@ -119,12 +135,18 @@
             <option value="{{ rb.id }}" {{ 'selected' if txn.recurring_bill_id == rb.id }}>{{ rb.name }}</option>
             {% endfor %}
         </select>
+        <p class="gw-text-muted" style="font-size: 0.75rem; margin-top: 4px;">Choosing a bill here does not record a scheduled payment. Pay, Confirm, or automatic payment does.</p>
+        {% endif %}
     </td>
     <td>
+        {% if recorded %}
+        <span>{{ txn.type }}</span>
+        {% else %}
         <select name="type" form="edit-form-{{ txn.id }}" class="gw-edit-input">
             <option value="income" {{ 'selected' if txn.type == 'income' }}>Income</option>
             <option value="expense" {{ 'selected' if txn.type == 'expense' }}>Expense</option>
         </select>
+        {% endif %}
     </td>
     <td>
         <form id="edit-form-{{ txn.id }}" hx-post="/transactions/{{ txn.id }}" hx-target="#txn-row-{{ txn.id }}" hx-swap="outerHTML" style="display: inline;">
@@ -182,6 +204,7 @@
     <!-- Add Sinking Fund Transaction -->
     <details class="gw-details gw-section gw-add-form">
         <summary>Add Sinking Fund Transaction</summary>
+        <p class="gw-text-muted" style="margin-top: 8px;">An expense from the Bills fund with no bill is a one-off. It does not change any bill on the Bills page.</p>
         <form hx-post="/transactions" hx-target="#transactions-table-body" hx-swap="innerHTML"
               hx-on::after-request="if(!event.detail.successful){ document.getElementById('transactions-message').innerHTML=event.detail.xhr.responseText; }"
               autocomplete="off" style="margin-top: 16px;">

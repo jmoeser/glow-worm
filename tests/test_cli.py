@@ -1066,3 +1066,52 @@ class TestBillsDueConfirmSkip:
         body = json.loads(route.calls[0].request.content)
         assert body["paid_from"] == "sinking_fund"
         assert body["paid_from_fund_id"] == 7
+
+
+class TestTxAddDoesNotSettle:
+    def test_help_says_bill_id_is_not_a_scheduled_payment(self):
+        result = runner.invoke(app, ["tx", "add", "--help"])
+        assert result.exit_code == 0
+        text = result.output
+        assert "--bill-id" in text
+        assert "record a scheduled occurrence" in text
+        assert "omits --bill-id" in text
+
+    def test_payload_has_no_occurrence_field(self, mock_config):
+        created = {
+            "id": 9,
+            "date": "2026-02-01",
+            "amount": "20.00",
+            "description": "Bank",
+            "type": "expense",
+            "transaction_type": "regular",
+        }
+        with respx.mock:
+            route = respx.post(f"{SERVER_URL}/api/transactions").mock(
+                return_value=httpx.Response(201, json=created)
+            )
+            result = runner.invoke(
+                app,
+                [
+                    "tx",
+                    "add",
+                    "--amount",
+                    "20",
+                    "--category-id",
+                    "1",
+                    "--type",
+                    "expense",
+                    "--fund-id",
+                    "3",
+                    "--bill-id",
+                    "8",
+                    "--date",
+                    "2026-02-01",
+                ],
+            )
+        assert result.exit_code == 0
+        body = json.loads(route.calls[0].request.content)
+        assert "occurrence_due_date" not in body
+        assert "adjustment_for_transaction_id" not in body
+        assert body["recurring_bill_id"] == 8
+        assert body["sinking_fund_id"] == 3

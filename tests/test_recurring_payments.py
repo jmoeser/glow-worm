@@ -497,6 +497,10 @@ class TestOverflowTakeBack:
         bill = _bill(db_session, household)
         result = confirm_payment(db_session, bill, Decimal(90), "2026-10-26")
         db_session.commit()
+        # Legacy take-back: no link, so deleting the payment leaves it.
+        clawback = db_session.get(Transaction, result.taken_back["transaction_id"])
+        clawback.adjustment_for_transaction_id = None
+        db_session.commit()
         deleted = authed_client.delete(f"/api/transactions/{result.transaction.id}")
         assert deleted.status_code == 200
         db_session.refresh(household["october"])
@@ -920,3 +924,525 @@ class TestApiShapes:
         assert response.json()["code"] == "wrong_source"
         assert "Groceries" in response.json()["detail"]
         assert "Confirm it instead" in response.json()["detail"]
+
+
+class TestOccurrenceTransitions:
+    """Acceptance coverage for the shared occurrence transition."""
+
+    def _fixed(self, db, household, **kwargs):
+        values = {
+            "paid_from": "bills_fund",
+            "category_id": household["bills_cat"].id,
+            "bill_type": "fixed",
+            "frequency": "monthly",
+            "amount": Decimal("40.00"),
+            "next_due_date": "2026-11-03",
+            "name": "Power",
+        }
+        values.update(kwargs)
+        return _bill(db, household, **values)
+
+    def _patch_both(self, monkeypatch, day):
+        monkeypatch.setattr("app.tasks._today", lambda: day)
+        monkeypatch.setattr("app.services.recurring_payments._today", lambda: day)
+
+    def test_pay_between_load_and_compare_and_set(
+        self, db_session, household, monkeypatch
+    ):
+        day = date(2026, 11, 3)
+        self._patch_both(monkeypatch, day)
+        bill = self._fixed(db_session, household)
+        start = Decimal(str(household["bills"].current_balance))
+
+        def hook(db, loaded):
+            pay_bills_fund(db, loaded, Decimal("40.00"), day.isoformat())
+            db.commit()
+
+        monkeypatch.setattr("app.tasks.auto_pay_before_cas", hook)
+        from app.tasks import process_due_bills
+
+        process_due_bills(db=db_session)
+        db_session.rollback()
+        rows = (
+            db_session.query(Transaction)
+            .filter(Transaction.recurring_bill_id == bill.id)
+            .all()
+        )
+        assert len(rows) == 1
+        assert rows[0].occurrence_due_date == "2026-11-03"
+        db_session.refresh(household["bills"])
+        assert Decimal(str(household["bills"].current_balance)) == start - Decimal(
+            "40.00"
+        )
+        db_session.refresh(bill)
+        assert bill.next_due_date == "2026-12-03"
+
+    def test_pay_then_auto_pay_inserts_nothing(
+        self, db_session, household, monkeypatch
+    ):
+        day = date(2026, 11, 3)
+        self._patch_both(monkeypatch, day)
+        bill = self._fixed(db_session, household)
+        pay_bills_fund(db_session, bill, Decimal("40.00"), day.isoformat())
+        db_session.commit()
+        from app.tasks import process_due_bills
+
+        process_due_bills(db=db_session)
+        db_session.rollback()
+        rows = (
+            db_session.query(Transaction)
+            .filter(Transaction.recurring_bill_id == bill.id)
+            .all()
+        )
+        assert len(rows) == 1
+
+    def test_two_confirms_of_one_variable_date_one_payment(
+        self, db_session, household, fixed_today
+    ):
+        bill = _bill(
+            db_session,
+            household,
+            bill_type="variable",
+            paid_from="budget",
+            next_due_date="2026-10-26",
+        )
+        confirm_payment(db_session, bill, Decimal(10), "2026-10-26")
+        db_session.commit()
+        with pytest.raises(PaymentConflict) as exc:
+            confirm_payment(db_session, bill, Decimal(10), "2026-10-26")
+        assert exc.value.code == "stale"
+        db_session.rollback()
+        assert (
+            db_session.query(Transaction)
+            .filter(Transaction.recurring_bill_id == bill.id)
+            .count()
+            == 1
+        )
+
+    def test_stale_html_edit_saves_nothing(
+        self, authed_client, db_session, household, fixed_today
+    ):
+        bill = self._fixed(db_session, household, amount=Decimal(40))
+        edit = authed_client.get(f"/bills/{bill.id}/edit")
+        assert 'name="next_due_date_was"' in edit.text
+        assert f'form="edit-form-{bill.id}"' in edit.text
+        assert bill.next_due_date in edit.text
+        paid = authed_client.post(
+            f"/api/bills/{bill.id}/pay",
+            json={"amount": "40.00", "date": "2026-11-03"},
+        )
+        assert paid.status_code == 200
+        db_session.refresh(bill)
+        stepped = bill.next_due_date
+        original_name = "Power"
+        stale = authed_client.post(
+            f"/bills/{bill.id}",
+            data={
+                "name": "Renamed",
+                "amount": "40.00",
+                "next_due_date": "2026-12-15",
+                "next_due_date_was": "2026-11-03",
+            },
+            headers={"x-csrftoken": authed_client.csrf_token},
+        )
+        assert stale.status_code == 409
+        db_session.refresh(bill)
+        assert bill.name == original_name
+        assert Decimal(str(bill.amount)) == Decimal("40.00")
+        assert bill.next_due_date == stepped
+        missing = authed_client.post(
+            f"/bills/{bill.id}",
+            data={"name": "Still no", "next_due_date": "2026-01-01", "amount": "9"},
+            headers={"x-csrftoken": authed_client.csrf_token},
+        )
+        assert missing.status_code == 400
+        db_session.refresh(bill)
+        assert bill.name == original_name
+        assert bill.next_due_date == stepped
+
+    def test_delete_payment_reverses_the_pair_and_leaves_the_cursor(
+        self, authed_client, db_session, household, fixed_today
+    ):
+        TestLateConfirm._swept_month(db_session, household, "surplus")
+        bill = _bill(db_session, household, next_due_date="2026-10-26")
+        result = confirm_payment(db_session, bill, Decimal(90), "2026-10-26")
+        db_session.commit()
+        db_session.refresh(bill)
+        stepped = bill.next_due_date
+        claw_id = result.taken_back["transaction_id"]
+        deleted = authed_client.delete(f"/api/transactions/{result.transaction.id}")
+        assert deleted.status_code == 200
+        db_session.refresh(household["october"])
+        db_session.refresh(household["overflow"])
+        assert Decimal(str(household["october"].spent_amount)) == Decimal("0.00")
+        assert Decimal(str(household["overflow"].current_balance)) == Decimal("10.00")
+        assert db_session.get(Transaction, result.transaction.id) is None
+        assert db_session.get(Transaction, claw_id) is None
+        db_session.refresh(bill)
+        assert bill.next_due_date == stepped
+        with pytest.raises(PaymentConflict) as stale:
+            confirm_payment(db_session, bill, Decimal(10), "2026-10-26")
+        assert stale.value.code == "stale"
+        db_session.rollback()
+        again = confirm_payment(db_session, bill, Decimal(12), stepped)
+        db_session.commit()
+        assert again.transaction.occurrence_due_date == stepped
+
+    def test_delete_clawback_reverses_the_same_pair(
+        self, authed_client, db_session, household, fixed_today
+    ):
+        TestLateConfirm._swept_month(db_session, household, "surplus")
+        bill = _bill(db_session, household, next_due_date="2026-10-26")
+        result = confirm_payment(db_session, bill, Decimal(90), "2026-10-26")
+        db_session.commit()
+        db_session.refresh(bill)
+        stepped = bill.next_due_date
+        deleted = authed_client.delete(
+            f"/api/transactions/{result.taken_back['transaction_id']}"
+        )
+        assert deleted.status_code == 200
+        db_session.refresh(household["october"])
+        db_session.refresh(household["overflow"])
+        assert Decimal(str(household["october"].spent_amount)) == Decimal("0.00")
+        assert Decimal(str(household["overflow"].current_balance)) == Decimal("10.00")
+        assert db_session.get(Transaction, result.transaction.id) is None
+        assert db_session.get(Transaction, result.taken_back["transaction_id"]) is None
+        db_session.refresh(bill)
+        assert bill.next_due_date == stepped
+
+    def test_missing_partner_reverses_the_row_in_hand(
+        self, authed_client, db_session, household, fixed_today
+    ):
+        TestLateConfirm._swept_month(db_session, household, "surplus")
+        bill = _bill(db_session, household)
+        result = confirm_payment(db_session, bill, Decimal(90), "2026-10-26")
+        db_session.commit()
+        claw_id = result.taken_back["transaction_id"]
+        db_session.delete(result.transaction)
+        db_session.commit()
+        deleted = authed_client.delete(f"/api/transactions/{claw_id}")
+        assert deleted.status_code == 200
+        assert db_session.get(Transaction, claw_id) is None
+        db_session.refresh(household["overflow"])
+        assert Decimal(str(household["overflow"].current_balance)) == Decimal("10.00")
+
+    def test_cursor_edited_back_onto_a_paid_date_does_not_stick(
+        self, authed_client, db_session, household, fixed_today
+    ):
+        bill = self._fixed(db_session, household)
+        pay_bills_fund(db_session, bill, Decimal(40), "2026-11-03")
+        db_session.commit()
+        db_session.refresh(bill)
+        moved = authed_client.put(
+            f"/api/bills/{bill.id}",
+            json={
+                "next_due_date": "2026-11-03",
+                "expected_next_due_date": bill.next_due_date,
+            },
+        )
+        assert moved.status_code == 200
+        db_session.refresh(bill)
+        assert bill.next_due_date == "2026-11-03"
+        again = authed_client.post(
+            f"/api/bills/{bill.id}/pay",
+            json={"amount": "40.00", "date": "2026-11-04"},
+        )
+        assert again.status_code == 409
+        db_session.rollback()
+        db_session.refresh(bill)
+        assert bill.next_due_date == "2026-11-03"
+        assert (
+            db_session.query(Transaction)
+            .filter(Transaction.recurring_bill_id == bill.id)
+            .count()
+            == 1
+        )
+
+    def test_manual_pay_past_end_date_is_ended(
+        self, db_session, household, fixed_today
+    ):
+        bill = self._fixed(db_session, household, end_date="2026-11-01")
+        with pytest.raises(PaymentConflict) as exc:
+            pay_bills_fund(db_session, bill, Decimal(40), "2026-11-03")
+        assert exc.value.code == "ended"
+        db_session.rollback()
+        db_session.refresh(bill)
+        assert bill.next_due_date == "2026-11-03"
+        assert (
+            db_session.query(Transaction)
+            .filter(Transaction.recurring_bill_id == bill.id)
+            .count()
+            == 0
+        )
+
+    def test_pay_on_end_date_can_step_past_the_end(
+        self, db_session, household, fixed_today
+    ):
+        bill = self._fixed(db_session, household, end_date="2026-11-03")
+        txn = pay_bills_fund(db_session, bill, Decimal(40), "2026-11-03")
+        db_session.commit()
+        assert txn.occurrence_due_date == "2026-11-03"
+        db_session.refresh(bill)
+        assert bill.next_due_date == "2026-12-03"
+
+    def test_auto_confirm_and_skip_after_end_write_nothing(
+        self, db_session, household, monkeypatch
+    ):
+        day = date(2026, 11, 3)
+        self._patch_both(monkeypatch, day)
+        auto = self._fixed(
+            db_session, household, name="Ended auto", end_date="2026-11-01"
+        )
+        variable = _bill(
+            db_session,
+            household,
+            name="Ended variable",
+            bill_type="variable",
+            paid_from="bills_fund",
+            category_id=household["bills_cat"].id,
+            next_due_date="2026-11-03",
+            end_date="2026-11-01",
+        )
+        budget = _bill(
+            db_session,
+            household,
+            name="Ended budget",
+            next_due_date="2026-10-26",
+            end_date="2026-10-01",
+        )
+        from app.tasks import process_due_bills
+
+        process_due_bills(db=db_session)
+        with pytest.raises(PaymentConflict) as confirmed:
+            confirm_payment(db_session, budget, Decimal(10), "2026-10-26")
+        assert confirmed.value.code == "ended"
+        with pytest.raises(PaymentConflict) as skipped:
+            skip_payment(db_session, variable, "2026-11-03")
+        assert skipped.value.code == "ended"
+        db_session.rollback()
+        for row in (auto, variable, budget):
+            db_session.refresh(row)
+        assert auto.next_due_date == "2026-11-03"
+        assert variable.next_due_date == "2026-11-03"
+        assert budget.next_due_date == "2026-10-26"
+        assert db_session.query(Transaction).count() == 0
+
+    def test_json_and_mcp_require_the_date_pair(
+        self, authed_client, db_session, household
+    ):
+        from app.mcp_server import update_bill
+
+        bill = self._fixed(db_session, household)
+        before = (bill.name, bill.amount, bill.next_due_date)
+        refused = authed_client.put(
+            f"/api/bills/{bill.id}",
+            json={"next_due_date": "2026-12-01", "name": "Nope"},
+        )
+        assert refused.status_code == 400
+        db_session.refresh(bill)
+        assert (bill.name, bill.amount, bill.next_due_date) == before
+        mcp = update_bill(bill.id, next_due_date="2026-12-01", name="Nope")
+        assert isinstance(mcp, str)
+        db_session.refresh(bill)
+        assert (bill.name, bill.amount, bill.next_due_date) == before
+        saved = authed_client.put(
+            f"/api/bills/{bill.id}",
+            json={"name": "Kept cursor"},
+        )
+        assert saved.status_code == 200
+        db_session.refresh(bill)
+        assert bill.name == "Kept cursor"
+        assert bill.next_due_date == before[2]
+        renamed = update_bill(bill.id, name="From MCP")
+        assert isinstance(renamed, dict)
+        assert renamed["name"] == "From MCP"
+        db_session.refresh(bill)
+        assert bill.next_due_date == before[2]
+
+    def test_html_rejects_an_impossible_date(
+        self, authed_client, db_session, household
+    ):
+        created = authed_client.post(
+            "/bills",
+            data={
+                "name": "Bad day",
+                "debtor_provider": "X",
+                "amount": "10",
+                "frequency": "monthly",
+                "start_date": "2026-02-31",
+                "next_due_date": "2026-03-01",
+            },
+            headers={"x-csrftoken": authed_client.csrf_token},
+        )
+        assert created.status_code == 400
+        assert (
+            db_session.query(RecurringBill)
+            .filter(RecurringBill.name == "Bad day")
+            .count()
+            == 0
+        )
+        bill = self._fixed(db_session, household)
+        edited = authed_client.post(
+            f"/bills/{bill.id}",
+            data={
+                "name": "Also bad",
+                "next_due_date": "2026-02-31",
+                "next_due_date_was": bill.next_due_date,
+            },
+            headers={"x-csrftoken": authed_client.csrf_token},
+        )
+        assert edited.status_code == 400
+        db_session.refresh(bill)
+        assert bill.name == "Power"
+        assert bill.next_due_date == "2026-11-03"
+
+    def test_same_due_date_save_succeeds(self, authed_client, db_session, household):
+        bill = self._fixed(db_session, household)
+        saved = authed_client.post(
+            f"/bills/{bill.id}",
+            data={
+                "name": "Same day",
+                "next_due_date": "2026-11-03",
+                "next_due_date_was": "2026-11-03",
+            },
+            headers={"x-csrftoken": authed_client.csrf_token},
+        )
+        assert saved.status_code == 200
+        db_session.refresh(bill)
+        assert bill.name == "Same day"
+        assert bill.next_due_date == "2026-11-03"
+
+
+class TestLateConfirm:
+    @staticmethod
+    def _swept_month(db, household, outcome, *, fund=None, deleted=False):
+        target = household["overflow"] if fund is None else fund
+        if deleted:
+            target.is_deleted = True
+        _set_overflow(db, household)
+        _income_in(db, household, "2026-11-01")
+        if outcome == "missing":
+            return
+        row = HouseholdMonth(
+            year=2026,
+            month=10,
+            settlement_outcome=outcome,
+            settlement_fund_id=None
+            if outcome in ("no_overflow", "unresolved")
+            else target.id,
+            settlement_amount=0 if outcome == "zero" else 20,
+            settled_on="2026-11-01",
+        )
+        db.add(row)
+        db.commit()
+
+    def _confirm(self, db, household, amount="15.00"):
+        from app.models import Contract
+
+        contract = Contract(
+            name="Box",
+            provider="HelloFresh",
+            service="other",
+            bill_delivery="email",
+            ended_on="2026-01-01",
+        )
+        db.add(contract)
+        db.commit()
+        bill = _bill(
+            db,
+            household,
+            next_due_date="2026-10-26",
+            contract_id=contract.id,
+            name="HelloFresh",
+        )
+        # Today's overflow setting is a different fund from the stored one.
+        alloc = db.query(IncomeAllocation).one()
+        alloc.overflow_sinking_fund_id = household["kids"].id
+        db.commit()
+        result = confirm_payment(db, bill, Decimal(amount), "2026-10-26")
+        db.commit()
+        return bill, result, contract
+
+    @pytest.mark.parametrize("outcome", ["surplus", "shortfall", "zero"])
+    def test_live_stored_fund_is_debited(
+        self, db_session, household, fixed_today, outcome
+    ):
+        self._swept_month(db_session, household, outcome)
+        before_kids = Decimal(str(household["kids"].current_balance))
+        _bill_row, result, contract = self._confirm(db_session, household)
+        txn = result.transaction
+        assert txn.date == "2026-10-26"
+        assert txn.contract_id == contract.id
+        assert txn.occurrence_due_date == "2026-10-26"
+        assert result.taken_back is not None
+        claw = db_session.get(Transaction, result.taken_back["transaction_id"])
+        assert claw.date == "2026-11-03"
+        assert Decimal(str(claw.amount)) == Decimal("15.00")
+        assert claw.sinking_fund_id == household["overflow"].id
+        assert claw.contract_id is None
+        assert claw.occurrence_due_date is None
+        assert claw.adjustment_for_transaction_id == txn.id
+        assert claw.description == "Taken back for HelloFresh (October 2026 Groceries)"
+        db_session.refresh(household["kids"])
+        assert Decimal(str(household["kids"].current_balance)) == before_kids
+
+    @pytest.mark.parametrize(
+        "outcome", ["no_overflow", "unresolved", "missing", "deleted"]
+    )
+    def test_those_months_do_not_debit(
+        self, db_session, household, fixed_today, outcome
+    ):
+        if outcome == "deleted":
+            self._swept_month(db_session, household, "surplus", deleted=True)
+        else:
+            self._swept_month(db_session, household, outcome)
+        _bill_row, result, _contract = self._confirm(db_session, household)
+        assert result.transaction.occurrence_due_date == "2026-10-26"
+        assert result.taken_back is None
+        assert (
+            db_session.query(Transaction)
+            .filter(Transaction.description.like("Taken back%"))
+            .count()
+            == 0
+        )
+
+    def test_bills_fund_auto_pay_does_not_claw_back(
+        self, db_session, household, monkeypatch
+    ):
+        day = date(2026, 11, 3)
+        monkeypatch.setattr("app.tasks._today", lambda: day)
+        monkeypatch.setattr("app.services.recurring_payments._today", lambda: day)
+        self._swept_month(db_session, household, "surplus")
+        # The swept month is October. Point a fixed bill at that month too.
+        bill = _bill(
+            db_session,
+            household,
+            name="Rates",
+            paid_from="bills_fund",
+            category_id=household["bills_cat"].id,
+            bill_type="fixed",
+            frequency="monthly",
+            amount=Decimal(25),
+            next_due_date="2026-10-01",
+        )
+        before = Decimal(str(household["overflow"].current_balance))
+        from app.tasks import process_due_bills
+
+        process_due_bills(db=db_session)
+        db_session.rollback()
+        rows = (
+            db_session.query(Transaction)
+            .filter(Transaction.recurring_bill_id == bill.id)
+            .all()
+        )
+        assert len(rows) == 1
+        assert rows[0].description.startswith("Auto-payment:")
+        assert (
+            db_session.query(Transaction)
+            .filter(Transaction.description.like("Taken back%"))
+            .count()
+            == 0
+        )
+        db_session.refresh(household["overflow"])
+        assert Decimal(str(household["overflow"].current_balance)) == before
+        assert household["overflow"].name != "Bills"

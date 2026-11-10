@@ -1653,3 +1653,288 @@ class TestRecurringPaymentRules:
         overdue = [bill for bill in caught[0]["bills"] if bill.get("overdue")]
         assert [bill["name"] for bill in overdue] == ["Water"]
         assert caught[0]["total_out"] == plain[0]["total_out"] + Decimal("30.00")
+
+
+class TestOccurrenceAutoPay:
+    def _patch(self, monkeypatch, holder):
+        monkeypatch.setattr("app.tasks._today", lambda: holder["day"])
+        monkeypatch.setattr(
+            "app.services.recurring_payments._today", lambda: holder["day"]
+        )
+
+    def _bill(self, db, bills_setup, **kwargs):
+        values = {
+            "name": "Power",
+            "amount": 100,
+            "debtor_provider": "Grid",
+            "start_date": "2026-01-01",
+            "frequency": "monthly",
+            "category_id": bills_setup["expense_cat"].id,
+            "next_due_date": "2026-02-01",
+            "paid_from": "bills_fund",
+            "bill_type": "fixed",
+        }
+        values.update(kwargs)
+        bill = RecurringBill(**values)
+        db.add(bill)
+        db.commit()
+        db.refresh(bill)
+        return bill
+
+    def test_twice_the_same_day_is_one_payment(
+        self, db_session, bills_setup, monkeypatch
+    ):
+        holder = {"day": date(2026, 2, 1)}
+        self._patch(monkeypatch, holder)
+        start = Decimal(str(bills_setup["bills_fund"].current_balance))
+        process_due_bills(db=db_session)
+        process_due_bills(db=db_session)
+        db_session.rollback()
+        rows = (
+            db_session.query(Transaction)
+            .filter(Transaction.recurring_bill_id == bills_setup["bill_due"].id)
+            .all()
+        )
+        assert len(rows) == 1
+        assert rows[0].occurrence_due_date == "2026-02-01"
+        db_session.refresh(bills_setup["bills_fund"])
+        assert Decimal(
+            str(bills_setup["bills_fund"].current_balance)
+        ) == start - Decimal(2400)
+        db_session.refresh(bills_setup["bill_due"])
+        assert bills_setup["bill_due"].next_due_date == "2026-03-01"
+
+    def test_two_periods_overdue_pays_one_per_day(
+        self, db_session, bills_setup, monkeypatch
+    ):
+        holder = {"day": date(2026, 4, 1)}
+        self._patch(monkeypatch, holder)
+        bill = self._bill(
+            db_session, bills_setup, next_due_date="2026-02-01", amount=30
+        )
+        process_due_bills(db=db_session)
+        process_due_bills(db=db_session)
+        db_session.rollback()
+        rows = (
+            db_session.query(Transaction)
+            .filter(Transaction.recurring_bill_id == bill.id)
+            .all()
+        )
+        assert len(rows) == 1
+        assert rows[0].occurrence_due_date == "2026-02-01"
+        db_session.refresh(bill)
+        assert bill.next_due_date == "2026-03-01"
+        holder["day"] = date(2026, 4, 2)
+        process_due_bills(db=db_session)
+        db_session.rollback()
+        rows = (
+            db_session.query(Transaction)
+            .filter(Transaction.recurring_bill_id == bill.id)
+            .order_by(Transaction.id)
+            .all()
+        )
+        assert [row.occurrence_due_date for row in rows] == ["2026-02-01", "2026-03-01"]
+        db_session.refresh(bill)
+        assert bill.next_due_date == "2026-04-01"
+
+    def test_hand_entered_row_does_not_stop_auto_pay(
+        self, authed_client, db_session, bills_setup, monkeypatch
+    ):
+        holder = {"day": date(2026, 2, 1)}
+        self._patch(monkeypatch, holder)
+        bill = bills_setup["bill_due"]
+        other = Category(name="Other", type="expense", color="#123456")
+        db_session.add(other)
+        db_session.commit()
+        created = authed_client.post(
+            "/api/transactions",
+            json={
+                "date": "2026-02-01",
+                "amount": "15.00",
+                "category_id": bills_setup["expense_cat"].id,
+                "type": "expense",
+                "transaction_type": "regular",
+                "sinking_fund_id": bills_setup["bills_fund"].id,
+                "recurring_bill_id": bill.id,
+                "description": "Bank debit",
+            },
+        )
+        assert created.status_code == 201
+        hand_id = created.json()["id"]
+        assert created.json()["occurrence_due_date"] is None
+        db_session.refresh(bill)
+        assert bill.next_due_date == "2026-02-01"
+        process_due_bills(db=db_session)
+        db_session.rollback()
+        auto = (
+            db_session.query(Transaction)
+            .filter(
+                Transaction.recurring_bill_id == bill.id,
+                Transaction.occurrence_due_date.isnot(None),
+            )
+            .one()
+        )
+        assert auto.occurrence_due_date == "2026-02-01"
+        edited = authed_client.put(
+            f"/api/transactions/{hand_id}",
+            json={
+                "amount": "18.00",
+                "sinking_fund_id": bills_setup["bills_fund"].id,
+                "recurring_bill_id": bill.id,
+                "description": "Still a note",
+            },
+        )
+        assert edited.status_code == 200
+        db_session.refresh(db_session.get(Transaction, hand_id))
+        hand = db_session.get(Transaction, hand_id)
+        assert hand.occurrence_due_date is None
+        assert Decimal(str(hand.amount)) == Decimal("18.00")
+        assert hand.recurring_bill_id == bill.id
+        assert hand.sinking_fund_id == bills_setup["bills_fund"].id
+
+    def test_startup_and_cron_the_same_day_pay_once(
+        self, db_session, bills_setup, monkeypatch
+    ):
+        holder = {"day": date(2026, 2, 1)}
+        self._patch(monkeypatch, holder)
+        process_due_bills(db=db_session)
+        process_due_bills(db=db_session)
+        db_session.rollback()
+        assert (
+            db_session.query(Transaction)
+            .filter(Transaction.recurring_bill_id == bills_setup["bill_due"].id)
+            .count()
+            == 1
+        )
+
+    def test_garbage_cursor_fails_one_bill(self, db_session, bills_setup, monkeypatch):
+        holder = {"day": date(2026, 2, 1)}
+        self._patch(monkeypatch, holder)
+        bad = self._bill(
+            db_session, bills_setup, name="Bad", next_due_date="not-a-date"
+        )
+        good = self._bill(
+            db_session, bills_setup, name="Good", next_due_date="2026-02-01", amount=80
+        )
+        start = Decimal(5000)
+        # The fixture bill_due is also due and will be paid. Use a fresh fund balance read.
+        process_due_bills(db=db_session)
+        db_session.rollback()
+        db_session.refresh(bad)
+        assert bad.next_due_date == "not-a-date"
+        good_rows = (
+            db_session.query(Transaction)
+            .filter(Transaction.recurring_bill_id == good.id)
+            .all()
+        )
+        assert len(good_rows) == 1
+        assert good_rows[0].occurrence_due_date == "2026-02-01"
+        db_session.refresh(bills_setup["bills_fund"])
+        # 2400 fixture bill + 80 good bill. Bad bill moved nothing.
+        assert Decimal(
+            str(bills_setup["bills_fund"].current_balance)
+        ) == start - Decimal(2480)
+
+    def test_insert_failure_keeps_the_earlier_bill(
+        self, db_session, bills_setup, monkeypatch
+    ):
+        holder = {"day": date(2026, 2, 1)}
+        self._patch(monkeypatch, holder)
+        first = self._bill(
+            db_session, bills_setup, name="First", next_due_date="2026-02-01", amount=10
+        )
+        second = self._bill(
+            db_session,
+            bills_setup,
+            name="Second",
+            next_due_date="2026-02-01",
+            amount=20,
+        )
+        # Silence the fixture bill so the balance assertion is about these two.
+        bills_setup["bill_due"].next_due_date = "2026-05-01"
+        db_session.commit()
+
+        def boom(bill):
+            if bill.id == second.id:
+                raise RuntimeError("insert failed")
+
+        monkeypatch.setattr("app.services.recurring_payments.payment_insert_hook", boom)
+        process_due_bills(db=db_session)
+        db_session.rollback()
+        first_rows = (
+            db_session.query(Transaction)
+            .filter(Transaction.recurring_bill_id == first.id)
+            .all()
+        )
+        assert len(first_rows) == 1
+        assert (
+            db_session.query(Transaction)
+            .filter(Transaction.recurring_bill_id == second.id)
+            .count()
+            == 0
+        )
+        db_session.refresh(bills_setup["bills_fund"])
+        assert Decimal(str(bills_setup["bills_fund"].current_balance)) == Decimal(4990)
+        db_session.refresh(second)
+        assert second.next_due_date == "2026-02-01"
+
+    def test_delete_auto_payment_then_manual_pay_same_day(
+        self, authed_client, db_session, bills_setup, monkeypatch
+    ):
+        holder = {"day": date(2026, 2, 1)}
+        self._patch(monkeypatch, holder)
+        bill = self._bill(
+            db_session, bills_setup, next_due_date="2026-02-01", amount=50, name="Phone"
+        )
+        bills_setup["bill_due"].is_active = False
+        db_session.commit()
+        start = Decimal(str(bills_setup["bills_fund"].current_balance))
+        process_due_bills(db=db_session)
+        db_session.rollback()
+        auto = (
+            db_session.query(Transaction)
+            .filter(Transaction.recurring_bill_id == bill.id)
+            .one()
+        )
+        deleted = authed_client.delete(f"/api/transactions/{auto.id}")
+        assert deleted.status_code == 200
+        db_session.refresh(bills_setup["bills_fund"])
+        assert Decimal(str(bills_setup["bills_fund"].current_balance)) == start
+        db_session.refresh(bill)
+        assert bill.next_due_date == "2026-03-01"
+        process_due_bills(db=db_session)
+        db_session.rollback()
+        assert (
+            db_session.query(Transaction)
+            .filter(Transaction.recurring_bill_id == bill.id)
+            .count()
+            == 0
+        )
+        edited = authed_client.put(
+            f"/api/bills/{bill.id}",
+            json={
+                "next_due_date": "2026-02-01",
+                "expected_next_due_date": "2026-03-01",
+            },
+        )
+        assert edited.status_code == 200
+        paid = authed_client.post(
+            f"/api/bills/{bill.id}/pay",
+            json={"amount": "50.00", "date": "2026-02-01"},
+        )
+        assert paid.status_code == 200
+        assert paid.json()["transaction"]["occurrence_due_date"] == "2026-02-01"
+        process_due_bills(db=db_session)
+        db_session.rollback()
+        rows = (
+            db_session.query(Transaction)
+            .filter(Transaction.recurring_bill_id == bill.id)
+            .all()
+        )
+        assert len(rows) == 1
+        assert rows[0].description.startswith("Bill payment:")
+
+    def test_unknown_frequency_still_steps_thirty_days(self):
+        assert advance_due_date(date(2026, 1, 1), "no-such-frequency") == date(
+            2026, 1, 31
+        )

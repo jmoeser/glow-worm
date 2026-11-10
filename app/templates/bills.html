@@ -176,6 +176,7 @@
     <td>
         <input type="date" name="next_due_date" value="{{ bill.next_due_date }}" form="edit-form-{{ bill.id }}"
                class="gw-edit-input">
+        <input type="hidden" name="next_due_date_was" value="{{ bill.next_due_date }}" form="edit-form-{{ bill.id }}">
     </td>
     <td>
         <form id="edit-form-{{ bill.id }}" hx-post="/bills/{{ bill.id }}" hx-target="#bill-row-{{ bill.id }}" hx-swap="outerHTML" style="display: inline;">

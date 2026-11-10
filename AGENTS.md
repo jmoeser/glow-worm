@@ -71,7 +71,7 @@ Read the file before changing that area. Put new behavior there, not in this fil
 
 Invariants:
 
-- `app/services/transaction_balances.py` is the only place that applies a transaction to `SinkingFund.current_balance`, `Budget.fund_balance`, and `Budget.spent_amount`. HTML routes, the JSON API, MCP transaction tools, and the dashboard quick-expense form all use it. `type` `income` or `transfer` adds the amount to the linked fund; any other `type` subtracts. `is_paid` and `transaction_type` do not change the sinking-fund balance.
+- `app/services/transaction_balances.py` applies a transaction to `SinkingFund.current_balance`, `Budget.fund_balance`, and `Budget.spent_amount`. HTML routes, the JSON API, MCP transaction tools, and the dashboard quick-expense form all use it. Income allocation, the income page, and secondary-income distribution still assign `current_balance` directly. `type` `income` or `transfer` adds the amount to the linked fund; any other `type` subtracts. `is_paid` and `transaction_type` do not change the sinking-fund balance.
 - The Bills fund is not the overflow fund. Month-end surplus and shortfall use the configured overflow fund. Bills allocation stays a separate step, found by the fund name `Bills`.
 
 ## Git hooks (prek)

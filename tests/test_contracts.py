@@ -441,7 +441,15 @@ class TestBillContractLink:
         ).json()
         bill = _bill(db_session, sample_category.id, contract_id=active["id"])
 
-        kept = _post(authed_client, f"/bills/{bill.id}", {"name": "Power"})
+        kept = _post(
+            authed_client,
+            f"/bills/{bill.id}",
+            {
+                "name": "Power",
+                "next_due_date": "2026-06-01",
+                "next_due_date_was": "2026-06-01",
+            },
+        )
         assert kept.status_code == 200
         db_session.refresh(bill)
         assert bill.contract_id == active["id"]
@@ -449,7 +457,12 @@ class TestBillContractLink:
         cleared = _post(
             authed_client,
             f"/bills/{bill.id}",
-            {"name": "Power", "contract_id": ""},
+            {
+                "name": "Power",
+                "contract_id": "",
+                "next_due_date": "2026-06-01",
+                "next_due_date_was": "2026-06-01",
+            },
         )
         assert cleared.status_code == 200
         db_session.refresh(bill)
@@ -458,7 +471,11 @@ class TestBillContractLink:
         rejected = _post(
             authed_client,
             f"/bills/{bill.id}",
-            {"contract_id": str(ended["id"])},
+            {
+                "contract_id": str(ended["id"]),
+                "next_due_date": "2026-06-01",
+                "next_due_date_was": "2026-06-01",
+            },
         )
         assert rejected.status_code == 422
         db_session.refresh(bill)
@@ -469,7 +486,11 @@ class TestBillContractLink:
         resaved = _post(
             authed_client,
             f"/bills/{bill.id}",
-            {"contract_id": str(ended["id"])},
+            {
+                "contract_id": str(ended["id"]),
+                "next_due_date": "2026-06-01",
+                "next_due_date_was": "2026-06-01",
+            },
         )
         assert resaved.status_code == 200
         db_session.refresh(bill)

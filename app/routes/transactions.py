@@ -14,7 +14,11 @@ from app.middleware import get_current_user
 from app.models import Budget, Category, RecurringBill, SinkingFund, Transaction
 from app.schemas import TransactionCreate, TransactionResponse, TransactionUpdate
 from app.services.transaction_balances import (
+    RecordedPaymentLocked,
     apply_transaction_balance_effects,
+    assert_recorded_payment_unchanged,
+    delete_transaction_row,
+    is_recorded_bill_payment,
     replace_transaction_balance_effects,
 )
 from app.templating import templates
@@ -564,6 +568,8 @@ async def transactions_update(
     old_txn_type = txn.transaction_type
     old_budget_id = txn.budget_id
     old_amount = txn.amount
+    old_category_id = txn.category_id
+    old_bill_id = txn.recurring_bill_id
 
     form = await request.form()
 
@@ -619,6 +625,28 @@ async def transactions_update(
     if "is_paid" in form:
         txn.is_paid = form.get("is_paid") == "on" or form.get("is_paid") == "true"
 
+    if is_recorded_bill_payment(txn):
+        from app.services.money import money
+
+        money_changed = bool(raw_amount) and money(txn.amount) != money(old_amount)
+        locked_changed = (
+            money_changed
+            or txn.type != old_type
+            or txn.transaction_type != old_txn_type
+            or txn.category_id != old_category_id
+            or txn.sinking_fund_id != old_sf_id
+            or txn.budget_id != old_budget_id
+            or txn.recurring_bill_id != old_bill_id
+        )
+        if locked_changed:
+            db.rollback()
+            return HTMLResponse(
+                '<p class="text-red-600 text-sm">'
+                "This recorded payment can't change its amount, type, category, "
+                "fund, budget, or bill. Delete it and record it again.</p>",
+                status_code=409,
+            )
+
     replace_transaction_balance_effects(
         db,
         old_sinking_fund_id=old_sf_id,
@@ -645,16 +673,7 @@ async def transactions_delete(
     txn = db.query(Transaction).filter(Transaction.id == txn_id).first()
     if not txn:
         return HTMLResponse("Not found", status_code=404)
-    apply_transaction_balance_effects(
-        db,
-        sinking_fund_id=txn.sinking_fund_id,
-        txn_type=txn.type,
-        amount=txn.amount,
-        budget_id=txn.budget_id,
-        transaction_type=txn.transaction_type,
-        reverse=True,
-    )
-    db.delete(txn)
+    delete_transaction_row(db, txn)
     db.commit()
     return HTMLResponse("")
 
@@ -763,7 +782,14 @@ async def api_update_transaction(
     old_budget_id = txn.budget_id
     old_amount = txn.amount
 
-    for field, value in data.model_dump(exclude_unset=True).items():
+    changes = data.model_dump(exclude_unset=True)
+    try:
+        assert_recorded_payment_unchanged(txn, changes)
+    except RecordedPaymentLocked as exc:
+        db.rollback()
+        return JSONResponse({"detail": exc.detail}, status_code=409)
+
+    for field, value in changes.items():
         if field in ("type", "transaction_type") and value is not None:
             setattr(txn, field, value.value if hasattr(value, "value") else value)
         else:
@@ -796,15 +822,6 @@ async def api_delete_transaction(
     txn = db.query(Transaction).filter(Transaction.id == txn_id).first()
     if not txn:
         return JSONResponse({"detail": "Transaction not found"}, status_code=404)
-    apply_transaction_balance_effects(
-        db,
-        sinking_fund_id=txn.sinking_fund_id,
-        txn_type=txn.type,
-        amount=txn.amount,
-        budget_id=txn.budget_id,
-        transaction_type=txn.transaction_type,
-        reverse=True,
-    )
-    db.delete(txn)
+    delete_transaction_row(db, txn)
     db.commit()
     return JSONResponse({"detail": "Transaction deleted"}, status_code=200)
