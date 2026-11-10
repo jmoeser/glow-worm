@@ -40,6 +40,19 @@ class BillFrequency(str, Enum):
     monthly = "monthly"
     quarterly = "quarterly"
     yearly = "yearly"
+    every_2_years = "every_2_years"
+
+
+class UnknownFrequencyError(Exception):
+    """A bill frequency this app cannot step or price.
+
+    Not a ValueError: bills cover and confirm/skip treat ValueError as a bad
+    date, and must not swallow an unknown frequency as one.
+    """
+
+    def __init__(self, frequency: str) -> None:
+        self.frequency = frequency
+        super().__init__(f"Unknown bill frequency: {frequency}")
 
 
 class PaidFrom(str, Enum):
@@ -55,6 +68,7 @@ FREQUENCY_LABELS: dict[str, str] = {
     "monthly": "Monthly",
     "quarterly": "Quarterly",
     "yearly": "Yearly",
+    "every_2_years": "Every 2 Years",
     "28_days": "Every 28 Days",
 }
 
@@ -64,8 +78,21 @@ FREQUENCY_ANNUAL_MULTIPLIER: dict[str, Decimal | int] = {
     "monthly": 12,
     "quarterly": 4,
     "yearly": 1,
+    "every_2_years": Decimal("0.5"),
     "28_days": Decimal("13.036"),
 }
+
+
+def annual_multiplier(frequency: str) -> Decimal:
+    """How many times a year one payment counts.
+
+    Unknown frequencies raise UnknownFrequencyError. There is no default.
+    """
+    try:
+        multiplier = FREQUENCY_ANNUAL_MULTIPLIER[frequency]
+    except KeyError as exc:
+        raise UnknownFrequencyError(frequency) from exc
+    return Decimal(str(multiplier))
 
 
 class BillsAllocationMethod(str, Enum):

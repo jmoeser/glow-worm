@@ -1934,7 +1934,64 @@ class TestOccurrenceAutoPay:
         assert len(rows) == 1
         assert rows[0].description.startswith("Bill payment:")
 
-    def test_unknown_frequency_still_steps_thirty_days(self):
-        assert advance_due_date(date(2026, 1, 1), "no-such-frequency") == date(
-            2026, 1, 31
+    def test_unknown_frequency_fails_only_that_bill(
+        self, db_session, bills_setup, monkeypatch
+    ):
+        """The 06:00 job and the boot catch-up both call process_due_bills."""
+        from app.scheduler import register_jobs
+        from app.schemas import UnknownFrequencyError
+
+        recorded: list[tuple] = []
+
+        class _Recorder:
+            def add_job(self, func, trigger, **kwargs):
+                recorded.append((kwargs.get("id"), func))
+
+        register_jobs(_Recorder())
+        by_id = dict(recorded)
+        assert by_id["bill_processing"] is process_due_bills
+        assert by_id["bill_processing_catchup"] is process_due_bills
+
+        holder = {"day": date(2026, 2, 1)}
+        self._patch(monkeypatch, holder)
+        bills_setup["bill_due"].is_active = False
+        bad = self._bill(
+            db_session,
+            bills_setup,
+            name="Mystery",
+            frequency="nope",
+            next_due_date="2026-02-01",
+            amount=70,
         )
+        good = self._bill(
+            db_session,
+            bills_setup,
+            name="Known",
+            next_due_date="2026-02-01",
+            amount=15,
+        )
+        with pytest.raises(UnknownFrequencyError):
+            advance_due_date(date(2026, 2, 1), "nope")
+        start = Decimal(str(bills_setup["bills_fund"].current_balance))
+        process_due_bills(db=db_session)
+        db_session.rollback()
+        db_session.refresh(bad)
+        db_session.refresh(good)
+        assert bad.next_due_date == "2026-02-01"
+        assert good.next_due_date == "2026-03-01"
+        assert (
+            db_session.query(Transaction)
+            .filter(Transaction.recurring_bill_id == bad.id)
+            .count()
+            == 0
+        )
+        paid = (
+            db_session.query(Transaction)
+            .filter(Transaction.recurring_bill_id == good.id)
+            .one()
+        )
+        assert paid.occurrence_due_date == "2026-02-01"
+        db_session.refresh(bills_setup["bills_fund"])
+        assert Decimal(
+            str(bills_setup["bills_fund"].current_balance)
+        ) == start - Decimal(15)

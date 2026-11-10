@@ -112,7 +112,10 @@ def add_bill(
         str,
         typer.Option(
             prompt=True,
-            help="weekly / fortnightly / 28_days / monthly / quarterly / yearly",
+            help=(
+                "weekly / fortnightly / 28_days / monthly / quarterly / "
+                "yearly / every_2_years"
+            ),
         ),
     ],
     category_id: Annotated[int, typer.Option(prompt=True)],

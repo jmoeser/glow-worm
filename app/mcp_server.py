@@ -25,6 +25,7 @@ from app.schemas import (
     TransactionCreate,
     TransactionResponse,
     TransactionUpdate,
+    UnknownFrequencyError,
     public_validation_errors,
 )
 from app.services.payment_methods import (
@@ -497,7 +498,7 @@ def create_bill(
         debtor_provider: Who the bill is paid to.
         start_date: When the bill started, in YYYY-MM-DD format.
         frequency: One of: 'weekly', 'fortnightly', '28_days', 'monthly',
-            'quarterly', 'yearly'.
+            'quarterly', 'yearly', 'every_2_years'.
         category_id: ID of the expense category. For a budget payment this
             is the budget category.
         next_due_date: Next payment date in YYYY-MM-DD format.
@@ -614,7 +615,7 @@ def update_bill(
         amount: New monetary amount per occurrence.
         debtor_provider: New provider name.
         frequency: New frequency ('weekly', 'fortnightly', '28_days',
-            'monthly', 'quarterly', 'yearly').
+            'monthly', 'quarterly', 'yearly', 'every_2_years').
         end_date: New end date in YYYY-MM-DD format.
         is_active: New active status.
         next_due_date: New next due date in YYYY-MM-DD format.
@@ -789,6 +790,9 @@ def confirm_payment(bill_id: int, due_date: str, amount: float) -> dict | str:
             "taken_back": result.taken_back,
             "message": result.message,
         }
+    except UnknownFrequencyError as exc:
+        db.rollback()
+        return str(exc)
     except (PaymentBlocked, PaymentConflict) as exc:
         db.rollback()
         return exc.detail
@@ -825,6 +829,9 @@ def skip_payment(bill_id: int, due_date: str) -> dict | str:
         db.commit()
         db.refresh(result.bill)
         return {"bill": serialize_bill(result.bill), "message": result.message}
+    except UnknownFrequencyError as exc:
+        db.rollback()
+        return str(exc)
     except (PaymentBlocked, PaymentConflict) as exc:
         db.rollback()
         return exc.detail

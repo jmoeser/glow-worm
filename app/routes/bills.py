@@ -12,7 +12,6 @@ from app.database import get_db
 from app.middleware import get_current_user
 from app.models import Category, RecurringBill, SinkingFund
 from app.schemas import (
-    FREQUENCY_ANNUAL_MULTIPLIER,
     FREQUENCY_LABELS,
     BillFrequency,
     DuePaymentResponse,
@@ -21,6 +20,8 @@ from app.schemas import (
     RecurringBillPay,
     RecurringBillSkip,
     RecurringBillUpdate,
+    UnknownFrequencyError,
+    annual_multiplier,
 )
 from app.services.contracts import ContractError, assign_contract, contract_choices
 from app.services.payment_methods import (
@@ -71,8 +72,7 @@ def _expense_categories(db: Session):
 
 
 def _compute_annual_cost(amount, frequency: str) -> Decimal:
-    multiplier = FREQUENCY_ANNUAL_MULTIPLIER.get(frequency, 1)
-    return Decimal(str(amount)) * Decimal(str(multiplier))
+    return Decimal(str(amount)) * annual_multiplier(frequency)
 
 
 def _bills_category(db: Session) -> Category | None:
@@ -302,6 +302,21 @@ def _summary_trigger(ctx: dict[str, Any], message: str) -> str:
 def _payment_json(exc: PaymentBlocked | PaymentConflict) -> JSONResponse:
     status = 400 if isinstance(exc, PaymentBlocked) else 409
     return JSONResponse({"detail": exc.detail, "code": exc.code}, status_code=status)
+
+
+def _unknown_frequency_html(exc: UnknownFrequencyError) -> HTMLResponse:
+    detail = str(exc)
+    response = HTMLResponse(
+        f'<p class="text-red-600 text-sm">{detail}</p>', status_code=400
+    )
+    response.headers["HX-Trigger"] = json.dumps({"gwError": detail})
+    return response
+
+
+def _unknown_frequency_json(exc: UnknownFrequencyError) -> JSONResponse:
+    return JSONResponse(
+        {"detail": str(exc), "code": "unknown_frequency"}, status_code=400
+    )
 
 
 def _oob(html: str, swap: str) -> str:
@@ -568,6 +583,9 @@ async def bills_confirm(
         result = confirm_payment(db, bill, amount, due_date)
         db.commit()
         db.refresh(result.bill)
+    except UnknownFrequencyError as exc:
+        db.rollback()
+        return _unknown_frequency_html(exc)
     except (PaymentBlocked, PaymentConflict) as exc:
         db.rollback()
         return _html_error(exc)
@@ -593,6 +611,9 @@ async def bills_skip(
         result = skip_payment(db, bill, due_date)
         db.commit()
         db.refresh(result.bill)
+    except UnknownFrequencyError as exc:
+        db.rollback()
+        return _unknown_frequency_html(exc)
     except (PaymentBlocked, PaymentConflict) as exc:
         db.rollback()
         return _html_error(exc)
@@ -942,6 +963,9 @@ async def api_pay_bill(request: Request, bill_id: int, db: Session = Depends(get
         db.commit()
         db.refresh(bill)
         db.refresh(txn)
+    except UnknownFrequencyError as exc:
+        db.rollback()
+        return _unknown_frequency_json(exc)
     except (PaymentBlocked, PaymentConflict) as exc:
         db.rollback()
         return _payment_json(exc)
@@ -982,6 +1006,9 @@ async def api_confirm_bill(
         db.commit()
         db.refresh(result.transaction)
         db.refresh(result.bill)
+    except UnknownFrequencyError as exc:
+        db.rollback()
+        return _unknown_frequency_json(exc)
     except (PaymentBlocked, PaymentConflict) as exc:
         db.rollback()
         return _payment_json(exc)
@@ -1009,6 +1036,9 @@ async def api_skip_bill(request: Request, bill_id: int, db: Session = Depends(ge
         result = skip_payment(db, bill, data.due_date)
         db.commit()
         db.refresh(result.bill)
+    except UnknownFrequencyError as exc:
+        db.rollback()
+        return _unknown_frequency_json(exc)
     except (PaymentBlocked, PaymentConflict) as exc:
         db.rollback()
         return _payment_json(exc)

@@ -29,7 +29,7 @@ from app.models import (
     SinkingFund,
     Transaction,
 )
-from app.schemas import FREQUENCY_ANNUAL_MULTIPLIER
+from app.schemas import UnknownFrequencyError, annual_multiplier
 from app.services.bills_secondary import bills_secondary_goal, secondary_recorded
 from app.services.household_months import (
     claim_processed,
@@ -41,6 +41,7 @@ from app.services.household_months import (
     record_attempt,
 )
 from app.services.market_data import FxProvider, PriceProvider, RequestGate
+from app.services.money import add_months
 from app.services.sweep_descriptions import income_description, sweep_descriptions
 
 logger = logging.getLogger(__name__)
@@ -59,7 +60,8 @@ def advance_due_date(current: date, frequency: str) -> date:
     """Advance a due date based on frequency, clamping month-based steps.
 
     Weekly and fortnightly add a fixed number of days, including from the
-    31st. An unknown stored frequency still steps 30 days.
+    31st. ``every_2_years`` adds 24 calendar months in one step, so 31 Jan
+    stays on the 31st. An unknown frequency raises UnknownFrequencyError.
     """
     if frequency == "weekly":
         return current + timedelta(days=7)
@@ -91,7 +93,12 @@ def advance_due_date(current: date, frequency: str) -> date:
         day = min(current.day, calendar.monthrange(year, current.month)[1])
         return date(year, current.month, day)
 
-    return current + timedelta(days=30)
+    if frequency == "every_2_years":
+        # One 24-month step. Walking monthly 24 times would clamp 31 Jan
+        # down to 28 Jan and stay there.
+        return add_months(current, 24)
+
+    raise UnknownFrequencyError(frequency)
 
 
 def iter_bill_due_dates(
@@ -127,11 +134,7 @@ def _compute_bills_recommended(db: Session) -> Decimal:
 
     bills = bills_fund_bills(db)
     total_annual = sum(
-        (
-            Decimal(str(b.amount))
-            * Decimal(str(FREQUENCY_ANNUAL_MULTIPLIER.get(b.frequency, 1)))
-            for b in bills
-        ),
+        (Decimal(str(b.amount)) * annual_multiplier(b.frequency) for b in bills),
         Decimal(0),
     )
     if total_annual == 0:

@@ -14,7 +14,12 @@ from app.config import TIMEZONE
 from app.database import get_db
 from app.middleware import get_current_user
 from app.models import SinkingFund, Transaction
-from app.schemas import SinkingFundCreate, SinkingFundResponse, SinkingFundUpdate
+from app.schemas import (
+    SinkingFundCreate,
+    SinkingFundResponse,
+    SinkingFundUpdate,
+    UnknownFrequencyError,
+)
 from app.services.bills_secondary import bills_secondary_goal
 from app.services.fund_runway import compute_fund_runway
 from app.services.recurring_payments import (
@@ -339,16 +344,25 @@ async def sinking_fund_forecast(
     include_secondary, show_secondary_toggle = _forecast_secondary_options(
         db, fund, secondary
     )
-    forecast = generate_bills_forecast(
-        db,
-        include_overdue=fund.name == "Bills" and not fund.is_deleted,
-        include_secondary=include_secondary,
-    )
+    forecast_error = None
+    try:
+        forecast = generate_bills_forecast(
+            db,
+            include_overdue=fund.name == "Bills" and not fund.is_deleted,
+            include_secondary=include_secondary,
+        )
+    except UnknownFrequencyError as exc:
+        forecast = None
+        forecast_error = (
+            f"A bill has a frequency this app does not know ({exc.frequency}), "
+            "so this forecast can't be shown."
+        )
 
     context = {
         "username": user.username,
         "fund": fund,
         "forecast": forecast,
+        "forecast_error": forecast_error,
         "include_secondary": include_secondary,
         "show_secondary_toggle": show_secondary_toggle,
     }

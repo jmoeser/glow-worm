@@ -161,6 +161,9 @@
             {% for val, label in frequency_labels.items() %}
             <option value="{{ val }}" {{ 'selected' if bill.frequency == val }}>{{ label }}</option>
             {% endfor %}
+            {% if bill.frequency not in frequency_labels %}
+            <option value="{{ bill.frequency }}" selected>{{ bill.frequency }}</option>
+            {% endif %}
         </select>
     </td>
     <td data-bill-type>
