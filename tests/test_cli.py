@@ -1070,9 +1070,13 @@ class TestBillsDueConfirmSkip:
 
 class TestTxAddDoesNotSettle:
     def test_help_says_bill_id_is_not_a_scheduled_payment(self):
+        import re
+
         result = runner.invoke(app, ["tx", "add", "--help"])
         assert result.exit_code == 0
-        text = result.output
+        # Rich bolds each hyphen separately when color is on, which splits
+        # "--bill-id" across escape codes. CI sets CI/GITHUB_ACTIONS.
+        text = re.sub(r"\x1b\[[0-9;]*m", "", result.output)
         assert "--bill-id" in text
         assert "record a scheduled occurrence" in text
         assert "omits --bill-id" in text
