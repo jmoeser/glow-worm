@@ -174,7 +174,7 @@ class TestSerializing:
     def test_redacts_secrets_and_records_password_changes(self):
         changes = column_changes(
             {
-                "password_hash": "old-hash",
+                "password_hash": "old-hash",  # pragma: allowlist secret
                 "email": "old@example.com",
                 "last4": "1111",
                 "key_hash": "hash-1",
@@ -183,7 +183,7 @@ class TestSerializing:
                 "updated_at": datetime(2026, 1, 1, tzinfo=UTC),
             },
             {
-                "password_hash": "new-hash",
+                "password_hash": "new-hash",  # pragma: allowlist secret
                 "email": "new@example.com",
                 "last4": "2222",
                 "key_hash": "hash-2",
@@ -419,7 +419,7 @@ class TestRestWrites:
             "/api/users",
             json={
                 "username": "bob",
-                "password": "SecretPass1",
+                "password": "SecretPass1",  # pragma: allowlist secret
                 "email": "bob@example.com",
             },
         )
@@ -435,7 +435,10 @@ class TestRestWrites:
         audit_events.clear()
         updated = authed_client.put(
             f"/api/users/{created.json()['id']}",
-            json={"password": "NewSecret2", "email": "next@example.com"},
+            json={
+                "password": "NewSecret2",  # pragma: allowlist secret
+                "email": "next@example.com",
+            },
         )
         assert updated.status_code == 200
         event = audit_events[-1]
@@ -523,7 +526,7 @@ class TestMcpWrite:
 
             actor = get_current_actor()
             assert actor is not None
-            assert actor.api_key_name == "laptop-cli"
+            assert actor.api_key_name == "laptop-cli"  # pragma: allowlist secret
             result = create_transaction(
                 date="2026-11-02",
                 amount=8.5,
@@ -545,7 +548,7 @@ class TestMcpWrite:
         assert event["action"] == "create"
         assert event["auth_method"] == "api_key"
         assert event["user"] == "alice"
-        assert event["api_key_name"] == "laptop-cli"
+        assert event["api_key_name"] == "laptop-cli"  # pragma: allowlist secret
         assert event["api_key_id"] == key_id
         assert event["values"]["amount"] == "8.50"
         assert "last4" not in json.dumps(event)
