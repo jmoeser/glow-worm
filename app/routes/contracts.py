@@ -5,6 +5,14 @@ from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from pydantic import ValidationError
 from sqlalchemy.orm import Session
 
+from app.audit import (
+    audit_write,
+    column_changes,
+    emit_rest,
+    related_rows,
+    snapshot_columns,
+    summary_for,
+)
 from app.database import get_db
 from app.middleware import get_current_user
 from app.models import Contract, RecurringBill
@@ -363,6 +371,7 @@ async def api_list_contracts(
 
 
 @router.post("/api/contracts")
+@audit_write
 async def api_create_contract(request: Request, db: Session = Depends(get_db)):
     try:
         body = await request.json()
@@ -392,6 +401,13 @@ async def api_create_contract(request: Request, db: Session = Depends(get_db)):
     db.add(contract)
     db.commit()
     db.refresh(contract)
+    emit_rest(
+        request,
+        action="create",
+        entity_type="contract",
+        entity_id=contract.id,
+        values=summary_for("contract", snapshot_columns(contract)),
+    )
     return JSONResponse(_dump(contract), status_code=201)
 
 
@@ -406,6 +422,7 @@ async def api_get_contract(
 
 
 @router.put("/api/contracts/{contract_id}")
+@audit_write
 async def api_update_contract(
     request: Request, contract_id: int, db: Session = Depends(get_db)
 ):
@@ -428,36 +445,63 @@ async def api_update_contract(
         return _validation_json(exc)
     except ContractError as exc:
         return _json_error(exc.message, exc.status)
+    before = snapshot_columns(contract)
     apply_contract(contract, values)
     db.commit()
     db.refresh(contract)
+    emit_rest(
+        request,
+        action="update",
+        entity_type="contract",
+        entity_id=contract.id,
+        changes=column_changes(before, snapshot_columns(contract)),
+    )
     return JSONResponse(_dump(contract))
 
 
 @router.post("/api/contracts/{contract_id}/end")
+@audit_write
 async def api_end_contract(
     request: Request, contract_id: int, db: Session = Depends(get_db)
 ):
     contract = _get_contract(db, contract_id)
     if contract is None:
         return _json_error("Contract not found.", 404)
+    before = snapshot_columns(contract)
     end_contract(contract)
     db.commit()
     db.refresh(contract)
+    emit_rest(
+        request,
+        action="end",
+        entity_type="contract",
+        entity_id=contract.id,
+        changes=column_changes(before, snapshot_columns(contract)),
+    )
     return JSONResponse(_dump(contract))
 
 
 @router.delete("/api/contracts/{contract_id}")
+@audit_write
 async def api_delete_contract(
     request: Request, contract_id: int, db: Session = Depends(get_db)
 ):
     contract = _get_contract(db, contract_id)
     if contract is None:
         return _json_error("Contract not found.", 404)
+    values = summary_for("contract", snapshot_columns(contract))
     try:
-        delete_contract(db, contract)
+        unlinked = delete_contract(db, contract)
         db.commit()
     except ContractError as exc:
         db.rollback()
         return _json_error(exc.message, exc.status)
+    emit_rest(
+        request,
+        action="delete",
+        entity_type="contract",
+        entity_id=contract_id,
+        values=values,
+        related=related_rows("transaction", unlinked, "update"),
+    )
     return JSONResponse({"detail": "Deleted."})

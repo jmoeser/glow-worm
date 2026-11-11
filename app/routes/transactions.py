@@ -8,6 +8,14 @@ from pydantic import ValidationError
 from sqlalchemy import func
 from sqlalchemy.orm import Session, joinedload
 
+from app.audit import (
+    audit_write,
+    column_changes,
+    emit_rest,
+    related_rows,
+    snapshot_columns,
+    summary_for,
+)
 from app.config import TIMEZONE
 from app.database import get_db
 from app.middleware import get_current_user
@@ -704,6 +712,7 @@ async def api_list_transactions(
 
 
 @router.post("/api/transactions")
+@audit_write
 async def api_create_transaction(request: Request, db: Session = Depends(get_db)):
     try:
         body = await request.json()
@@ -740,6 +749,13 @@ async def api_create_transaction(request: Request, db: Session = Depends(get_db)
     )
     db.commit()
     db.refresh(txn)
+    emit_rest(
+        request,
+        action="create",
+        entity_type="transaction",
+        entity_id=txn.id,
+        values=summary_for("transaction", snapshot_columns(txn)),
+    )
 
     response = TransactionResponse.model_validate(txn)
     return JSONResponse(response.model_dump(mode="json"), status_code=201)
@@ -757,6 +773,7 @@ async def api_get_transaction(
 
 
 @router.put("/api/transactions/{txn_id}")
+@audit_write
 async def api_update_transaction(
     request: Request, txn_id: int, db: Session = Depends(get_db)
 ):
@@ -781,6 +798,7 @@ async def api_update_transaction(
     old_txn_type = txn.transaction_type
     old_budget_id = txn.budget_id
     old_amount = txn.amount
+    before = snapshot_columns(txn)
 
     changes = data.model_dump(exclude_unset=True)
     try:
@@ -810,18 +828,39 @@ async def api_update_transaction(
     )
     db.commit()
     db.refresh(txn)
+    emit_rest(
+        request,
+        action="update",
+        entity_type="transaction",
+        entity_id=txn.id,
+        changes=column_changes(before, snapshot_columns(txn)),
+    )
 
     response = TransactionResponse.model_validate(txn)
     return JSONResponse(response.model_dump(mode="json"), status_code=200)
 
 
 @router.delete("/api/transactions/{txn_id}")
+@audit_write
 async def api_delete_transaction(
     request: Request, txn_id: int, db: Session = Depends(get_db)
 ):
     txn = db.query(Transaction).filter(Transaction.id == txn_id).first()
     if not txn:
         return JSONResponse({"detail": "Transaction not found"}, status_code=404)
-    delete_transaction_row(db, txn)
+    values = summary_for("transaction", snapshot_columns(txn))
+    deleted_ids = delete_transaction_row(db, txn)
     db.commit()
+    emit_rest(
+        request,
+        action="delete",
+        entity_type="transaction",
+        entity_id=txn_id,
+        values=values,
+        related=related_rows(
+            "transaction",
+            [deleted_id for deleted_id in deleted_ids if deleted_id != txn_id],
+            "delete",
+        ),
+    )
     return JSONResponse({"detail": "Transaction deleted"}, status_code=200)

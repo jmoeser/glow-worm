@@ -1179,7 +1179,7 @@ class TestOccurrenceTransitions:
         self, db_session, household, fixed_today
     ):
         bill = self._fixed(db_session, household, end_date="2026-11-03")
-        txn = pay_bills_fund(db_session, bill, Decimal(40), "2026-11-03")
+        txn = pay_bills_fund(db_session, bill, Decimal(40), "2026-11-03").transaction
         db_session.commit()
         assert txn.occurrence_due_date == "2026-11-03"
         db_session.refresh(bill)

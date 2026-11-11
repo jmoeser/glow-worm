@@ -7,6 +7,14 @@ from pydantic import ValidationError
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
+from app.audit import (
+    audit_write,
+    column_changes,
+    emit_rest,
+    related_rows,
+    snapshot_columns,
+    summary_for,
+)
 from app.config import TIMEZONE
 from app.database import get_db
 from app.middleware import get_current_user
@@ -246,6 +254,7 @@ async def api_get_income(request: Request, db: Session = Depends(get_db)):
 
 
 @router.post("/api/income")
+@audit_write
 async def api_post_income(request: Request, db: Session = Depends(get_db)):
     try:
         body = await request.json()
@@ -271,6 +280,9 @@ async def api_post_income(request: Request, db: Session = Depends(get_db)):
     if data.bills_fund_allocation_type.value == "recommended":
         bills_fixed = None
 
+    existing = db.query(IncomeAllocation).first()
+    before = snapshot_columns(existing) if existing is not None else None
+
     allocation, created = _upsert_allocation(
         db,
         data.monthly_income_amount,
@@ -284,6 +296,23 @@ async def api_post_income(request: Request, db: Session = Depends(get_db)):
 
     response = IncomeAllocationResponse.model_validate(allocation)
     status_code = 201 if created else 200
+    after = snapshot_columns(allocation)
+    if created:
+        emit_rest(
+            request,
+            action="create",
+            entity_type="income_allocation",
+            entity_id=allocation.id,
+            values=summary_for("income_allocation", after),
+        )
+    else:
+        emit_rest(
+            request,
+            action="update",
+            entity_type="income_allocation",
+            entity_id=allocation.id,
+            changes=column_changes(before or {}, after),
+        )
     return JSONResponse(response.model_dump(mode="json"), status_code=status_code)
 
 
@@ -334,13 +363,15 @@ def _record_secondary_income(
     amount: Decimal,
     date_str: str,
     description: str | None,
-) -> list[dict]:
+) -> dict:
     """Create income + allocation transactions for the secondary income source.
 
     Funds goals in priority order (sort_order ascending). Surplus after all goals
     are met goes to the overflow sinking fund, or to MonthlyUnallocatedIncome if none.
 
-    Returns a list of {fund_name, amount} dicts describing distributions made.
+    Returns ``distributions`` (``{fund_name, amount}`` rows, same as before) plus
+    ``income_transaction_id``, ``allocation_transaction_ids``, ``date``, and
+    ``amount``. HTML callers can ignore the extra keys.
     """
     alloc = db.query(SecondaryIncomeAllocation).first()
     if not alloc:
@@ -365,16 +396,16 @@ def _record_secondary_income(
     label = alloc.label
     income_desc = description or label
 
-    db.add(
-        Transaction(
-            date=date_str,
-            description=income_desc,
-            amount=float(amount),
-            category_id=income_cat.id,
-            type="income",
-            transaction_type="regular",
-        )
+    income_txn = Transaction(
+        date=date_str,
+        description=income_desc,
+        amount=float(amount),
+        category_id=income_cat.id,
+        type="income",
+        transaction_type="regular",
     )
+    db.add(income_txn)
+    allocation_txns: list[Transaction] = []
 
     remaining = amount
     distributions: list[dict] = []
@@ -413,17 +444,17 @@ def _record_secondary_income(
         if alloc_amount <= 0:
             continue
 
-        db.add(
-            Transaction(
-                date=date_str,
-                description=f"{label} allocation to {fund.name}",
-                amount=float(alloc_amount),
-                category_id=transfer_cat.id,
-                type="transfer",
-                transaction_type="secondary_income_allocation",
-                sinking_fund_id=fund.id,
-            )
+        allocation_txn = Transaction(
+            date=date_str,
+            description=f"{label} allocation to {fund.name}",
+            amount=float(alloc_amount),
+            category_id=transfer_cat.id,
+            type="transfer",
+            transaction_type="secondary_income_allocation",
+            sinking_fund_id=fund.id,
         )
+        db.add(allocation_txn)
+        allocation_txns.append(allocation_txn)
         fund.current_balance = float(Decimal(str(fund.current_balance)) + alloc_amount)
         remaining -= alloc_amount
         distributions.append({"fund_name": fund.name, "amount": float(alloc_amount)})
@@ -440,17 +471,17 @@ def _record_secondary_income(
                 .first()
             )
             if overflow_fund:
-                db.add(
-                    Transaction(
-                        date=date_str,
-                        description=f"{label} surplus to {overflow_fund.name}",
-                        amount=float(remaining),
-                        category_id=transfer_cat.id,
-                        type="transfer",
-                        transaction_type="income_allocation",
-                        sinking_fund_id=overflow_fund.id,
-                    )
+                surplus_txn = Transaction(
+                    date=date_str,
+                    description=f"{label} surplus to {overflow_fund.name}",
+                    amount=float(remaining),
+                    category_id=transfer_cat.id,
+                    type="transfer",
+                    transaction_type="income_allocation",
+                    sinking_fund_id=overflow_fund.id,
                 )
+                db.add(surplus_txn)
+                allocation_txns.append(surplus_txn)
                 overflow_fund.current_balance = float(
                     Decimal(str(overflow_fund.current_balance)) + remaining
                 )
@@ -483,8 +514,19 @@ def _record_secondary_income(
                     )
                 )
 
+    db.flush()
+    income_transaction_id = income_txn.id
+    allocation_transaction_ids = [txn.id for txn in allocation_txns]
+    recorded_date = income_txn.date
+    recorded_amount = income_txn.amount
     db.commit()
-    return distributions
+    return {
+        "distributions": distributions,
+        "income_transaction_id": income_transaction_id,
+        "allocation_transaction_ids": allocation_transaction_ids,
+        "date": recorded_date,
+        "amount": recorded_amount,
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -602,9 +644,11 @@ async def secondary_income_record(request: Request, db: Session = Depends(get_db
     description = str(form.get("description") or "").strip() or None
 
     try:
-        distributions = _record_secondary_income(db, amount, date_str, description)
+        recorded = _record_secondary_income(db, amount, date_str, description)
     except ValueError as exc:
         return HTMLResponse(f'<p class="text-red-600 text-sm">{exc}</p>')
+
+    distributions = recorded["distributions"]
 
     if not distributions:
         return HTMLResponse(
@@ -639,6 +683,7 @@ async def api_get_secondary_income(request: Request, db: Session = Depends(get_d
 
 
 @router.post("/api/income/secondary")
+@audit_write
 async def api_post_secondary_income(request: Request, db: Session = Depends(get_db)):
     try:
         body = await request.json()
@@ -660,15 +705,35 @@ async def api_post_secondary_income(request: Request, db: Session = Depends(get_
         }
         for r in data.rules
     ]
+    existing = db.query(SecondaryIncomeAllocation).first()
+    before = snapshot_columns(existing) if existing is not None else None
     alloc, created = _upsert_secondary_allocation(
         db, data.label, rules, data.overflow_sinking_fund_id
     )
     response = SecondaryIncomeAllocationResponse.model_validate(alloc)
     status_code = 201 if created else 200
+    after = snapshot_columns(alloc)
+    if created:
+        emit_rest(
+            request,
+            action="create",
+            entity_type="secondary_income_allocation",
+            entity_id=alloc.id,
+            values=summary_for("secondary_income_allocation", after),
+        )
+    else:
+        emit_rest(
+            request,
+            action="update",
+            entity_type="secondary_income_allocation",
+            entity_id=alloc.id,
+            changes=column_changes(before or {}, after),
+        )
     return JSONResponse(response.model_dump(mode="json"), status_code=status_code)
 
 
 @router.post("/api/income/secondary/record")
+@audit_write
 async def api_record_secondary_income(request: Request, db: Session = Depends(get_db)):
     try:
         body = await request.json()
@@ -683,10 +748,27 @@ async def api_record_secondary_income(request: Request, db: Session = Depends(ge
         return JSONResponse({"detail": str(exc)}, status_code=422)
 
     try:
-        distributions = _record_secondary_income(
+        recorded = _record_secondary_income(
             db, data.amount, data.date, data.description
         )
     except ValueError as exc:
         return JSONResponse({"detail": str(exc)}, status_code=400)
 
-    return JSONResponse({"distributions": distributions}, status_code=201)
+    emit_rest(
+        request,
+        action="create",
+        entity_type="secondary_income",
+        entity_id=recorded["income_transaction_id"],
+        values=summary_for(
+            "secondary_income",
+            {
+                "id": recorded["income_transaction_id"],
+                "date": recorded["date"],
+                "amount": recorded["amount"],
+            },
+        ),
+        related=related_rows(
+            "transaction", recorded["allocation_transaction_ids"], "create"
+        ),
+    )
+    return JSONResponse({"distributions": recorded["distributions"]}, status_code=201)

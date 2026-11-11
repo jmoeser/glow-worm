@@ -8,6 +8,14 @@ from fastapi.responses import HTMLResponse, JSONResponse
 from pydantic import ValidationError
 from sqlalchemy.orm import Session
 
+from app.audit import (
+    audit_write,
+    column_changes,
+    emit_rest,
+    related_rows,
+    snapshot_columns,
+    summary_for,
+)
 from app.database import get_db
 from app.middleware import get_current_user
 from app.models import Category, RecurringBill, SinkingFund
@@ -809,6 +817,7 @@ async def api_due_bills(request: Request, db: Session = Depends(get_db)):
 
 
 @router.post("/api/bills")
+@audit_write
 async def api_create_bill(request: Request, db: Session = Depends(get_db)):
     try:
         body = await request.json()
@@ -864,6 +873,13 @@ async def api_create_bill(request: Request, db: Session = Depends(get_db)):
             return JSONResponse({"detail": exc.message}, status_code=exc.status)
     db.commit()
     db.refresh(bill)
+    emit_rest(
+        request,
+        action="create",
+        entity_type="bill",
+        entity_id=bill.id,
+        values=summary_for("bill", snapshot_columns(bill)),
+    )
 
     return JSONResponse(serialize_bill(bill), status_code=201)
 
@@ -877,6 +893,7 @@ async def api_get_bill(request: Request, bill_id: int, db: Session = Depends(get
 
 
 @router.put("/api/bills/{bill_id}")
+@audit_write
 async def api_update_bill(
     request: Request, bill_id: int, db: Session = Depends(get_db)
 ):
@@ -896,6 +913,7 @@ async def api_update_bill(
             return JSONResponse({"detail": errors}, status_code=422)
         return JSONResponse({"detail": str(exc)}, status_code=422)
 
+    before = snapshot_columns(bill)
     updates = data.model_dump(exclude_unset=True)
     payment_method_set = "payment_method_id" in updates
     payment_method_id = updates.pop("payment_method_id", None)
@@ -925,22 +943,39 @@ async def api_update_bill(
 
     db.commit()
     db.refresh(bill)
+    emit_rest(
+        request,
+        action="update",
+        entity_type="bill",
+        entity_id=bill.id,
+        changes=column_changes(before, snapshot_columns(bill)),
+    )
     return JSONResponse(serialize_bill(bill), status_code=200)
 
 
 @router.delete("/api/bills/{bill_id}")
+@audit_write
 async def api_delete_bill(
     request: Request, bill_id: int, db: Session = Depends(get_db)
 ):
     bill = db.query(RecurringBill).filter(RecurringBill.id == bill_id).first()
     if not bill:
         return JSONResponse({"detail": "Bill not found"}, status_code=404)
+    values = summary_for("bill", snapshot_columns(bill))
     bill.is_active = False
     db.commit()
+    emit_rest(
+        request,
+        action="delete",
+        entity_type="bill",
+        entity_id=bill.id,
+        values=values,
+    )
     return JSONResponse({"detail": "Bill deactivated"}, status_code=200)
 
 
 @router.post("/api/bills/{bill_id}/pay")
+@audit_write
 async def api_pay_bill(request: Request, bill_id: int, db: Session = Depends(get_db)):
     bill = db.query(RecurringBill).filter(RecurringBill.id == bill_id).first()
     if not bill:
@@ -959,10 +994,20 @@ async def api_pay_bill(request: Request, bill_id: int, db: Session = Depends(get
         return JSONResponse({"detail": str(exc)}, status_code=422)
 
     try:
-        txn = pay_bills_fund(db, bill, data.amount, data.date)
+        paid = pay_bills_fund(db, bill, data.amount, data.date)
+        after = snapshot_columns(bill)
+        payment_id = paid.transaction.id
         db.commit()
+        emit_rest(
+            request,
+            action="pay",
+            entity_type="bill",
+            entity_id=bill.id,
+            changes=column_changes(paid.prior, after),
+            related=related_rows("transaction", [payment_id], "create"),
+        )
         db.refresh(bill)
-        db.refresh(txn)
+        db.refresh(paid.transaction)
     except UnknownFrequencyError as exc:
         db.rollback()
         return _unknown_frequency_json(exc)
@@ -972,7 +1017,7 @@ async def api_pay_bill(request: Request, bill_id: int, db: Session = Depends(get
 
     return JSONResponse(
         {
-            "transaction": confirm_transaction_payload(txn),
+            "transaction": confirm_transaction_payload(paid.transaction),
             "bill": serialize_bill(bill),
         },
         status_code=200,
@@ -990,6 +1035,7 @@ def _validation_error(exc: ValidationError | ValueError) -> JSONResponse:
 
 
 @router.post("/api/bills/{bill_id}/confirm")
+@audit_write
 async def api_confirm_bill(
     request: Request, bill_id: int, db: Session = Depends(get_db)
 ):
@@ -1003,7 +1049,21 @@ async def api_confirm_bill(
         return _validation_error(exc)
     try:
         result = confirm_payment(db, bill, data.amount, data.due_date)
+        after = snapshot_columns(result.bill)
+        related_ids = [result.transaction.id]
+        taken = result.taken_back or {}
+        clawback_id = taken.get("transaction_id")
+        if clawback_id is not None:
+            related_ids.append(int(clawback_id))
         db.commit()
+        emit_rest(
+            request,
+            action="confirm",
+            entity_type="bill",
+            entity_id=bill.id,
+            changes=column_changes(result.prior, after),
+            related=related_rows("transaction", related_ids, "create"),
+        )
         db.refresh(result.transaction)
         db.refresh(result.bill)
     except UnknownFrequencyError as exc:
@@ -1023,6 +1083,7 @@ async def api_confirm_bill(
 
 
 @router.post("/api/bills/{bill_id}/skip")
+@audit_write
 async def api_skip_bill(request: Request, bill_id: int, db: Session = Depends(get_db)):
     bill = db.query(RecurringBill).filter(RecurringBill.id == bill_id).first()
     if not bill:
@@ -1034,7 +1095,15 @@ async def api_skip_bill(request: Request, bill_id: int, db: Session = Depends(ge
         return _validation_error(exc)
     try:
         result = skip_payment(db, bill, data.due_date)
+        after = snapshot_columns(result.bill)
         db.commit()
+        emit_rest(
+            request,
+            action="skip",
+            entity_type="bill",
+            entity_id=bill.id,
+            changes=column_changes(result.prior, after),
+        )
         db.refresh(result.bill)
     except UnknownFrequencyError as exc:
         db.rollback()

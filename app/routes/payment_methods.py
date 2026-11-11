@@ -7,6 +7,13 @@ from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from pydantic import ValidationError
 from sqlalchemy.orm import Session
 
+from app.audit import (
+    audit_write,
+    column_changes,
+    emit_rest,
+    snapshot_columns,
+    summary_for,
+)
 from app.config import TIMEZONE
 from app.database import get_db
 from app.middleware import get_current_user
@@ -771,6 +778,7 @@ async def api_list_payment_methods(
 
 
 @router.post("/api/payment-methods")
+@audit_write
 async def api_create_payment_method(request: Request, db: Session = Depends(get_db)):
     try:
         body = await request.json()
@@ -811,6 +819,13 @@ async def api_create_payment_method(request: Request, db: Session = Depends(get_
     db.add(method)
     db.commit()
     db.refresh(method)
+    emit_rest(
+        request,
+        action="create",
+        entity_type="payment_method",
+        entity_id=method.id,
+        values=summary_for("payment_method", snapshot_columns(method)),
+    )
     return JSONResponse(_dump_method(method), status_code=201)
 
 
@@ -828,6 +843,7 @@ async def api_get_payment_method(
 
 
 @router.put("/api/payment-methods/{method_id}")
+@audit_write
 async def api_update_payment_method(
     request: Request, method_id: int, db: Session = Depends(get_db)
 ):
@@ -885,35 +901,54 @@ async def api_update_payment_method(
         return _validation_json(exc)
     except PaymentMethodError as exc:
         return _json_error(exc.message, exc.status)
+    before = snapshot_columns(method)
     apply_payment_method(method, values)
     db.commit()
     db.refresh(method)
+    emit_rest(
+        request,
+        action="update",
+        entity_type="payment_method",
+        entity_id=method.id,
+        changes=column_changes(before, snapshot_columns(method)),
+    )
     return JSONResponse(_dump_method(method))
 
 
 @router.delete("/api/payment-methods/{method_id}")
+@audit_write
 async def api_delete_payment_method(
     request: Request, method_id: int, db: Session = Depends(get_db)
 ):
     method = _get_method(db, method_id)
     if method is None:
         return _json_error("Payment method not found.", 404)
+    values = summary_for("payment_method", snapshot_columns(method))
     try:
         delete_method(db, method)
         db.commit()
     except PaymentMethodError as exc:
         db.rollback()
         return _json_error(exc.message, exc.status)
+    emit_rest(
+        request,
+        action="delete",
+        entity_type="payment_method",
+        entity_id=method_id,
+        values=values,
+    )
     return JSONResponse({"detail": "Deleted."})
 
 
 @router.post("/api/payment-methods/{method_id}/archive")
+@audit_write
 async def api_archive_payment_method(
     request: Request, method_id: int, db: Session = Depends(get_db)
 ):
     method = _get_method(db, method_id)
     if method is None:
         return _json_error("Payment method not found.", 404)
+    before = snapshot_columns(method)
     try:
         archive_method(db, method)
         db.commit()
@@ -921,17 +956,33 @@ async def api_archive_payment_method(
     except PaymentMethodError as exc:
         db.rollback()
         return _json_error(exc.message, exc.status)
+    emit_rest(
+        request,
+        action="archive",
+        entity_type="payment_method",
+        entity_id=method.id,
+        changes=column_changes(before, snapshot_columns(method)),
+    )
     return JSONResponse(_dump_method(method))
 
 
 @router.post("/api/payment-methods/{method_id}/unarchive")
+@audit_write
 async def api_unarchive_payment_method(
     request: Request, method_id: int, db: Session = Depends(get_db)
 ):
     method = _get_method(db, method_id)
     if method is None:
         return _json_error("Payment method not found.", 404)
+    before = snapshot_columns(method)
     unarchive_method(method)
     db.commit()
     db.refresh(method)
+    emit_rest(
+        request,
+        action="unarchive",
+        entity_type="payment_method",
+        entity_id=method.id,
+        changes=column_changes(before, snapshot_columns(method)),
+    )
     return JSONResponse(_dump_method(method))

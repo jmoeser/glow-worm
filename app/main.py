@@ -10,6 +10,7 @@ from starlette.middleware.cors import CORSMiddleware
 from starlette.middleware.sessions import SessionMiddleware
 from starlette_csrf import CSRFMiddleware
 
+from app.audit import configure_audit_logging
 from app.middleware import AuthenticationMiddleware
 from app.routes.api_keys import router as api_keys_router
 from app.routes.auth import router as auth_router
@@ -28,6 +29,8 @@ from app.routes.transactions import router as transactions_router
 from app.routes.users import router as users_router
 
 load_dotenv()
+
+configure_audit_logging()
 
 _INSECURE_DEFAULT = "change-me-to-a-random-string-of-at-least-32-characters"
 SECRET_KEY = os.getenv("SECRET_KEY", "")
@@ -52,6 +55,7 @@ async def lifespan(app: FastAPI):
     from app.scheduler import start_scheduler, stop_scheduler
     from app.services.household_months import ensure_backfill
 
+    configure_audit_logging()
     db = SessionLocal()
     try:
         ensure_backfill(db)

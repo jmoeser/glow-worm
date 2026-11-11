@@ -864,7 +864,7 @@ class TestRecordedPaymentLock:
         )
         db.add(budget)
         db.commit()
-        txn = pay_bills_fund(db, bill, Decimal(40), "2026-11-03")
+        txn = pay_bills_fund(db, bill, Decimal(40), "2026-11-03").transaction
         db.commit()
         db.refresh(txn)
         return {

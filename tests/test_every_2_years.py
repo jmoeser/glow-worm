@@ -304,7 +304,7 @@ class TestDueDateCallers:
             next_due_date="2026-01-31",
             amount=240,
         )
-        txn = pay_bills_fund(db_session, paid, Decimal(240), "2026-01-31")
+        txn = pay_bills_fund(db_session, paid, Decimal(240), "2026-01-31").transaction
         db_session.commit()
         db_session.refresh(paid)
         db_session.refresh(fund)

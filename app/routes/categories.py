@@ -6,6 +6,13 @@ from fastapi.responses import HTMLResponse, JSONResponse
 from pydantic import ValidationError
 from sqlalchemy.orm import Session
 
+from app.audit import (
+    audit_write,
+    column_changes,
+    emit_rest,
+    snapshot_columns,
+    summary_for,
+)
 from app.database import get_db
 from app.middleware import get_current_user
 from app.models import Category
@@ -204,6 +211,7 @@ async def api_list_categories(request: Request, db: Session = Depends(get_db)):
 
 
 @router.post("/api/categories")
+@audit_write
 async def api_create_category(request: Request, db: Session = Depends(get_db)):
     try:
         body = await request.json()
@@ -226,6 +234,13 @@ async def api_create_category(request: Request, db: Session = Depends(get_db)):
     db.add(category)
     db.commit()
     db.refresh(category)
+    emit_rest(
+        request,
+        action="create",
+        entity_type="category",
+        entity_id=category.id,
+        values=summary_for("category", snapshot_columns(category)),
+    )
 
     response = CategoryResponse.model_validate(category)
     return JSONResponse(response.model_dump(mode="json"), status_code=201)
@@ -243,6 +258,7 @@ async def api_get_category(
 
 
 @router.put("/api/categories/{cat_id}")
+@audit_write
 async def api_update_category(
     request: Request, cat_id: int, db: Session = Depends(get_db)
 ):
@@ -262,6 +278,7 @@ async def api_update_category(
             return JSONResponse({"detail": errors}, status_code=422)
         return JSONResponse({"detail": str(exc)}, status_code=422)
 
+    before = snapshot_columns(category)
     for field, value in data.model_dump(exclude_unset=True).items():
         if field == "type" and value is not None:
             setattr(category, field, value.value if hasattr(value, "value") else value)
@@ -270,12 +287,20 @@ async def api_update_category(
 
     db.commit()
     db.refresh(category)
+    emit_rest(
+        request,
+        action="update",
+        entity_type="category",
+        entity_id=category.id,
+        changes=column_changes(before, snapshot_columns(category)),
+    )
 
     response = CategoryResponse.model_validate(category)
     return JSONResponse(response.model_dump(mode="json"), status_code=200)
 
 
 @router.delete("/api/categories/{cat_id}")
+@audit_write
 async def api_delete_category(
     request: Request, cat_id: int, db: Session = Depends(get_db)
 ):
@@ -291,6 +316,14 @@ async def api_delete_category(
     )
     if blocked:
         return JSONResponse({"detail": blocked}, status_code=409)
+    values = summary_for("category", snapshot_columns(category))
     category.is_deleted = True
     db.commit()
+    emit_rest(
+        request,
+        action="delete",
+        entity_type="category",
+        entity_id=category.id,
+        values=values,
+    )
     return JSONResponse({"detail": "Category deleted"}, status_code=200)

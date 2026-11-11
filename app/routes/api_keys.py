@@ -6,6 +6,13 @@ from fastapi.responses import HTMLResponse, JSONResponse
 from pydantic import ValidationError
 from sqlalchemy.orm import Session
 
+from app.audit import (
+    audit_write,
+    column_changes,
+    emit_rest,
+    snapshot_columns,
+    summary_for,
+)
 from app.auth import generate_api_key, hash_api_key
 from app.database import get_db
 from app.middleware import get_current_user
@@ -134,6 +141,7 @@ async def api_keys_revoke(request: Request, key_id: int, db: Session = Depends(g
 
 
 @router.post("/api/keys")
+@audit_write
 async def create_api_key(
     request: Request,
     db: Session = Depends(get_db),
@@ -169,6 +177,13 @@ async def create_api_key(
     db.add(api_key)
     db.commit()
     db.refresh(api_key)
+    emit_rest(
+        request,
+        action="create",
+        entity_type="api_key",
+        entity_id=api_key.id,
+        values=summary_for("api_key", snapshot_columns(api_key)),
+    )
 
     logger.info(
         "API key created: id=%d user=%s name=%s", api_key.id, user.username, data.name
@@ -193,6 +208,7 @@ async def list_api_keys(
 
 
 @router.delete("/api/keys/{key_id}")
+@audit_write
 async def revoke_api_key(
     request: Request,
     key_id: int,
@@ -210,8 +226,17 @@ async def revoke_api_key(
     if api_key.revoked_at is not None:
         return JSONResponse({"detail": "API key already revoked"}, status_code=400)
 
+    before = snapshot_columns(api_key)
     api_key.revoked_at = datetime.now(UTC)
     db.commit()
+    db.refresh(api_key)
+    emit_rest(
+        request,
+        action="revoke",
+        entity_type="api_key",
+        entity_id=api_key.id,
+        changes=column_changes(before, snapshot_columns(api_key)),
+    )
 
     logger.info("API key revoked: id=%d user=%s", key_id, user.username)
 

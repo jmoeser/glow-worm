@@ -3,6 +3,13 @@ from fastapi.responses import HTMLResponse, JSONResponse
 from pydantic import ValidationError
 from sqlalchemy.orm import Session
 
+from app.audit import (
+    audit_write,
+    column_changes,
+    emit_rest,
+    snapshot_columns,
+    summary_for,
+)
 from app.auth import hash_password
 from app.database import get_db
 from app.middleware import get_current_user
@@ -182,6 +189,7 @@ async def api_list_users(request: Request, db: Session = Depends(get_db)):
 
 
 @router.post("/api/users")
+@audit_write
 async def api_create_user(request: Request, db: Session = Depends(get_db)):
     try:
         body = await request.json()
@@ -210,6 +218,13 @@ async def api_create_user(request: Request, db: Session = Depends(get_db)):
     db.add(user)
     db.commit()
     db.refresh(user)
+    emit_rest(
+        request,
+        action="create",
+        entity_type="user",
+        entity_id=user.id,
+        values=summary_for("user", snapshot_columns(user)),
+    )
 
     response = UserResponse.model_validate(user)
     return JSONResponse(response.model_dump(mode="json"), status_code=201)
@@ -225,6 +240,7 @@ async def api_get_user(request: Request, user_id: int, db: Session = Depends(get
 
 
 @router.put("/api/users/{user_id}")
+@audit_write
 async def api_update_user(
     request: Request, user_id: int, db: Session = Depends(get_db)
 ):
@@ -245,6 +261,7 @@ async def api_update_user(
         return JSONResponse({"detail": str(exc)}, status_code=422)
 
     updates = data.model_dump(exclude_unset=True)
+    before = snapshot_columns(user)
 
     if "username" in updates and updates["username"] is not None:
         existing = (
@@ -268,12 +285,20 @@ async def api_update_user(
 
     db.commit()
     db.refresh(user)
+    emit_rest(
+        request,
+        action="update",
+        entity_type="user",
+        entity_id=user.id,
+        changes=column_changes(before, snapshot_columns(user)),
+    )
 
     response = UserResponse.model_validate(user)
     return JSONResponse(response.model_dump(mode="json"), status_code=200)
 
 
 @router.delete("/api/users/{user_id}")
+@audit_write
 async def api_delete_user(
     request: Request, user_id: int, db: Session = Depends(get_db)
 ):
@@ -287,6 +312,14 @@ async def api_delete_user(
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
         return JSONResponse({"detail": "User not found"}, status_code=404)
+    values = summary_for("user", snapshot_columns(user))
     db.delete(user)
     db.commit()
+    emit_rest(
+        request,
+        action="delete",
+        entity_type="user",
+        entity_id=user_id,
+        values=values,
+    )
     return JSONResponse({"detail": "User deleted"}, status_code=200)

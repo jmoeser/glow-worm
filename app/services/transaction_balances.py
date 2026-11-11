@@ -382,22 +382,28 @@ def _linked_partner(db: Session, txn: Transaction) -> Transaction | None:
     return db.get(Transaction, txn.adjustment_for_transaction_id)
 
 
-def delete_transaction_row(db: Session, txn: Transaction) -> None:
+def delete_transaction_row(db: Session, txn: Transaction) -> list[int]:
     """Reverse and delete one transaction, or a linked payment and clawback.
 
     Deleting either row of a linked pair reverses both and deletes the
     clawback first. A missing partner is a one-row reverse, not an error.
     Rows with both new columns null, including old payments and one-off
     Bills fund expenses, stay a one-row delete. The bill cursor is not moved.
+
+    Returns the deleted ids: the requested id, then the partner id when one
+    was removed with it.
     """
+    deleted = [txn.id]
     if not is_recorded_bill_payment(txn):
         _reverse_and_delete(db, txn)
-        return
+        return deleted
     partner = _linked_partner(db, txn)
     if partner is None:
         _reverse_and_delete(db, txn)
-        return
+        return deleted
+    deleted.append(partner.id)
     clawback = txn if txn.adjustment_for_transaction_id is not None else partner
     payment = partner if clawback is txn else txn
     _reverse_and_delete(db, clawback)
     _reverse_and_delete(db, payment)
+    return deleted

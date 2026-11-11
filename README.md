@@ -359,6 +359,7 @@ glow-worm/
 │   ├── auth.py            # Password hashing & verification
 │   ├── database.py        # DB engine & session
 │   ├── middleware.py      # Auth middleware
+│   ├── audit.py           # JSON-lines audit log for REST and MCP writes
 │   ├── mcp_server.py      # MCP tool definitions
 │   ├── templating.py      # Jinja2 template helpers
 │   ├── routes/            # Route modules (auth, dashboard, bills, etc.)

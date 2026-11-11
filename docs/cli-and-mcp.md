@@ -18,5 +18,23 @@ Read this before changing the `glow` CLI or the MCP server. `AGENTS.md` keeps a 
 - Full MCP server implemented with **FastMCP 3.x**, mounted at `/mcp` via SSE transport. `mcp_app.lifespan` is combined with the app lifespan via `combine_lifespans` (required in v3).
 - **18 tools** exposed: CRUD for transactions (`list_transactions`, `get_transaction`, `create_transaction`, `update_transaction`, `delete_transaction`), recurring bills (`list_bills`, `get_bill`, `create_bill`, `update_bill`, `delete_bill`, `list_due_payments`, `confirm_payment`, `skip_payment`), and payment methods (`list_payment_methods`, `get_payment_method`, `create_payment_method`, `update_payment_method`, `archive_payment_method`). `create_bill` and `update_bill` document the same frequency list as the CLI, including `every_2_years`. No pay tool and no contract tools. No payment-method delete tool and no replacement writes. `update_bill` requires `expected_next_due_date` when it sends `next_due_date`. Omitting the date leaves the cursor alone. `glow tx add --bill-id` does not record a scheduled occurrence. A one-off Bills fund expense omits `--bill-id`. `glow tx delete` uses the pair-aware delete. Payment-method reads include `wallet_provider`, `funding_method_id`, and `effective_expiry_month` / `effective_expiry_year`. Creating or setting kind `wallet` is refused with "Add a wallet on the payment methods page."; any other update leaves a wallet's provider and funding card in place. No contract tools in v1 — do not add MCP or CLI contract commands without updating this count. Bill responses include `contract_id` because they share the bill serializer; the tools do not set it. `update_bill` and `update_payment_method` use `_OMIT` so null clears a link. `paid_from` on create defaults to `bills_fund`.
 - `create_transaction`, `update_transaction`, and `delete_transaction` call `app/services/transaction_balances.py`, same as the transaction routes. Passing null for `sinking_fund_id` or `budget_id` on update clears that link; omitting the argument leaves it unchanged.
-- Uses `contextvars.ContextVar` to propagate the authenticated user from middleware to MCP tool handlers.
+- Uses `contextvars.ContextVar` to propagate the authenticated user from middleware to MCP tool handlers. Auth also freezes the username, user id, and API key id and name onto that context before the middleware session closes, so later audit lines can name the key.
 - Authenticated via Bearer token (API keys), CSRF-exempt.
+
+## Audit log
+
+Successful creates, edits, and deletes made through the JSON API (`/api/*`) or an MCP write tool append one JSON line to stdout. The `glow` CLI is covered because it calls that API with `Authorization: Bearer`. There is no audit table, no migration, and no page in the app.
+
+HTML form routes, the scheduler, auto-pay, and every read are left out. That includes `GET /api/payment-methods/{id}` and MCP `get_payment_method`, which may commit checklist rows.
+
+Each line is one JSON object and starts with `"event": "glow_worm.audit"`. The logger does not add an `INFO:` prefix. `PYTHONUNBUFFERED=1` is already set in the image, so the line shows up in container logs:
+
+```bash
+podman logs <container> | grep '"event": "glow_worm.audit"'
+```
+
+`source` is `rest` or `mcp`. `auth_method` is `api_key` or `session`, and a session call leaves `api_key_id` and `api_key_name` null. Ordinary writes use `create`, `update`, or `delete` (a soft delete is still `delete`). These actions keep their own names: `pay`, `confirm`, `skip`, `archive`, `unarchive`, `end`, and `revoke`.
+
+An edit's `changes` object is `{field: {"old": ..., "new": ...}}` for mapped columns of the primary row that actually changed. `updated_at` is omitted. A create or delete carries `values`, a short redacted summary (for a transaction: id, date, amount, description, and type; other entities are the same kind of identifying fields). Side-effect rows, such as the payment written by confirm, are listed in `related` on that same line.
+
+Money is a string of cents (`"12.50"`), never a float. Dates that are stored as `YYYY-MM-DD` stay that way. Passwords, `password_hash`, raw API keys, `key_hash`, `last4`, and email addresses are never written. A password change is recorded as `"password": {"old": "[redacted]", "new": "[redacted]"}`. If writing the line fails, the error is logged on the `app` logger and the request still succeeds.
