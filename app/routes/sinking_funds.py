@@ -10,6 +10,13 @@ from fastapi.responses import HTMLResponse, JSONResponse
 from pydantic import ValidationError
 from sqlalchemy.orm import Session, joinedload
 
+from app.audit import (
+    audit_write,
+    column_changes,
+    emit_rest,
+    snapshot_columns,
+    summary_for,
+)
 from app.config import TIMEZONE
 from app.database import get_db
 from app.middleware import get_current_user
@@ -500,6 +507,7 @@ async def api_list_funds(request: Request, db: Session = Depends(get_db)):
 
 
 @router.post("/api/sinking-funds")
+@audit_write
 async def api_create_fund(request: Request, db: Session = Depends(get_db)):
     try:
         body = await request.json()
@@ -522,6 +530,13 @@ async def api_create_fund(request: Request, db: Session = Depends(get_db)):
     db.add(fund)
     db.commit()
     db.refresh(fund)
+    emit_rest(
+        request,
+        action="create",
+        entity_type="sinking_fund",
+        entity_id=fund.id,
+        values=summary_for("sinking_fund", snapshot_columns(fund)),
+    )
 
     response = SinkingFundResponse.model_validate(fund)
     return JSONResponse(response.model_dump(mode="json"), status_code=201)
@@ -537,6 +552,7 @@ async def api_get_fund(request: Request, fund_id: int, db: Session = Depends(get
 
 
 @router.put("/api/sinking-funds/{fund_id}")
+@audit_write
 async def api_update_fund(
     request: Request, fund_id: int, db: Session = Depends(get_db)
 ):
@@ -556,17 +572,26 @@ async def api_update_fund(
             return JSONResponse({"detail": errors}, status_code=422)
         return JSONResponse({"detail": str(exc)}, status_code=422)
 
+    before = snapshot_columns(fund)
     for field, value in data.model_dump(exclude_unset=True).items():
         setattr(fund, field, value)
 
     db.commit()
     db.refresh(fund)
+    emit_rest(
+        request,
+        action="update",
+        entity_type="sinking_fund",
+        entity_id=fund.id,
+        changes=column_changes(before, snapshot_columns(fund)),
+    )
 
     response = SinkingFundResponse.model_validate(fund)
     return JSONResponse(response.model_dump(mode="json"), status_code=200)
 
 
 @router.delete("/api/sinking-funds/{fund_id}")
+@audit_write
 async def api_delete_fund(
     request: Request, fund_id: int, db: Session = Depends(get_db)
 ):
@@ -580,6 +605,14 @@ async def api_delete_fund(
     blocked = delete_blocked_message(paying_bills_for_fund(db, fund.id), "fund")
     if blocked:
         return JSONResponse({"detail": blocked}, status_code=409)
+    values = summary_for("sinking_fund", snapshot_columns(fund))
     fund.is_deleted = True
     db.commit()
+    emit_rest(
+        request,
+        action="delete",
+        entity_type="sinking_fund",
+        entity_id=fund.id,
+        values=values,
+    )
     return JSONResponse({"detail": "Sinking fund deleted"}, status_code=200)

@@ -13,6 +13,15 @@ from fastmcp import FastMCP
 from pydantic import ValidationError
 from pydantic.json_schema import PydanticJsonSchemaWarning
 
+from app.audit import (
+    audit_write,
+    column_changes,
+    emit_mcp,
+    get_current_actor,
+    related_rows,
+    snapshot_columns,
+    summary_for,
+)
 from app.config import TIMEZONE
 from app.database import SessionLocal
 from app.middleware import get_current_user_context
@@ -93,9 +102,18 @@ mcp = FastMCP(
 
 
 def _audit_username() -> str:
-    """Return the username of the authenticated user, or 'unknown'."""
+    """Return the username of the authenticated user, or 'unknown'.
+
+    Prefer the frozen actor. Bearer auth commits and closes its session
+    before the tool runs, so the ORM user is expired.
+    """
+    actor = get_current_actor()
+    if actor is not None:
+        return actor.username or "unknown"
     user = get_current_user_context()
-    return user.username if user else "unknown"
+    if user is None:
+        return "unknown"
+    return user.username or "unknown"
 
 
 # ---------------------------------------------------------------------------
@@ -173,6 +191,7 @@ def get_transaction(transaction_id: int) -> dict | str:
 
 
 @mcp.tool()
+@audit_write
 def create_transaction(
     date: str,
     amount: float,
@@ -250,6 +269,13 @@ def create_transaction(
         )
         db.commit()
         db.refresh(txn)
+        emit_mcp(
+            action="create",
+            entity_type="transaction",
+            entity_id=txn.id,
+            endpoint="create_transaction",
+            values=summary_for("transaction", snapshot_columns(txn)),
+        )
 
         logger.info(
             "MCP [user=%s]: created transaction id=%d", _audit_username(), txn.id
@@ -273,6 +299,7 @@ warnings.filterwarnings(
 
 
 @mcp.tool()
+@audit_write
 def update_transaction(
     transaction_id: int,
     date: str | None = None,
@@ -345,6 +372,7 @@ def update_transaction(
         old_txn_type = txn.transaction_type
         old_budget_id = txn.budget_id
         old_amount = txn.amount
+        before = snapshot_columns(txn)
 
         changes = data.model_dump(exclude_unset=True)
         assert_recorded_payment_unchanged(txn, changes)
@@ -370,6 +398,13 @@ def update_transaction(
         )
         db.commit()
         db.refresh(txn)
+        emit_mcp(
+            action="update",
+            entity_type="transaction",
+            entity_id=txn.id,
+            endpoint="update_transaction",
+            changes=column_changes(before, snapshot_columns(txn)),
+        )
 
         logger.info(
             "MCP [user=%s]: updated transaction id=%d", _audit_username(), txn.id
@@ -391,6 +426,7 @@ def update_transaction(
 
 
 @mcp.tool()
+@audit_write
 def delete_transaction(transaction_id: int) -> str:
     """Delete a transaction permanently.
 
@@ -406,8 +442,25 @@ def delete_transaction(transaction_id: int) -> str:
         if not txn:
             return f"Transaction {transaction_id} not found."
 
-        delete_transaction_row(db, txn)
+        values = summary_for("transaction", snapshot_columns(txn))
+        deleted_ids = delete_transaction_row(db, txn)
         db.commit()
+        emit_mcp(
+            action="delete",
+            entity_type="transaction",
+            entity_id=transaction_id,
+            endpoint="delete_transaction",
+            values=values,
+            related=related_rows(
+                "transaction",
+                [
+                    deleted_id
+                    for deleted_id in deleted_ids
+                    if deleted_id != transaction_id
+                ],
+                "delete",
+            ),
+        )
 
         logger.info(
             "MCP [user=%s]: deleted transaction id=%d",
@@ -475,6 +528,7 @@ def get_bill(bill_id: int) -> dict | str:
 
 
 @mcp.tool()
+@audit_write
 def create_bill(
     name: str,
     amount: float,
@@ -567,6 +621,13 @@ def create_bill(
             assign_payment_method(db, bill, data.payment_method_id)
         db.commit()
         db.refresh(bill)
+        emit_mcp(
+            action="create",
+            entity_type="bill",
+            entity_id=bill.id,
+            endpoint="create_bill",
+            values=summary_for("bill", snapshot_columns(bill)),
+        )
 
         logger.info(
             "MCP [user=%s]: created bill id=%d name=%s",
@@ -587,6 +648,7 @@ def create_bill(
 
 
 @mcp.tool()
+@audit_write
 def update_bill(
     bill_id: int,
     name: str | None = None,
@@ -670,6 +732,7 @@ def update_bill(
         if not bill:
             return f"Bill {bill_id} not found."
 
+        before = snapshot_columns(bill)
         updates = data.model_dump(exclude_unset=True)
         payment_set = "payment_method_id" in updates
         payment_id = updates.pop("payment_method_id", None)
@@ -679,6 +742,13 @@ def update_bill(
 
         db.commit()
         db.refresh(bill)
+        emit_mcp(
+            action="update",
+            entity_type="bill",
+            entity_id=bill.id,
+            endpoint="update_bill",
+            changes=column_changes(before, snapshot_columns(bill)),
+        )
 
         logger.info("MCP [user=%s]: updated bill id=%d", _audit_username(), bill.id)
         return serialize_bill(bill)
@@ -699,6 +769,7 @@ def update_bill(
 
 
 @mcp.tool()
+@audit_write
 def delete_bill(bill_id: int) -> str:
     """Deactivate a recurring bill (soft delete).
 
@@ -717,8 +788,16 @@ def delete_bill(bill_id: int) -> str:
         if not bill:
             return f"Bill {bill_id} not found."
 
+        values = summary_for("bill", snapshot_columns(bill))
         bill.is_active = False
         db.commit()
+        emit_mcp(
+            action="delete",
+            entity_type="bill",
+            entity_id=bill_id,
+            endpoint="delete_bill",
+            values=values,
+        )
 
         logger.info("MCP [user=%s]: deactivated bill id=%d", _audit_username(), bill_id)
         return f"Bill {bill_id} ('{bill.name}') deactivated."
@@ -759,6 +838,7 @@ def list_due_payments() -> list[dict]:
 
 
 @mcp.tool()
+@audit_write
 def confirm_payment(bill_id: int, due_date: str, amount: float) -> dict | str:
     """Confirm one due occurrence and log it.
 
@@ -781,7 +861,21 @@ def confirm_payment(bill_id: int, due_date: str, amount: float) -> dict | str:
         if not bill:
             return f"Bill {bill_id} not found."
         result = confirm_payment_service(db, bill, Decimal(str(amount)), due_date)
+        after = snapshot_columns(result.bill)
+        related_ids = [result.transaction.id]
+        taken = result.taken_back or {}
+        clawback_id = taken.get("transaction_id")
+        if clawback_id is not None:
+            related_ids.append(int(clawback_id))
         db.commit()
+        emit_mcp(
+            action="confirm",
+            entity_type="bill",
+            entity_id=bill.id,
+            endpoint="confirm_payment",
+            changes=column_changes(result.prior, after),
+            related=related_rows("transaction", related_ids, "create"),
+        )
         db.refresh(result.transaction)
         db.refresh(result.bill)
         return {
@@ -810,6 +904,7 @@ def confirm_payment(bill_id: int, due_date: str, amount: float) -> dict | str:
 
 
 @mcp.tool()
+@audit_write
 def skip_payment(bill_id: int, due_date: str) -> dict | str:
     """Skip one occurrence. Nothing is written to the ledger.
 
@@ -826,7 +921,15 @@ def skip_payment(bill_id: int, due_date: str) -> dict | str:
         if not bill:
             return f"Bill {bill_id} not found."
         result = skip_payment_service(db, bill, due_date)
+        after = snapshot_columns(result.bill)
         db.commit()
+        emit_mcp(
+            action="skip",
+            entity_type="bill",
+            entity_id=bill.id,
+            endpoint="skip_payment",
+            changes=column_changes(result.prior, after),
+        )
         db.refresh(result.bill)
         return {"bill": serialize_bill(result.bill), "message": result.message}
     except UnknownFrequencyError as exc:
@@ -903,6 +1006,7 @@ def get_payment_method(payment_method_id: int) -> dict | str:
 
 
 @mcp.tool()
+@audit_write
 def create_payment_method(
     nickname: str,
     kind: str,
@@ -958,6 +1062,13 @@ def create_payment_method(
         db.add(method)
         db.commit()
         db.refresh(method)
+        emit_mcp(
+            action="create",
+            entity_type="payment_method",
+            entity_id=method.id,
+            endpoint="create_payment_method",
+            values=summary_for("payment_method", snapshot_columns(method)),
+        )
         logger.info(
             "MCP [user=%s]: created payment method id=%d",
             _audit_username(),
@@ -984,6 +1095,7 @@ warnings.filterwarnings(
 
 
 @mcp.tool()
+@audit_write
 def update_payment_method(
     payment_method_id: int,
     nickname: str | None = None,
@@ -1064,9 +1176,17 @@ def update_payment_method(
             return _payment_validation(exc)
         except PaymentMethodError as exc:
             return exc.message
+        before = snapshot_columns(method)
         apply_payment_method(method, values)
         db.commit()
         db.refresh(method)
+        emit_mcp(
+            action="update",
+            entity_type="payment_method",
+            entity_id=method.id,
+            endpoint="update_payment_method",
+            changes=column_changes(before, snapshot_columns(method)),
+        )
         logger.info(
             "MCP [user=%s]: updated payment method id=%d",
             _audit_username(),
@@ -1086,6 +1206,7 @@ def update_payment_method(
 
 
 @mcp.tool()
+@audit_write
 def archive_payment_method(
     payment_method_id: int, unarchive: bool = False
 ) -> dict | str:
@@ -1106,6 +1227,8 @@ def archive_payment_method(
         method = db.get(PaymentMethod, payment_method_id)
         if method is None:
             return f"Payment method {payment_method_id} not found."
+        before = snapshot_columns(method)
+        action = "unarchive" if unarchive else "archive"
         try:
             if unarchive:
                 unarchive_method(method)
@@ -1116,6 +1239,13 @@ def archive_payment_method(
             return exc.message
         db.commit()
         db.refresh(method)
+        emit_mcp(
+            action=action,
+            entity_type="payment_method",
+            entity_id=method.id,
+            endpoint="archive_payment_method",
+            changes=column_changes(before, snapshot_columns(method)),
+        )
         logger.info(
             "MCP [user=%s]: %s payment method id=%d",
             _audit_username(),

@@ -6,6 +6,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import JSONResponse, RedirectResponse
 
+from app.audit import AuditActor, reset_current_actor, set_current_actor
 from app.auth import hash_api_key
 from app.database import SessionLocal
 from app.models import ApiKey, User
@@ -21,6 +22,29 @@ _current_user_ctx: contextvars.ContextVar[User | None] = contextvars.ContextVar(
 def get_current_user_context() -> User | None:
     """Return the authenticated user for the current request context, or None."""
     return _current_user_ctx.get()
+
+
+def _freeze_actor(
+    user: User, auth_method: str, api_key: ApiKey | None = None
+) -> AuditActor:
+    """Copy identity while the auth session is still open."""
+    return AuditActor(
+        username=user.username,
+        user_id=user.id,
+        auth_method=auth_method,
+        api_key_id=None if api_key is None else api_key.id,
+        api_key_name=None if api_key is None else api_key.name,
+    )
+
+
+async def _call_with_actor(actor: AuditActor, user: User, call_next, request: Request):
+    ctx_token = _current_user_ctx.set(user)
+    actor_token = set_current_actor(actor)
+    try:
+        return await call_next(request)
+    finally:
+        reset_current_actor(actor_token)
+        _current_user_ctx.reset(ctx_token)
 
 
 class AuthenticationMiddleware(BaseHTTPMiddleware):
@@ -59,16 +83,14 @@ class AuthenticationMiddleware(BaseHTTPMiddleware):
                 request.session.clear()
                 return RedirectResponse(url="/login", status_code=303)
 
+            actor = _freeze_actor(user, "session")
             request.state.user = user
             request.state.auth_method = "session"
+            request.state.actor = actor
         finally:
             db.close()
 
-        ctx_token = _current_user_ctx.set(user)
-        try:
-            return await call_next(request)
-        finally:
-            _current_user_ctx.reset(ctx_token)
+        return await _call_with_actor(actor, user, call_next, request)
 
     async def _authenticate_bearer(self, request, call_next, token: str):
         db = SessionLocal()
@@ -96,6 +118,8 @@ class AuthenticationMiddleware(BaseHTTPMiddleware):
                     status_code=401,
                 )
 
+            # Copy the key name before commit expires the row.
+            actor = _freeze_actor(user, "api_key", api_key)
             # Update last_used_at
             api_key.last_used_at = datetime.now(UTC)
             db.commit()
@@ -103,14 +127,11 @@ class AuthenticationMiddleware(BaseHTTPMiddleware):
             request.state.user = user
             request.state.auth_method = "api_key"
             request.state.api_key_id = api_key.id
+            request.state.actor = actor
         finally:
             db.close()
 
-        ctx_token = _current_user_ctx.set(user)
-        try:
-            return await call_next(request)
-        finally:
-            _current_user_ctx.reset(ctx_token)
+        return await _call_with_actor(actor, user, call_next, request)
 
 
 def get_current_user(request: Request) -> User:

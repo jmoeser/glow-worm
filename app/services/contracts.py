@@ -200,12 +200,14 @@ def end_contract(contract: Contract, today: date | None = None) -> None:
     contract.ended_on = when.isoformat()
 
 
-def delete_contract(db: Session, contract: Contract) -> None:
+def delete_contract(db: Session, contract: Contract) -> list[int]:
     """Hard-delete when no bill row still points here.
 
     Stamped payments are cleared in the app. SQLite does not enforce the
     ``ON DELETE SET NULL`` foreign key, and a bill link is a 409 instead of
     a silent clear.
+
+    Returns the transaction ids whose ``contract_id`` was cleared.
     """
     linked = (
         db.query(RecurringBill.id)
@@ -217,12 +219,19 @@ def delete_contract(db: Session, contract: Contract) -> None:
             "A bill still links to this contract. Unlink it, or end the contract instead.",
             409,
         )
+    txn_ids = [
+        txn_id
+        for (txn_id,) in db.query(Transaction.id)
+        .filter(Transaction.contract_id == contract.id)
+        .all()
+    ]
     (
         db.query(Transaction)
         .filter(Transaction.contract_id == contract.id)
         .update({Transaction.contract_id: None}, synchronize_session=False)
     )
     db.delete(contract)
+    return txn_ids
 
 
 def merge_contract(existing: Contract, patch: dict) -> dict:

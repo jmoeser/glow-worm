@@ -653,7 +653,9 @@ class TestPaymentStamp:
             next_due_date="2026-08-01",
             contract_id=old.id,
         )
-        paid = pay_bills_fund(db_session, pay_bill, Decimal("20.00"), "2026-08-01")
+        paid = pay_bills_fund(
+            db_session, pay_bill, Decimal("20.00"), "2026-08-01"
+        ).transaction
         db_session.commit()
         assert paid.transaction_type == "regular"
         assert paid.contract_id == old.id

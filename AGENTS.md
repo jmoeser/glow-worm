@@ -68,6 +68,7 @@ Read the file before changing that area. Put new behavior there, not in this fil
 - Before changing budget funding, recommendations, overspend transfers, or the overdraft warning, read `docs/budgets.md`.
 - Before changing budget-spent repair or the settlement-history audit, read `docs/scripts.md`.
 - Before changing the CLI or MCP server, read `docs/cli-and-mcp.md`.
+- Before changing the REST or MCP audit log, read the Audit log section of `docs/cli-and-mcp.md`.
 
 Invariants:
 

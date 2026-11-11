@@ -23,6 +23,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 import app.services.clock as clock_module
+from app.audit import snapshot_columns
 from app.models import (
     Budget,
     Category,
@@ -84,12 +85,22 @@ class ConfirmResult:
     bill: RecurringBill
     taken_back: dict | None
     message: str
+    prior: dict[str, object]
 
 
 @dataclass
 class SkipResult:
     bill: RecurringBill
     message: str
+    prior: dict[str, object]
+
+
+@dataclass
+class PayResult:
+    """Manual Bills-fund payment plus the bill columns from before the call."""
+
+    transaction: Transaction
+    prior: dict[str, object]
 
 
 def _today() -> date:
@@ -740,6 +751,9 @@ def transition_occurrence(
             raise PaymentBlocked("invalid_amount", "Amount must be greater than zero.")
     due = date.fromisoformat(due_date)
     due_date = due.isoformat()
+    # Copy columns before expire/refresh. Callers that expired the bill
+    # earlier (confirm) replace this with their own earlier snapshot.
+    prior = snapshot_columns(bill)
     copied = _copy_bill(bill)
     # Drop a dirty cursor before any query. ensure_backfill already ran
     # for confirm, and it must not have committed this date.
@@ -785,7 +799,7 @@ def transition_occurrence(
             f"Skipped {format_due_date(due_date)}. "
             f"Next due {format_due_date(bill.next_due_date)}."
         )
-        return SkipResult(bill=bill, message=message)
+        return SkipResult(bill=bill, message=message, prior=prior)
 
     assert paid_amount is not None
     name = copied.name
@@ -842,7 +856,7 @@ def transition_occurrence(
         db.refresh(bill)
         db.flush()
         return ConfirmResult(
-            transaction=txn, bill=bill, taken_back=taken, message=message
+            transaction=txn, bill=bill, taken_back=taken, message=message, prior=prior
         )
 
     if source is None or source.fund is None:
@@ -867,7 +881,11 @@ def transition_occurrence(
     if action == "confirm":
         message = f"Logged {format_money(paid_amount)} from {source_label(bill)}."
         return ConfirmResult(
-            transaction=txn, bill=bill, taken_back=None, message=message
+            transaction=txn,
+            bill=bill,
+            taken_back=None,
+            message=message,
+            prior=prior,
         )
     return txn
 
@@ -878,6 +896,8 @@ def confirm_payment(
     """Log one occurrence dated on its due date, then step next_due_date."""
     from app.services.household_months import ensure_backfill
 
+    # Snapshot before expire and before ensure_backfill, which may commit.
+    prior = snapshot_columns(bill)
     # The backfill commit must not store a cursor move or a payment.
     db.expire(bill, ["next_due_date"])
     ensure_backfill(db, today_value=_today())
@@ -885,6 +905,7 @@ def confirm_payment(
         db, bill, "confirm", due_date, amount=amount, ledger_date=due_date
     )
     assert isinstance(result, ConfirmResult)
+    result.prior = prior
     return result
 
 
@@ -897,12 +918,14 @@ def skip_payment(db: Session, bill: RecurringBill, due_date: str) -> SkipResult:
 
 def pay_bills_fund(
     db: Session, bill: RecurringBill, amount: Decimal, payment_date: str
-) -> Transaction:
+) -> PayResult:
     """Pay the current Bills-fund occurrence on a caller-supplied ledger date.
 
     The occurrence is the cursor at call time, which may differ from the
     ledger date. Manual pay does not read or write ``last_auto_settled_on``.
+    ``prior`` is the bill's columns from before this call expires the row.
     """
+    prior = snapshot_columns(bill)
     loaded_due = bill.next_due_date
     result = transition_occurrence(
         db,
@@ -913,7 +936,7 @@ def pay_bills_fund(
         ledger_date=payment_date,
     )
     assert isinstance(result, Transaction)
-    return result
+    return PayResult(transaction=result, prior=prior)
 
 
 def due_to_confirm(db: Session, today: date | None = None) -> list[dict]:
