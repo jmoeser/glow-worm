@@ -488,6 +488,56 @@ class TestRestWrites:
         assert response.status_code == 201
         assert "audit log failed" in caplog.text
 
+    def test_bill_update_records_the_mark_and_the_note(
+        self, authed_client, audit_events
+    ):
+        category_id = _expense_category(authed_client)
+        created = authed_client.post(
+            "/api/bills",
+            json={
+                "name": "Power",
+                "amount": "40.00",
+                "debtor_provider": "Grid",
+                "start_date": "2026-01-01",
+                "frequency": "monthly",
+                "category_id": category_id,
+                "next_due_date": "2026-06-01",
+                "cancel_note": "Drafted first",
+            },
+        )
+        assert created.status_code == 201, created.text
+        create_event = audit_events[-1]
+        assert create_event["action"] == "create"
+        assert set(create_event["values"]) == {
+            "id",
+            "name",
+            "amount",
+            "next_due_date",
+        }
+        assert "Drafted first" not in json.dumps(create_event)
+        audit_events.clear()
+
+        updated = authed_client.put(
+            f"/api/bills/{created.json()['id']}",
+            json={
+                "importance": "essential",
+                "cancel_note": "Call the provider",
+            },
+        )
+        assert updated.status_code == 200, updated.text
+        event = audit_events[-1]
+        assert event["action"] == "update"
+        assert event["entity_type"] == "bill"
+        assert event["changes"]["importance"] == {"old": None, "new": "essential"}
+        assert event["changes"]["cancel_note"] == {
+            "old": "Drafted first",
+            "new": "Call the provider",
+        }
+        assert "updated_at" not in event["changes"]
+        dumped = json.dumps(event)
+        assert "[redacted]" not in dumped
+        assert "Call the provider" in dumped
+
 
 class TestMcpWrite:
     def test_frozen_actor_names_the_api_key(

@@ -33,6 +33,7 @@ from app.models import (
 )
 from app.schemas import (
     BillFrequency,
+    BillImportance,
     PaidFrom,
     RecurringBillResponse,
     RecurringBillUpdate,
@@ -125,6 +126,9 @@ _BILL_EDIT_COLUMNS = (
     "contract_id",
     "paid_from",
     "paid_from_fund_id",
+    "importance",
+    "cancel_note",
+    "if_stopped_note",
 )
 
 
@@ -309,7 +313,7 @@ def apply_paid_from(
 
 
 def _plain(value: object) -> object:
-    if isinstance(value, PaidFrom | BillFrequency):
+    if isinstance(value, PaidFrom | BillFrequency | BillImportance):
         return value.value
     value_attr = getattr(value, "value", None)
     if isinstance(value_attr, str):
@@ -386,7 +390,7 @@ def update_bill_fields(
     category_id = updates.pop("category_id", None)
 
     for field, value in updates.items():
-        if field in ("frequency", "bill_type") and value is not None:
+        if field in ("frequency", "bill_type", "importance") and value is not None:
             setattr(bill, field, _plain(value))
         else:
             setattr(bill, field, value)

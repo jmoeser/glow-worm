@@ -180,7 +180,7 @@ Validation, one shared cleaner used by the form, the Pydantic schemas, and MCP:
 
 - `importance` is only `essential`, `optional`, or null. Anything else is a 422. The form treats a blank select as null.
 - Notes are stripped. Blank becomes null. Max 500 characters.
-- Separators between digits are space, hyphen, dot, and slash. Add `/` to the existing `_BETWEEN_DIGITS` class so there is one separator pattern. Do not write a second separator cleaner. Do not call `reject_account_number`.
+- Separators between digits on a note are space, hyphen, dot, and slash. The 6-digit rule keeps its class (space, hyphen, and dot only). A payment-method nickname such as `11/2026` must still be saved, and that test is what leaves the slash hole on `reject_account_number`. Do not call `reject_account_number` for these notes. One function, `clean_bill_note`, is what the form, the schemas, and MCP call.
 - After those separators are removed, reject a run of 12 or more digits with "Don't put a card number here." A phone number such as "Call 13 13 19" is saved.
 - Do not echo the note text back in the error body. The bills API already returns loc, msg, and type only. The form shows the message only. MCP `create_bill` and `update_bill` return `_payment_validation(exc)` for a `ValidationError`, not `str(exc)`.
 

@@ -200,8 +200,9 @@ class TestBillTools:
             category_id=sample_category.id,
             next_due_date="2026-02-01",
         )
-        assert isinstance(result, str)
-        assert "validation error" in result.lower()
+        assert isinstance(result, dict)
+        assert "biweekly" not in str(result)
+        assert "input" not in result["detail"][0]
 
     def test_list_bills_active_only(self, db_session, setup_database, sample_category):
         _create_bill(
@@ -283,6 +284,86 @@ class TestBillTools:
         result = _get_bill(9999)
         assert isinstance(result, str)
         assert "not found" in result.lower()
+
+    def test_tool_count_stays_18(self):
+        names = [tool.name for tool in asyncio.run(mcp.list_tools())]
+        assert len(names) == 18
+
+    def test_mark_and_notes_omit_versus_null(
+        self, db_session, setup_database, sample_category
+    ):
+        created = _create_bill(
+            name="Netflix",
+            amount=15.99,
+            debtor_provider="Netflix",
+            start_date="2026-01-01",
+            frequency="monthly",
+            category_id=sample_category.id,
+            next_due_date="2026-02-01",
+            importance="optional",
+            cancel_note="Call 13 13 19",
+            if_stopped_note="Shows stop",
+        )
+        assert isinstance(created, dict)
+        assert created["importance"] == "optional"
+        assert created["cancel_note"] == "Call 13 13 19"
+        assert created["if_stopped_note"] == "Shows stop"
+
+        omitted = _update_bill(created["id"], name="Netflix Plus")
+        assert isinstance(omitted, dict)
+        assert omitted["importance"] == "optional"
+        assert omitted["cancel_note"] == "Call 13 13 19"
+        assert omitted["if_stopped_note"] == "Shows stop"
+        assert omitted["name"] == "Netflix Plus"
+
+        cleared = _update_bill(created["id"], importance=None, cancel_note=None)
+        assert isinstance(cleared, dict)
+        assert cleared["importance"] is None
+        assert cleared["cancel_note"] is None
+        assert cleared["if_stopped_note"] == "Shows stop"
+
+        blank = _update_bill(created["id"], if_stopped_note="  ")
+        assert isinstance(blank, dict)
+        assert blank["if_stopped_note"] is None
+
+    def test_card_number_is_not_echoed(
+        self, db_session, setup_database, sample_category
+    ):
+        note = "1111 2222 3333"  # 12 digits once the spaces are removed
+        rejected = _create_bill(
+            name="Card",
+            amount=10,
+            debtor_provider="Bank",
+            start_date="2026-01-01",
+            frequency="monthly",
+            category_id=sample_category.id,
+            next_due_date="2026-02-01",
+            cancel_note=note,
+        )
+        assert isinstance(rejected, dict)
+        dumped = str(rejected)
+        assert note not in dumped
+        assert "111122223333" not in dumped
+        assert "Don't put a card number here." in dumped
+
+        created = _create_bill(
+            name="Phone",
+            amount=10,
+            debtor_provider="Bank",
+            start_date="2026-01-01",
+            frequency="monthly",
+            category_id=sample_category.id,
+            next_due_date="2026-02-01",
+            cancel_note="Call 13 13 19",
+        )
+        assert isinstance(created, dict)
+        rejected_update = _update_bill(created["id"], if_stopped_note="1111/2222/3333")
+        assert isinstance(rejected_update, dict)
+        assert "1111/2222/3333" not in str(rejected_update)
+        assert "Don't put a card number here." in str(rejected_update)
+        fetched = _get_bill(created["id"])
+        assert isinstance(fetched, dict)
+        assert fetched["if_stopped_note"] is None
 
 
 class TestMcpMount:

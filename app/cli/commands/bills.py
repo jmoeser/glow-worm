@@ -9,7 +9,9 @@ from app.cli.client import get_client, print_json, raise_for_status
 from app.config import TIMEZONE
 
 app = typer.Typer(help="Manage recurring bills.")
-console = Console()
+# Width and height are both set so Rich does not fall back to a narrow terminal
+# and wrap "Not set yet" onto a second line.
+console = Console(width=200, height=40)
 
 
 @app.command("list")
@@ -36,6 +38,7 @@ def list_bills(
         "Next Due",
         "Type",
         "Paid from",
+        "Mark",
     )
     for b in bills:
         table.add_row(
@@ -47,8 +50,17 @@ def list_bills(
             b["next_due_date"],
             b["bill_type"],
             b.get("paid_from_label") or b.get("paid_from") or "",
+            _mark_label(b),
         )
     console.print(table)
+
+
+def _mark_label(bill: dict) -> str:
+    marks = {
+        "essential": "Keep paying",
+        "optional": "Safe to cancel",
+    }
+    return marks.get(bill.get("importance") or "", "Not set yet")
 
 
 def _due_label(iso_date: str) -> str:
@@ -135,6 +147,18 @@ def add_bill(
             "--fund-id", help="Sinking fund id when --paid-from is sinking_fund"
         ),
     ] = None,
+    importance: Annotated[
+        str | None,
+        typer.Option("--importance", help="essential or optional"),
+    ] = None,
+    cancel_note: Annotated[
+        str | None,
+        typer.Option("--cancel-note", help="How to cancel"),
+    ] = None,
+    if_stopped_note: Annotated[
+        str | None,
+        typer.Option("--if-stopped-note", help="What happens if this stops"),
+    ] = None,
     json_output: Annotated[bool, typer.Option("--json", help="Output as JSON")] = False,
 ) -> None:
     """Create a new recurring bill."""
@@ -150,6 +174,12 @@ def add_bill(
         "paid_from": paid_from,
         "paid_from_fund_id": fund_id,
     }
+    if importance is not None:
+        payload["importance"] = importance
+    if cancel_note is not None:
+        payload["cancel_note"] = cancel_note
+    if if_stopped_note is not None:
+        payload["if_stopped_note"] = if_stopped_note
     client = get_client()
     resp = client.post("/api/bills", json=payload)
     raise_for_status(resp)

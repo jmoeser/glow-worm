@@ -61,6 +61,11 @@ class PaidFrom(str, Enum):
     sinking_fund = "sinking_fund"
 
 
+class BillImportance(str, Enum):
+    essential = "essential"
+    optional = "optional"
+
+
 # One 365-day basis for every annual figure. 28_days stays 13.036 (365 / 28).
 FREQUENCY_LABELS: dict[str, str] = {
     "weekly": "Weekly",
@@ -139,8 +144,15 @@ class ReplacementStatus(str, Enum):
     stopped = "stopped"
 
 
+# Space, hyphen, and dot between digits. Slash stays out: "11/2026" is a
+# payment-method nickname the 6-digit rule allows.
 _BETWEEN_DIGITS = re.compile(r"(?<=\d)[ \-.]+(?=\d)")
+# Bill notes also treat a slash as a separator, so 1111/2222/3333 is one run.
+_NOTE_SEPARATORS = re.compile(r"(?<=\d)[ \-./]+(?=\d)")
 _LONG_DIGIT_RUN = re.compile(r"\d{6,}")
+_CARD_DIGIT_RUN = re.compile(r"\d{12,}")
+_NOTE_MAX_LENGTH = 500
+CARD_NUMBER_MESSAGE = "Don't put a card number here."
 
 
 def reject_account_number(value: str) -> str:
@@ -152,6 +164,51 @@ def reject_account_number(value: str) -> str:
             "Don't put card or account numbers here.",
         )
     return value
+
+
+class BillFieldError(Exception):
+    """A bill field failed a check. The message is safe to show; the text is not."""
+
+    def __init__(self, code: str, message: str):
+        self.code = code
+        self.message = message
+        super().__init__(message)
+
+
+def clean_bill_note(value: object) -> str | None:
+    """Strip a cancel or stopped note. Blank becomes null.
+
+    Rejects a run of 12 or more digits once spaces, hyphens, dots, and
+    slashes between digits are removed. A phone number is short enough
+    to keep. This is not the 6-digit account check.
+    """
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        raise BillFieldError("string_type", "Enter text.")
+    text = value.strip()
+    if text == "":
+        return None
+    if len(text) > _NOTE_MAX_LENGTH:
+        raise BillFieldError("string_too_long", "Keep this to 500 characters.")
+    collapsed = _NOTE_SEPARATORS.sub("", text)
+    if _CARD_DIGIT_RUN.search(collapsed):
+        raise BillFieldError("card_number", CARD_NUMBER_MESSAGE)
+    return text
+
+
+def _clean_bill_note_field(value: object) -> str | None:
+    try:
+        return clean_bill_note(value)
+    except BillFieldError as exc:
+        if exc.code == "string_too_long":
+            raise PydanticCustomError(
+                "string_too_long",
+                "Keep this to 500 characters.",
+            ) from None
+        if exc.code == "string_type":
+            raise PydanticCustomError("string_type", "Enter text.") from None
+        raise PydanticCustomError("card_number", CARD_NUMBER_MESSAGE) from None
 
 
 def public_validation_errors(exc: ValidationError) -> list[dict[str, object]]:
@@ -453,11 +510,19 @@ class RecurringBillCreate(BaseModel):
     contract_id: int | None = None
     paid_from: PaidFrom = PaidFrom.bills_fund
     paid_from_fund_id: int | None = None
+    importance: BillImportance | None = None
+    cancel_note: str | None = Field(None, max_length=500)
+    if_stopped_note: str | None = Field(None, max_length=500)
 
     @field_validator("start_date", "next_due_date", "end_date")
     @classmethod
     def _dates_exist(cls, value: str | None) -> str | None:
         return _real_iso_date(value)
+
+    @field_validator("cancel_note", "if_stopped_note", mode="before")
+    @classmethod
+    def _notes(cls, value: object) -> str | None:
+        return _clean_bill_note_field(value)
 
 
 class RecurringBillUpdate(BaseModel):
@@ -477,11 +542,19 @@ class RecurringBillUpdate(BaseModel):
     contract_id: int | None = None
     paid_from: PaidFrom | None = None
     paid_from_fund_id: int | None = None
+    importance: BillImportance | None = None
+    cancel_note: str | None = Field(None, max_length=500)
+    if_stopped_note: str | None = Field(None, max_length=500)
 
     @field_validator("next_due_date", "end_date", "expected_next_due_date")
     @classmethod
     def _dates_exist(cls, value: str | None) -> str | None:
         return _real_iso_date(value)
+
+    @field_validator("cancel_note", "if_stopped_note", mode="before")
+    @classmethod
+    def _notes(cls, value: object) -> str | None:
+        return _clean_bill_note_field(value)
 
 
 class RecurringBillResponse(BaseModel):
@@ -504,6 +577,9 @@ class RecurringBillResponse(BaseModel):
     contract_id: int | None = None
     paid_from: str = "bills_fund"
     paid_from_fund_id: int | None = None
+    importance: str | None = None
+    cancel_note: str | None = None
+    if_stopped_note: str | None = None
     created_at: datetime
     updated_at: datetime
 
