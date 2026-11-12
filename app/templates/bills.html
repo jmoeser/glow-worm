@@ -16,7 +16,23 @@
 {% endif %}
 {% endmacro %}
 {% macro bill_display_cells(bill) %}
-<td data-sort-value="{{ bill.name }}">{{ bill.name }}</td>
+<td data-sort-value="{{ bill.name }}">{{ bill.name }}
+{%- if bill.importance == 'essential' %} <span class="gw-badge gw-badge--paid">Keep paying</span>
+{%- elif bill.importance == 'optional' %} <span class="gw-badge gw-badge--quiet">Safe to cancel</span>
+{%- endif %}
+{%- if bill.importance == 'optional' and bill.cancel_note %}
+<br><span class="gw-text-muted">How to cancel: {{ bill.cancel_note }}</span>
+{%- elif bill.importance == 'essential' and bill.if_stopped_note %}
+<br><span class="gw-text-muted">If this stops: {{ bill.if_stopped_note }}</span>
+{%- elif not bill.importance %}
+{%- if bill.cancel_note %}
+<br><span class="gw-text-muted">How to cancel: {{ bill.cancel_note }}</span>
+{%- endif %}
+{%- if bill.if_stopped_note %}
+<br><span class="gw-text-muted">If this stops: {{ bill.if_stopped_note }}</span>
+{%- endif %}
+{%- endif -%}
+</td>
 <td class="gw-text-muted" data-sort-value="{{ bill.debtor_provider }}">
     {{ bill.debtor_provider }}
     {% if bill.contract %}
@@ -65,7 +81,7 @@
             hx-disabled-elt="this"
             class="gw-action-edit">Skip</button>
     {% endif %}
-    <button hx-get="/bills/{{ bill.id }}/edit" hx-target="#bill-row-{{ bill.id }}" hx-swap="outerHTML"
+    <button hx-get="/bills/{{ bill.id }}/edit{{ filter_query|default('', true) }}" hx-target="#bill-row-{{ bill.id }}" hx-swap="outerHTML"
             class="gw-action-edit">Edit</button>
     <button hx-delete="/bills/{{ bill.id }}" hx-target="#bill-row-{{ bill.id }}" hx-swap="delete"
             hx-confirm="Deactivate this bill?"
@@ -182,11 +198,32 @@
         <input type="hidden" name="next_due_date_was" value="{{ bill.next_due_date }}" form="edit-form-{{ bill.id }}">
     </td>
     <td>
-        <form id="edit-form-{{ bill.id }}" hx-post="/bills/{{ bill.id }}" hx-target="#bill-row-{{ bill.id }}" hx-swap="outerHTML" style="display: inline;">
+        <form id="edit-form-{{ bill.id }}" hx-post="/bills/{{ bill.id }}{{ filter_query|default('', true) }}" hx-target="#bill-row-{{ bill.id }}" hx-swap="outerHTML" style="display: inline;">
             <button type="submit" class="gw-btn gw-btn-success gw-btn-sm">Save</button>
         </form>
         <button class="gw-btn gw-btn-ghost gw-btn-sm"
-                hx-get="/bills/{{ bill.id }}" hx-target="#bill-row-{{ bill.id }}" hx-swap="outerHTML">Cancel</button>
+                hx-get="/bills/{{ bill.id }}{{ close_query|default('', true) }}" hx-target="#bill-row-{{ bill.id }}" hx-swap="outerHTML">Cancel</button>
+    </td>
+</tr>
+<tr id="bill-notes-{{ bill.id }}">
+    <td colspan="9">
+        <label class="gw-label" for="importance-{{ bill.id }}">If something happens to me</label>
+        <select id="importance-{{ bill.id }}" name="importance" form="edit-form-{{ bill.id }}" class="gw-edit-input">
+            <option value="" {{ 'selected' if not bill.importance }}>Not set yet</option>
+            <option value="essential" {{ 'selected' if bill.importance == 'essential' }}>Keep paying</option>
+            <option value="optional" {{ 'selected' if bill.importance == 'optional' }}>Safe to cancel</option>
+        </select>
+        <p class="gw-text-muted" style="font-size: 0.75rem; margin-top: 4px;">Both notes are optional on every payment. Write where to cancel it, and what goes wrong if it stops.</p>
+        <div style="display: flex; gap: 12px; flex-wrap: wrap; margin-top: 8px;">
+            <div style="flex: 1; min-width: 220px;">
+                <label class="gw-label" for="cancel-note-{{ bill.id }}">How to cancel</label>
+                <textarea id="cancel-note-{{ bill.id }}" name="cancel_note" form="edit-form-{{ bill.id }}" maxlength="500" rows="2" class="gw-edit-input">{{ bill.cancel_note or '' }}</textarea>
+            </div>
+            <div style="flex: 1; min-width: 220px;">
+                <label class="gw-label" for="stopped-note-{{ bill.id }}">What happens if this stops</label>
+                <textarea id="stopped-note-{{ bill.id }}" name="if_stopped_note" form="edit-form-{{ bill.id }}" maxlength="500" rows="2" class="gw-edit-input">{{ bill.if_stopped_note or '' }}</textarea>
+            </div>
+        </div>
     </td>
 </tr>
 
@@ -330,6 +367,23 @@
                 <label for="bill-next-due" class="gw-label">Next Due Date</label>
                 <input type="date" id="bill-next-due" name="next_due_date" required class="gw-input">
             </div>
+            <div>
+                <label for="bill-importance" class="gw-label">If something happens to me</label>
+                <select id="bill-importance" name="importance" class="gw-select">
+                    <option value="" selected>Not set yet</option>
+                    <option value="essential">Keep paying</option>
+                    <option value="optional">Safe to cancel</option>
+                </select>
+                <p class="gw-text-muted" style="font-size: 0.75rem; margin-top: 4px;">Both notes are optional on every payment. Write where to cancel it, and what goes wrong if it stops.</p>
+            </div>
+            <div>
+                <label for="bill-cancel-note" class="gw-label">How to cancel</label>
+                <textarea id="bill-cancel-note" name="cancel_note" maxlength="500" rows="2" class="gw-input"></textarea>
+            </div>
+            <div>
+                <label for="bill-stopped-note" class="gw-label">What happens if this stops</label>
+                <textarea id="bill-stopped-note" name="if_stopped_note" maxlength="500" rows="2" class="gw-input"></textarea>
+            </div>
             <div style="grid-column: 1 / -1;">
                 <button type="submit" class="gw-btn gw-btn-primary">Add Bill</button>
             </div>
@@ -351,14 +405,35 @@
             <span class="gw-summary-value">$<span id="bills-other-cost">{{ other_monthly|money }}</span> a month</span>
         </div>
         <div class="gw-summary-item">
+            <span class="gw-summary-label">Split of the monthly averages:</span>
+        </div>
+        <div class="gw-summary-item">
+            <span class="gw-summary-label">Keep paying:</span>
+            <span class="gw-summary-value">$<span id="bills-essential-cost">{{ essential_monthly|money }}</span> a month</span>
+        </div>
+        <div class="gw-summary-item">
+            <span class="gw-summary-label">Safe to cancel:</span>
+            <span class="gw-summary-value">$<span id="bills-optional-cost">{{ optional_monthly|money }}</span> a month</span>
+        </div>
+        <div class="gw-summary-item">
+            <span class="gw-summary-label">Not marked:</span>
+            <span class="gw-summary-value">$<span id="bills-unmarked-cost">{{ unmarked_monthly|money }}</span> a month</span>
+        </div>
+        <div class="gw-summary-item">
+            <span class="gw-text-muted">Safe to cancel is still paid until someone cancels it with the provider.</span>
+        </div>
+        <div class="gw-summary-item">
             <a href="/bills?payment_method=none">No payment method: {{ unset_count }}</a>
-            {% if payment_filter %}
+            <a href="/bills?importance=unset">No keep-or-cancel mark: <span id="bills-unmarked-count">{{ unmarked_count }}</span></a>
+            {% if payment_filter or importance_filter %}
             <a href="/bills" class="gw-text-muted">Show all</a>
             {% endif %}
         </div>
     </div>
 
     {% include "_due_to_confirm.html" %}
+
+    <p id="bills-unmarked-note" class="gw-text-muted" style="margin: 0 0 12px;" {% if unmarked_count == 0 %}hidden{% endif %}>Mark each payment as keep paying or safe to cancel. The keep-paying total leaves out anything still unmarked.</p>
 
     <!-- Bills table -->
     <div class="gw-table-wrap">
@@ -491,6 +566,19 @@ document.body.addEventListener('gwBillSuccess', function(e) {
     if (detail.other != null && detail.other !== '') {
         var other = document.getElementById('bills-other-cost');
         if (other) { other.textContent = detail.other; }
+    }
+    function setPile(id, value) {
+        var el = document.getElementById(id);
+        if (el && value != null && value !== '') { el.textContent = value; }
+    }
+    setPile('bills-essential-cost', detail.essential);
+    setPile('bills-optional-cost', detail.optional);
+    setPile('bills-unmarked-cost', detail.unmarked);
+    if (detail.unmarked_count != null && detail.unmarked_count !== '') {
+        var count = document.getElementById('bills-unmarked-count');
+        if (count) { count.textContent = String(detail.unmarked_count); }
+        var note = document.getElementById('bills-unmarked-note');
+        if (note) { note.hidden = Number(detail.unmarked_count) === 0; }
     }
 });
 </script>

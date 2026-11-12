@@ -21,7 +21,9 @@ def test_sqlite_payment_method_migration_round_trip(tmp_path):
     url = f"sqlite:///{tmp_path / 'pay.sqlite'}"
     env = os.environ.copy()
     env["DATABASE_URL"] = url
-    env["SECRET_KEY"] = "migration-test-secret-key-not-for-production-use"
+    env["SECRET_KEY"] = (
+        "migration-test-secret-key-not-for-production-use"  # pragma: allowlist secret
+    )
     root = Path(__file__).resolve().parents[1]
 
     def alembic(*args: str) -> None:
@@ -143,7 +145,9 @@ def test_paid_from_revision_backfills_and_rejects_a_half_set_row(tmp_path):
     url = f"sqlite:///{tmp_path / 'paid-from.sqlite'}"
     env = os.environ.copy()
     env["DATABASE_URL"] = url
-    env["SECRET_KEY"] = "migration-test-secret-key-not-for-production-use"
+    env["SECRET_KEY"] = (
+        "migration-test-secret-key-not-for-production-use"  # pragma: allowlist secret
+    )
     root = Path(__file__).resolve().parents[1]
 
     def alembic(*args: str) -> None:
@@ -227,7 +231,9 @@ def test_contracts_revision_round_trip(tmp_path):
     url = f"sqlite:///{tmp_path / 'contracts.sqlite'}"
     env = os.environ.copy()
     env["DATABASE_URL"] = url
-    env["SECRET_KEY"] = "migration-test-secret-key-not-for-production-use"
+    env["SECRET_KEY"] = (
+        "migration-test-secret-key-not-for-production-use"  # pragma: allowlist secret
+    )
     root = Path(__file__).resolve().parents[1]
 
     def alembic(*args: str) -> None:
@@ -349,7 +355,9 @@ def test_occurrence_upgrade_does_not_move_money_and_downgrade_drops_columns(tmp_
     url = f"sqlite:///{tmp_path / 'occurrence.sqlite'}"
     env = os.environ.copy()
     env["DATABASE_URL"] = url
-    env["SECRET_KEY"] = "migration-test-secret-key-not-for-production-use"
+    env["SECRET_KEY"] = (
+        "migration-test-secret-key-not-for-production-use"  # pragma: allowlist secret
+    )
     root = Path(__file__).resolve().parents[1]
 
     def alembic(*args: str) -> None:
@@ -636,4 +644,110 @@ def test_occurrence_upgrade_does_not_move_money_and_downgrade_drops_columns(tmp_
             text("SELECT settlement_outcome, settlement_fund_id FROM household_months")
         ).one()
         assert settlement[0] == "surplus"
+    engine.dispose()
+
+
+def test_importance_upgrade_leaves_rows_null_and_downgrade_drops_columns(tmp_path):
+    from decimal import Decimal
+
+    from sqlalchemy import create_engine, text
+    from sqlalchemy.exc import IntegrityError
+
+    url = f"sqlite:///{tmp_path / 'importance.sqlite'}"
+    env = os.environ.copy()
+    env["DATABASE_URL"] = url
+    env["SECRET_KEY"] = (
+        "migration-test-secret-key-not-for-production-use"  # pragma: allowlist secret
+    )
+    root = Path(__file__).resolve().parents[1]
+
+    def alembic(*args: str) -> None:
+        result = subprocess.run(
+            ["uv", "run", "alembic", *args],
+            check=False,
+            cwd=root,
+            env=env,
+            capture_output=True,
+            text=True,
+        )
+        assert result.returncode == 0, result.stdout + result.stderr
+
+    alembic("upgrade", "n4o5p6q7r8s9")
+    engine = create_engine(url)
+    with engine.begin() as conn:
+        conn.execute(
+            text(
+                "INSERT INTO categories (name, type, color, is_budget_category, "
+                "is_deleted, is_system, exclude_from_monthly_cost) VALUES "
+                "('Ledger', 'expense', '#112233', 0, 0, 0, 0)"
+            )
+        )
+        category_id = conn.execute(
+            text("SELECT id FROM categories WHERE name = 'Ledger'")
+        ).scalar_one()
+        conn.execute(
+            text(
+                "INSERT INTO recurring_bills (name, amount, debtor_provider, start_date, "
+                "frequency, category_id, is_active, next_due_date, created_at, updated_at, "
+                "bill_type, paid_from) VALUES "
+                "('Power', 40, 'Grid', '2026-01-01', 'monthly', :cat, 1, '2026-06-01', "
+                "'2026-01-01', '2026-01-01', 'fixed', 'bills_fund')"
+            ),
+            {"cat": category_id},
+        )
+    engine.dispose()
+
+    alembic("upgrade", "head")
+    engine = create_engine(url)
+    with engine.connect() as conn:
+        row = conn.execute(
+            text(
+                "SELECT importance, cancel_note, if_stopped_note, amount "
+                "FROM recurring_bills WHERE name = 'Power'"
+            )
+        ).one()
+        assert row[0] is None
+        assert row[1] is None
+        assert row[2] is None
+        assert Decimal(str(row[3])) == Decimal(40)
+        sql = conn.execute(
+            text("SELECT sql FROM sqlite_master WHERE name = 'recurring_bills'")
+        ).scalar_one()
+        assert "ck_recurring_bills_importance" in sql
+    with pytest.raises(IntegrityError), engine.begin() as conn:
+        conn.execute(text("UPDATE recurring_bills SET importance = 'later'"))
+    with engine.begin() as conn:
+        conn.execute(
+            text(
+                "UPDATE recurring_bills SET importance = 'optional' WHERE name = 'Power'"
+            )
+        )
+    engine.dispose()
+
+    alembic("downgrade", "n4o5p6q7r8s9")
+    engine = create_engine(url)
+    columns = {
+        column["name"] for column in inspect(engine).get_columns("recurring_bills")
+    }
+    assert "importance" not in columns
+    assert "cancel_note" not in columns
+    assert "if_stopped_note" not in columns
+    with engine.connect() as conn:
+        amount = conn.execute(
+            text("SELECT amount FROM recurring_bills WHERE name = 'Power'")
+        ).scalar_one()
+        assert Decimal(str(amount)) == Decimal(40)
+    engine.dispose()
+
+    alembic("upgrade", "head")
+    engine = create_engine(url)
+    columns = {
+        column["name"] for column in inspect(engine).get_columns("recurring_bills")
+    }
+    assert {"importance", "cancel_note", "if_stopped_note"} <= columns
+    with engine.connect() as conn:
+        importance = conn.execute(
+            text("SELECT importance FROM recurring_bills WHERE name = 'Power'")
+        ).scalar_one()
+        assert importance is None
     engine.dispose()

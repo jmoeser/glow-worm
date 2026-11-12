@@ -543,6 +543,9 @@ def create_bill(
     paid_from: str = "bills_fund",
     paid_from_fund_id: int | None = None,
     bill_type: str | None = None,
+    importance: str | None = None,
+    cancel_note: str | None = None,
+    if_stopped_note: str | None = None,
 ) -> dict | str:
     """Create a new recurring bill.
 
@@ -563,6 +566,10 @@ def create_bill(
         paid_from_fund_id: Sinking fund id when paid_from is 'sinking_fund'.
         bill_type: 'fixed' or 'variable'. Omit to keep the default, fixed.
             Only Bills-fund rows use it. Others always wait for confirm.
+        importance: 'essential' (keep paying) or 'optional' (safe to cancel).
+            Omit to leave it unset.
+        cancel_note: How to cancel. Blank becomes null.
+        if_stopped_note: What happens if this stops. Blank becomes null.
 
     Returns:
         The created bill object, or an error message.
@@ -571,6 +578,12 @@ def create_bill(
         create_kwargs: dict[str, Any] = {}
         if bill_type is not None:
             create_kwargs["bill_type"] = bill_type
+        if importance is not None:
+            create_kwargs["importance"] = importance
+        if cancel_note is not None:
+            create_kwargs["cancel_note"] = cancel_note
+        if if_stopped_note is not None:
+            create_kwargs["if_stopped_note"] = if_stopped_note
         data = RecurringBillCreate(
             name=name,
             amount=Decimal(str(amount)),
@@ -586,7 +599,9 @@ def create_bill(
             paid_from_fund_id=paid_from_fund_id,
             **create_kwargs,
         )
-    except (ValidationError, ValueError, TypeError) as exc:
+    except ValidationError as exc:
+        return _payment_validation(exc)
+    except (ValueError, TypeError) as exc:
         return f"Validation error: {exc}"
 
     db = SessionLocal()
@@ -606,6 +621,9 @@ def create_bill(
             end_date=data.end_date,
             is_active=data.is_active,
             bill_type=data.bill_type.value,
+            importance=data.importance.value if data.importance is not None else None,
+            cancel_note=data.cancel_note,
+            if_stopped_note=data.if_stopped_note,
         )
         apply_paid_from(
             db,
@@ -664,6 +682,9 @@ def update_bill(
     bill_type: str | None = None,
     category_id: int | None = None,
     expected_next_due_date: str | None = None,
+    importance: str | None = _OMIT,  # pyrefly: ignore[bad-function-definition]
+    cancel_note: str | None = _OMIT,  # pyrefly: ignore[bad-function-definition]
+    if_stopped_note: str | None = _OMIT,  # pyrefly: ignore[bad-function-definition]
 ) -> dict | str:
     """Update an existing recurring bill.
 
@@ -689,6 +710,10 @@ def update_bill(
         category_id: Expense category. For a budget payment this is the budget.
         expected_next_due_date: The next due date you last read. Required
             when next_due_date is sent.
+        importance: 'essential', 'optional', or null to clear. Omit to leave it.
+        cancel_note: How to cancel. Null or a blank string clears it.
+        if_stopped_note: What happens if this stops. Null or a blank string
+            clears it.
 
     Returns:
         The updated bill object, or an error message.
@@ -720,10 +745,18 @@ def update_bill(
         update_data["bill_type"] = bill_type
     if category_id is not None:
         update_data["category_id"] = category_id
+    if importance is not _OMIT:
+        update_data["importance"] = importance
+    if cancel_note is not _OMIT:
+        update_data["cancel_note"] = cancel_note
+    if if_stopped_note is not _OMIT:
+        update_data["if_stopped_note"] = if_stopped_note
 
     try:
         data = RecurringBillUpdate(**update_data)
-    except (ValidationError, ValueError, TypeError) as exc:
+    except ValidationError as exc:
+        return _payment_validation(exc)
+    except (ValueError, TypeError) as exc:
         return f"Validation error: {exc}"
 
     db = SessionLocal()

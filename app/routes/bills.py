@@ -2,6 +2,7 @@ import json
 from datetime import date
 from decimal import Decimal, InvalidOperation
 from typing import Any
+from urllib.parse import urlencode
 
 from fastapi import APIRouter, Depends, Query, Request
 from fastapi.responses import HTMLResponse, JSONResponse
@@ -21,6 +22,7 @@ from app.middleware import get_current_user
 from app.models import Category, RecurringBill, SinkingFund
 from app.schemas import (
     FREQUENCY_LABELS,
+    BillFieldError,
     BillFrequency,
     DuePaymentResponse,
     RecurringBillConfirm,
@@ -30,6 +32,7 @@ from app.schemas import (
     RecurringBillUpdate,
     UnknownFrequencyError,
     annual_multiplier,
+    clean_bill_note,
 )
 from app.services.contracts import ContractError, assign_contract, contract_choices
 from app.services.payment_methods import (
@@ -54,7 +57,7 @@ from app.services.recurring_payments import (
     skip_payment,
     update_bill_fields,
 )
-from app.templating import templates
+from app.templating import _money_format, templates
 
 router = APIRouter()
 
@@ -117,7 +120,20 @@ def _payable_funds(db: Session):
     )
 
 
-def _summary(bills: list[RecurringBill]) -> dict[str, Decimal]:
+def _pile_monthly(bills: list[RecurringBill], marker: str | None) -> Decimal:
+    """Monthly average for one mark. Sum the year, divide, then quantize once."""
+    annual = sum(
+        (
+            _compute_annual_cost(bill.amount, bill.frequency)
+            for bill in bills
+            if bill.importance == marker
+        ),
+        Decimal(0),
+    )
+    return (annual / 12).quantize(Decimal("0.01"))
+
+
+def _summary(bills: list[RecurringBill]) -> dict[str, Decimal | int]:
     bills_annual = sum(
         (
             _compute_annual_cost(bill.amount, bill.frequency)
@@ -138,6 +154,10 @@ def _summary(bills: list[RecurringBill]) -> dict[str, Decimal]:
         "total_annual": bills_annual.quantize(Decimal("0.01")),
         "total_monthly": (bills_annual / 12).quantize(Decimal("0.01")),
         "other_monthly": (other_annual / 12).quantize(Decimal("0.01")),
+        "essential_monthly": _pile_monthly(bills, "essential"),
+        "optional_monthly": _pile_monthly(bills, "optional"),
+        "unmarked_monthly": _pile_monthly(bills, None),
+        "unmarked_count": sum(1 for bill in bills if bill.importance is None),
     }
 
 
@@ -160,19 +180,89 @@ def _bill_context(db: Session) -> dict[str, Any]:
         "paid_with": paid_with_for(db, bills),
         "unset_count": sum(1 for bill in bills if bill.payment_method_id is None),
         "contracts": contract_choices(db, None),
+        "payment_filter": None,
+        "importance_filter": None,
+        "filter_query": "",
     }
 
 
-def _filter_bills(bills: list[RecurringBill], payment_method: str | None):
-    if not payment_method:
-        return bills
+def _filter_bills(
+    bills: list[RecurringBill],
+    payment_method: str | None,
+    importance: str | None = None,
+) -> list[RecurringBill]:
+    """AND the page filters. An unknown value leaves that filter off."""
+    filtered = bills
     if payment_method == "none":
-        return [bill for bill in bills if bill.payment_method_id is None]
-    try:
-        method_id = int(payment_method)
-    except ValueError:
-        return bills
-    return [bill for bill in bills if bill.payment_method_id == method_id]
+        filtered = [bill for bill in filtered if bill.payment_method_id is None]
+    elif payment_method:
+        try:
+            method_id = int(payment_method)
+        except ValueError:
+            method_id = None
+        if method_id is not None:
+            filtered = [
+                bill for bill in filtered if bill.payment_method_id == method_id
+            ]
+    if importance == "unset":
+        filtered = [bill for bill in filtered if bill.importance is None]
+    elif importance in ("essential", "optional"):
+        filtered = [bill for bill in filtered if bill.importance == importance]
+    return filtered
+
+
+def _page_query(
+    payment_method: str | None, importance: str | None, **extra: str
+) -> str:
+    pairs: list[tuple[str, str]] = []
+    if payment_method:
+        pairs.append(("payment_method", payment_method))
+    if importance:
+        pairs.append(("importance", importance))
+    for key, value in extra.items():
+        if value:
+            pairs.append((key, value))
+    if not pairs:
+        return ""
+    return "?" + urlencode(pairs)
+
+
+def _read_importance(value: object) -> str | None:
+    """Blank and the word unset mean not set yet. Anything else is refused."""
+    text = str(value or "").strip()
+    if text in ("", "unset"):
+        return None
+    if text in ("essential", "optional"):
+        return text
+    raise BillFieldError(
+        "importance",
+        "Choose keep paying, safe to cancel, or not set yet.",
+    )
+
+
+def _note_html_error(message: str) -> HTMLResponse:
+    """Show the message only. The submitted note is not in the body."""
+    response = HTMLResponse(
+        f'<p class="text-red-600 text-sm">{message}</p>',
+        status_code=422,
+    )
+    response.headers["HX-Trigger"] = json.dumps({"gwError": message})
+    return response
+
+
+def _parse_mark_fields(form) -> tuple[str | None, str | None, str | None]:
+    importance = (
+        _read_importance(form.get("importance")) if "importance" in form else None
+    )
+    cancel_note = (
+        clean_bill_note(form.get("cancel_note")) if "cancel_note" in form else None
+    )
+    if_stopped_note = (
+        clean_bill_note(form.get("if_stopped_note"))
+        if "if_stopped_note" in form
+        else None
+    )
+    return importance, cancel_note, if_stopped_note
 
 
 def _render_table_body(request: Request, db: Session, ctx: dict | None = None) -> str:
@@ -186,7 +276,12 @@ def _render_table_body(request: Request, db: Session, ctx: dict | None = None) -
     ).decode()
 
 
-def _render_bill_row(request: Request, db: Session, bill: RecurringBill) -> str:
+def _render_bill_row(
+    request: Request,
+    db: Session,
+    bill: RecurringBill,
+    filter_query: str = "",
+) -> str:
     return bytes(
         templates.TemplateResponse(
             request,
@@ -195,6 +290,7 @@ def _render_bill_row(request: Request, db: Session, bill: RecurringBill) -> str:
                 "bill": bill,
                 "frequency_labels": FREQUENCY_LABELS,
                 "paid_with": paid_with_for(db, [bill]),
+                "filter_query": filter_query,
                 "fragment": "bill_row",
             },
         ).body
@@ -213,7 +309,13 @@ def _choice_context(db: Session) -> dict[str, Any]:
 
 
 def _render_edit_row(
-    request: Request, db: Session, bill: RecurringBill, categories
+    request: Request,
+    db: Session,
+    bill: RecurringBill,
+    categories,
+    *,
+    filter_query: str = "",
+    close_query: str = "",
 ) -> str:
     return bytes(
         templates.TemplateResponse(
@@ -232,6 +334,8 @@ def _render_edit_row(
                     if (bills_category := _bills_category(db)) is not None
                     else None
                 ),
+                "filter_query": filter_query,
+                "close_query": close_query,
                 "fragment": "edit_row",
             },
         ).body
@@ -301,6 +405,10 @@ def _summary_trigger(ctx: dict[str, Any], message: str) -> str:
                 "monthly": str(ctx["total_monthly"]),
                 "annual": str(ctx["total_annual"]),
                 "other": str(ctx["other_monthly"]),
+                "essential": _money_format(ctx["essential_monthly"]),
+                "optional": _money_format(ctx["optional_monthly"]),
+                "unmarked": _money_format(ctx["unmarked_monthly"]),
+                "unmarked_count": ctx["unmarked_count"],
                 "message": message,
             }
         }
@@ -392,12 +500,15 @@ def _resolve_paid_from_form(db: Session, raw: str, form) -> tuple[str, int | Non
 async def bills_page(
     request: Request,
     payment_method: str | None = None,
+    importance: str | None = None,
     db: Session = Depends(get_db),
 ):
     user = get_current_user(request)
     ctx = _bill_context(db)
     ctx["payment_filter"] = payment_method
-    ctx["bills"] = _filter_bills(ctx["bills"], payment_method)
+    ctx["importance_filter"] = importance
+    ctx["filter_query"] = _page_query(payment_method, importance)
+    ctx["bills"] = _filter_bills(ctx["bills"], payment_method, importance)
     return templates.TemplateResponse(
         request,
         "bills.html",
@@ -451,6 +562,11 @@ async def bills_create(request: Request, db: Session = Depends(get_db)):
         bill_type = "fixed"
 
     try:
+        importance, cancel_note, if_stopped_note = _parse_mark_fields(form)
+    except BillFieldError as exc:
+        return _note_html_error(exc.message)
+
+    try:
         paid_from, fund_id, category_id = _resolve_paid_from_form(
             db, str(form.get("paid_from") or "bills_fund"), form
         )
@@ -482,6 +598,9 @@ async def bills_create(request: Request, db: Session = Depends(get_db)):
         bill_type=bill_type,
         foreign_amount=foreign_amount,
         foreign_currency=foreign_currency_raw if foreign_amount else None,
+        importance=importance,
+        cancel_note=cancel_note,
+        if_stopped_note=if_stopped_note,
     )
     try:
         apply_paid_from(
@@ -532,22 +651,45 @@ async def bills_due_card(
 
 
 @router.get("/bills/{bill_id}", response_class=HTMLResponse)
-async def bills_get_row(request: Request, bill_id: int, db: Session = Depends(get_db)):
+async def bills_get_row(
+    request: Request,
+    bill_id: int,
+    payment_method: str | None = None,
+    importance: str | None = None,
+    close_edit: str | None = None,
+    db: Session = Depends(get_db),
+):
     bill = db.query(RecurringBill).filter(RecurringBill.id == bill_id).first()
     if not bill:
         return HTMLResponse("Not found", status_code=404)
-    return HTMLResponse(_render_bill_row(request, db, bill))
+    html = _render_bill_row(request, db, bill, _page_query(payment_method, importance))
+    if close_edit:
+        html += f'<tr id="bill-notes-{bill.id}" hx-swap-oob="delete"></tr>'
+    return HTMLResponse(html)
 
 
 @router.get("/bills/{bill_id}/edit", response_class=HTMLResponse)
 async def bills_edit_form(
-    request: Request, bill_id: int, db: Session = Depends(get_db)
+    request: Request,
+    bill_id: int,
+    payment_method: str | None = None,
+    importance: str | None = None,
+    db: Session = Depends(get_db),
 ):
     bill = db.query(RecurringBill).filter(RecurringBill.id == bill_id).first()
     if not bill:
         return HTMLResponse("Not found", status_code=404)
     categories = _expense_categories(db)
-    return HTMLResponse(_render_edit_row(request, db, bill, categories))
+    return HTMLResponse(
+        _render_edit_row(
+            request,
+            db,
+            bill,
+            categories,
+            filter_query=_page_query(payment_method, importance),
+            close_query=_page_query(payment_method, importance, close_edit="1"),
+        )
+    )
 
 
 @router.get("/bills/{bill_id}/confirm", response_class=HTMLResponse)
@@ -632,7 +774,13 @@ async def bills_skip(
 
 
 @router.post("/bills/{bill_id}", response_class=HTMLResponse)
-async def bills_update(request: Request, bill_id: int, db: Session = Depends(get_db)):
+async def bills_update(
+    request: Request,
+    bill_id: int,
+    payment_method: str | None = None,
+    importance: str | None = None,
+    db: Session = Depends(get_db),
+):
     bill = db.query(RecurringBill).filter(RecurringBill.id == bill_id).first()
     if not bill:
         return HTMLResponse("Not found", status_code=404)
@@ -643,8 +791,22 @@ async def bills_update(request: Request, bill_id: int, db: Session = Depends(get
         bill.paid_from,
         bill.paid_from_fund_id,
         bill.is_active,
+        bill.importance,
     )
     form = await request.form()
+    importance_set = "importance" in form
+    cancel_set = "cancel_note" in form
+    stopped_set = "if_stopped_note" in form
+    try:
+        parsed_importance = (
+            _read_importance(form.get("importance")) if importance_set else None
+        )
+        parsed_cancel = clean_bill_note(form.get("cancel_note")) if cancel_set else None
+        parsed_stopped = (
+            clean_bill_note(form.get("if_stopped_note")) if stopped_set else None
+        )
+    except BillFieldError as exc:
+        return _note_html_error(exc.message)
 
     next_due_raw = str(form.get("next_due_date") or "").strip()
     was_raw = str(form.get("next_due_date_was") or "").strip()
@@ -757,6 +919,13 @@ async def bills_update(request: Request, bill_id: int, db: Session = Depends(get
             db.rollback()
             return _html_error(PaidFromError("Choose where this is paid from."))
 
+    if importance_set:
+        bill.importance = parsed_importance
+    if cancel_set:
+        bill.cancel_note = parsed_cancel
+    if stopped_set:
+        bill.if_stopped_note = parsed_stopped
+
     values = pending_bill_values(bill)
     values.pop("next_due_date", None)
     values["next_due_date"] = next_due
@@ -769,13 +938,23 @@ async def bills_update(request: Request, bill_id: int, db: Session = Depends(get
     db.commit()
     db.refresh(bill)
 
-    response = HTMLResponse(_render_bill_row(request, db, bill))
+    filter_query = _page_query(payment_method, importance)
+    notes_oob = f'<tr id="bill-notes-{bill.id}" hx-swap-oob="delete"></tr>'
+    still_listed = bill in _filter_bills([bill], payment_method, importance)
+    if (payment_method or importance) and not still_listed:
+        response = HTMLResponse(notes_oob)
+        response.headers["HX-Reswap"] = "delete"
+    else:
+        response = HTMLResponse(
+            _render_bill_row(request, db, bill, filter_query) + notes_oob
+        )
     after = (
         Decimal(str(bill.amount)),
         bill.frequency,
         bill.paid_from,
         bill.paid_from_fund_id,
         bill.is_active,
+        bill.importance,
     )
     if before != after:
         response.headers["HX-Trigger-After-Swap"] = _summary_trigger(
@@ -844,6 +1023,9 @@ async def api_create_bill(request: Request, db: Session = Depends(get_db)):
         bill_type=data.bill_type.value,
         foreign_amount=data.foreign_amount,
         foreign_currency=data.foreign_currency,
+        importance=data.importance.value if data.importance is not None else None,
+        cancel_note=data.cancel_note,
+        if_stopped_note=data.if_stopped_note,
     )
     try:
         apply_paid_from(

@@ -92,6 +92,10 @@ class RecurringBill(Base):
             "OR (paid_from <> 'sinking_fund' AND paid_from_fund_id IS NULL)",
             name="ck_recurring_bills_paid_from_fund",
         ),
+        CheckConstraint(
+            "importance IS NULL OR importance IN ('essential', 'optional')",
+            name="ck_recurring_bills_importance",
+        ),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -138,6 +142,9 @@ class RecurringBill(Base):
         ),
         nullable=True,
     )
+    importance: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    cancel_note: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    if_stopped_note: Mapped[str | None] = mapped_column(String(500), nullable=True)
     last_auto_settled_on: Mapped[str | None] = mapped_column(String(10), nullable=True)
     created_at: Mapped[datetime] = mapped_column(default=_utcnow)
     updated_at: Mapped[datetime] = mapped_column(default=_utcnow, onupdate=_utcnow)

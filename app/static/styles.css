@@ -840,6 +840,12 @@ h1, h2, h3, h4 {
     color: var(--warning);
 }
 
+.gw-badge--quiet {
+    background: var(--surface-4);
+    color: var(--text-secondary);
+    border: 1px solid var(--border-subtle);
+}
+
 /* --- Color Dot --- */
 .gw-dot {
     display: inline-block;

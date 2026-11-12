@@ -1067,6 +1067,72 @@ class TestBillsDueConfirmSkip:
         assert body["paid_from"] == "sinking_fund"
         assert body["paid_from_fund_id"] == 7
 
+    def test_list_mark_column(self, mock_config):
+        bills = [
+            {**SAMPLE_BILLS[0], "importance": None},
+            {
+                **SAMPLE_BILLS[0],
+                "id": 2,
+                "name": "Netflix",
+                "importance": "optional",
+            },
+            {
+                **SAMPLE_BILLS[0],
+                "id": 3,
+                "name": "Mortgage",
+                "importance": "essential",
+            },
+        ]
+        with respx.mock:
+            respx.get(f"{SERVER_URL}/api/bills").mock(
+                return_value=httpx.Response(200, json=bills)
+            )
+            result = runner.invoke(app, ["bills", "list"])
+        assert result.exit_code == 0
+        text = result.output
+        assert "Mark" in text
+        assert "Not set yet" in text
+        assert "Safe to cancel" in text
+        assert "Keep paying" in text
+
+    def test_add_sends_mark_without_prompting(self, mock_config):
+        with respx.mock:
+            route = respx.post(f"{SERVER_URL}/api/bills").mock(
+                return_value=httpx.Response(201, json=SAMPLE_BILLS[0])
+            )
+            result = runner.invoke(
+                app,
+                [
+                    "bills",
+                    "add",
+                    "--name",
+                    "Netflix",
+                    "--amount",
+                    "16",
+                    "--provider",
+                    "Netflix",
+                    "--frequency",
+                    "monthly",
+                    "--category-id",
+                    "1",
+                    "--start-date",
+                    "2026-01-01",
+                    "--next-due-date",
+                    "2026-03-01",
+                    "--importance",
+                    "optional",
+                    "--cancel-note",
+                    "Cancel in the app",
+                    "--if-stopped-note",
+                    "Shows stop",
+                ],
+            )
+        assert result.exit_code == 0
+        body = json.loads(route.calls[0].request.content)
+        assert body["importance"] == "optional"
+        assert body["cancel_note"] == "Cancel in the app"
+        assert body["if_stopped_note"] == "Shows stop"
+
 
 class TestTxAddDoesNotSettle:
     def test_help_says_bill_id_is_not_a_scheduled_payment(self):

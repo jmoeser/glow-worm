@@ -4,7 +4,7 @@ Read this before changing bills allocation, the bills forecast, bills cover, or 
 
 ## Bills allocation
 
-Recommended = (Total Annual Bill Cost / 12).
+Recommended = (Total Annual Bill Cost / 12). The keep-paying mark is not read here: a safe-to-cancel Bills-fund payment still counts in the recommended deposit, the forecast, and cover.
 
 Annual multipliers: weekly 52.143, fortnightly 26.071, every 28 days 13.036, monthly 12, quarterly 4, yearly 1, every 2 years 0.5. Every 2 years is half the amount per year, so the monthly figure on the bills page and the recommended deposit is the amount divided by 24. `/monthly-cost` stays recorded spending and does not use this multiplier. The 12-month forecast and bills cover (3 to 12 months) include the full amount in the month the bill is due, and leave the other months alone. An unknown frequency raises `UnknownFrequencyError` (see `docs/recurring-payments.md`). The forecast page shows that error. Cover does not skip the bill as a bad date.
 
