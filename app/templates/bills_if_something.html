@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+{% block title %}If something happens to me — Glow Worm{% endblock %}
+{% block content %}
+<div style="max-width: 1200px;">
+    <h2 class="gw-page-header">If something happens to me</h2>
+    <p><a href="/bills" class="gw-text-muted">Recurring payments</a></p>
+    <p>Safe to cancel is still paid until someone cancels it with the provider.</p>
+
+    <div class="gw-grid-3 gw-section">
+        <div class="gw-stat gw-stat--green">
+            <div class="gw-stat-label">Keep paying</div>
+            <div class="gw-stat-value">$<span id="bills-essential-cost">{{ essential_monthly|money }}</span> a month</div>
+        </div>
+        <div class="gw-stat">
+            <div class="gw-stat-label">Safe to cancel</div>
+            <div class="gw-stat-value">$<span id="bills-optional-cost">{{ optional_monthly|money }}</span> a month</div>
+        </div>
+        <div class="gw-stat">
+            <div class="gw-stat-label">Not marked</div>
+            <div class="gw-stat-value">$<span id="bills-unmarked-cost">{{ unmarked_monthly|money }}</span> a month</div>
+        </div>
+    </div>
+    <p class="gw-text-muted">Keep paying, safe to cancel, and not marked add up to every active payment. Bills fund monthly on the recurring payments page is only what the forecast uses.</p>
+
+    <p class="gw-section">
+        <a href="{{ keep_href }}" class="gw-text-muted">Keep paying</a>
+        · <a href="{{ cancel_href }}" class="gw-text-muted">Safe to cancel</a>
+        · <a href="{{ unset_href }}" class="gw-text-muted">Not set yet <span id="bills-unmarked-count">{{ unmarked_count }}</span></a>
+        {% if payment_filter or importance_filter %}
+        · <a href="/bills/if-something-happens" class="gw-text-muted">Show all</a>
+        {% endif %}
+    </p>
+
+    <div id="bills-message" style="margin-bottom: 16px;" aria-live="polite"></div>
+
+    <p class="gw-section">
+        <span class="gw-badge gw-badge--paid">Keep paying</span>
+        <span class="gw-badge gw-badge--quiet">Safe to cancel</span>
+        <span class="gw-text-muted">Not set yet</span>
+    </p>
+
+    <div class="gw-section" style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+        <label for="bills-sort" class="gw-label" style="margin: 0;">Sort</label>
+        <select id="bills-sort" class="gw-select" aria-label="Sort payments">
+            <option value="next_due_date">Sort by next due</option>
+            <option value="name">Sort by name</option>
+            <option value="amount">Sort by amount</option>
+            <option value="paid_from">Sort by paid from</option>
+            <option value="paid_with">Sort by paid with</option>
+            <option value="provider">Sort by provider</option>
+            <option value="frequency">Sort by frequency</option>
+        </select>
+        <button type="button" id="bills-sort-reverse" class="gw-btn gw-btn-ghost gw-btn-sm" aria-pressed="false">Reverse</button>
+    </div>
+
+    <div id="bills-stack">
+        <div id="bills-list">
+            <div id="bills-rows" class="gw-bill-list">
+                {% if bills %}
+                {% include "_bill_list.html" %}
+                {% else %}
+                <p class="gw-text-muted">No payments match.</p>
+                {% endif %}
+            </div>
+        </div>
+        <div id="bill-drawer" class="gw-drawer gw-card" hidden></div>
+    </div>
+    <div id="bill-drawer-backdrop" class="gw-drawer-backdrop" hidden></div>
+</div>
+<script src="/static/bills.js"></script>
+{% endblock %}

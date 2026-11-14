@@ -5,7 +5,7 @@ from typing import Any
 from urllib.parse import urlencode
 
 from fastapi import APIRouter, Depends, Query, Request
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from pydantic import ValidationError
 from sqlalchemy.orm import Session
 
@@ -611,13 +611,17 @@ async def bills_page(
     importance: str | None = None,
     db: Session = Depends(get_db),
 ):
+    if importance:
+        target = "/bills/if-something-happens"
+        if request.url.query:
+            target = f"{target}?{request.url.query}"
+        return RedirectResponse(url=target, status_code=303)
     user = get_current_user(request)
     ctx = _bill_context(db)
     ctx["payment_filter"] = payment_method
-    ctx["importance_filter"] = importance
-    ctx["filter_query"] = _page_query(payment_method, importance)
+    ctx["filter_query"] = _page_query(payment_method, None)
     ctx["query"] = ctx["filter_query"]
-    ctx["bills"] = _filter_bills(ctx["bills"], payment_method, importance)
+    ctx["bills"] = _filter_bills(ctx["bills"], payment_method, None)
     visible = {bill.id for bill in ctx["bills"]}
     ctx["chips"] = [chip for chip in ctx["chips"] if chip["bill"].id in visible]
     return templates.TemplateResponse(
@@ -752,6 +756,33 @@ async def bills_due_card(
 @router.get("/bills/due-soon", response_class=HTMLResponse)
 async def bills_due_soon(request: Request, db: Session = Depends(get_db)):
     return HTMLResponse(_render_due_soon(request, db))
+
+
+@router.get("/bills/if-something-happens", response_class=HTMLResponse)
+async def bills_if_something_happens(
+    request: Request,
+    payment_method: str | None = None,
+    importance: str | None = None,
+    db: Session = Depends(get_db),
+):
+    """Quiet mark view. marks=1 rides on the editor so a save skips the strip."""
+    user = get_current_user(request)
+    ctx = _bill_context(db)
+    base = "/bills/if-something-happens"
+    ctx["payment_filter"] = payment_method
+    ctx["importance_filter"] = importance
+    ctx["show_marks"] = True
+    ctx["query"] = _list_query(payment_method, importance, "1")
+    ctx["filter_query"] = ctx["query"]
+    ctx["keep_href"] = base + _page_query(payment_method, "essential")
+    ctx["cancel_href"] = base + _page_query(payment_method, "optional")
+    ctx["unset_href"] = base + _page_query(payment_method, "unset")
+    ctx["bills"] = _filter_bills(ctx["bills"], payment_method, importance)
+    return templates.TemplateResponse(
+        request,
+        "bills_if_something.html",
+        {"username": user.username, **ctx},
+    )
 
 
 @router.get("/bills/{bill_id}", response_class=HTMLResponse)
