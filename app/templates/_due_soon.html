@@ -1,0 +1,45 @@
+{% macro problem_line(problem) %}
+{%- if problem.code == 'no_budget' and 'Budgets page' in problem.detail -%}
+{{ problem.detail.split('Budgets page')[0] }}<a href="{{ problem.href }}">Budgets page</a>{{ problem.detail.split('Budgets page')[1] }}
+{%- elif 'Change where this is paid from' in problem.detail -%}
+{{ problem.detail.split('Change where this is paid from')[0] }}<a href="{{ problem.href }}">Change where this is paid from</a>{{ problem.detail.split('Change where this is paid from')[1] }}
+{%- else -%}
+<a href="{{ problem.href or '/bills' }}">{{ problem.detail }}</a>
+{%- endif -%}
+{% endmacro %}
+<div id="due-soon" class="gw-due-soon gw-section"{% if not chips %} hidden{% endif %}>
+{% for chip in chips %}
+{% set bill = chip.bill %}
+<div id="due-soon-{{ bill.id }}" class="gw-card gw-due-chip">
+    <div id="due-soon-errors-{{ bill.id }}" tabindex="-1" aria-live="assertive"></div>
+    <strong>{{ bill.name }}</strong>
+    <span>${{ bill.amount|money }}</span>
+    <span>{{ source_label(bill) }}</span>
+    <time datetime="{{ bill.next_due_date }}"{% if today and bill.next_due_date < today %} class="gw-text-negative"{% endif %}>{{ bill.next_due_date|due_label }}</time>
+    {% if chip.in_confirm and chip.more_due > 0 %}
+    <span class="gw-text-muted">+ {{ chip.more_due }} more</span>
+    {% endif %}
+    {% if chip.problem %}
+    <p class="gw-text-negative">{{ problem_line(chip.problem) }}</p>
+    {% endif %}
+    {% if bill.paid_from == 'bills_fund' and bill.bill_type != 'variable' %}
+    <p class="gw-text-muted">{% if today and bill.next_due_date < today %}Not logged yet. It pays from the Bills fund.{% else %}Pays from the Bills fund.{% endif %}</p>
+    {% elif not chip.in_confirm and bill.paid_from == 'bills_fund' and bill.bill_type == 'variable' %}
+    <p class="gw-text-muted">Not due for a decision yet</p>
+    {% endif %}
+    {% if chip.in_confirm and not chip.problem %}
+    <button type="button" class="gw-action-pay"
+            hx-get="/bills/{{ bill.id }}/confirm?from=strip"
+            hx-target="#due-soon-{{ bill.id }}" hx-swap="outerHTML">Confirm</button>
+    {% endif %}
+    {% if chip.in_confirm %}
+    <button type="button" class="gw-action-edit"
+            hx-post="/bills/{{ bill.id }}/skip?from=strip"
+            hx-target="#due-soon" hx-swap="outerHTML"
+            hx-vals='{"due_date": "{{ bill.next_due_date }}"}'
+            hx-confirm="Skip the {{ bill.next_due_date|due_label }} payment?"
+            hx-disabled-elt="this">Skip</button>
+    {% endif %}
+</div>
+{% endfor %}
+</div>

@@ -1,0 +1,15 @@
+<span>Due {{ bill.next_due_date|due_label }}</span>
+<input type="number" name="amount" value="{{ '%.2f'|format(bill.amount) }}" step="0.01" min="0.01"
+       class="gw-input" style="max-width: 140px;" required>
+<span>From {{ source_label(bill) }}{% if bill.paid_from == 'budget' %} ({{ bill.next_due_date|month_year }}){% endif %}</span>
+<input type="hidden" name="due_date" value="{{ bill.next_due_date }}">
+<button type="submit" class="gw-btn gw-btn-success gw-btn-sm" hx-disabled-elt="this">Confirm</button>
+{% if confirm_cancel == 'strip' %}
+<button type="button" class="gw-btn gw-btn-ghost gw-btn-sm"
+        hx-get="/bills/due-soon" hx-target="#due-soon" hx-swap="outerHTML"
+        hx-disabled-elt="this">Cancel</button>
+{% elif confirm_cancel != 'editor' %}
+<button type="button" class="gw-btn gw-btn-ghost gw-btn-sm"
+        hx-get="/bills/{{ bill.id }}" hx-target="#bill-row-{{ bill.id }}" hx-swap="outerHTML"
+        hx-disabled-elt="this">Cancel</button>
+{% endif %}

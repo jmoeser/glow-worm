@@ -62,6 +62,7 @@
                     var drawerModal = drawer && drawer.getAttribute('aria-modal') === 'true';
                     document.body.style.overflow = (menuOpen || drawerModal) ? 'hidden' : '';
                 }
+                window.syncPageOverflow = syncPageOverflow;
 
                 function focusables(root) {
                     return Array.prototype.filter.call(

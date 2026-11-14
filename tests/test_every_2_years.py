@@ -394,6 +394,8 @@ class TestUnknownFrequency:
         )
         assert saved.status_code == 400
         assert "Choose a frequency." in saved.text
+        assert saved.headers["hx-retarget"] == "#bill-editor-errors"
+        assert "hx-trigger" not in saved.headers
         db_session.refresh(bill)
         assert bill.frequency == "whenever"
 

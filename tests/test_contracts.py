@@ -478,6 +478,8 @@ class TestBillContractLink:
             },
         )
         assert rejected.status_code == 422
+        assert rejected.headers["hx-retarget"] == "#bill-editor-errors"
+        assert "hx-trigger" not in rejected.headers
         db_session.refresh(bill)
         assert bill.contract_id is None
 
@@ -497,14 +499,16 @@ class TestBillContractLink:
         assert bill.contract_id == ended["id"]
 
         page = authed_client.get("/bills")
-        assert "Finished — Origin" in page.text
         assert ">Ended<" in page.text
         assert 'name="contract_id"' in page.text
         confirm = authed_client.get(f"/bills/{bill.id}/confirm")
         assert confirm.status_code == 200
-        assert 'colspan="9"' in confirm.text
+        assert 'name="amount"' in confirm.text
+        assert 'name="due_date"' in confirm.text
+        assert "From" in confirm.text
         edit = authed_client.get(f"/bills/{bill.id}/edit")
         assert "(Ended)" in edit.text
+        assert "Finished — Origin" in edit.text
         assert 'name="contract_id"' in edit.text
 
 
