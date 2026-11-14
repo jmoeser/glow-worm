@@ -1697,3 +1697,33 @@ class TestSlice2ListStripAndEditor:
             "gwBillSuccess"
         ]
         assert skipped_payload["billId"] == other.id
+
+
+class TestSlice3SideDrawer:
+    def test_wide_drawer_is_fixed_and_both_pages_share_the_shell(self, authed_client):
+        from pathlib import Path
+
+        css = Path("app/static/styles.css").read_text()
+        js = Path("app/static/bills.js").read_text()
+        wide = css.split("@media (min-width: 801px)", 1)[1][:900]
+        assert "position: fixed" in wide
+        assert "z-index: 150" in wide
+        assert "z-index: 140" in wide
+        assert "min(420px, 100vw)" in wide
+        assert "grid-template-columns: repeat(2, 1fr)" in wide
+        narrow = css.split("#bill-drawer {", 1)[1][:180]
+        assert "position: absolute" in narrow
+        assert 'setAttribute("aria-modal", "true")' in js
+        assert 'event.key !== "Tab"' in js
+        assert "bill-drawer-backdrop" in js
+        assert 'matchMedia("(max-width: 800px)")' in js
+        for path in ("/bills", "/bills/if-something-happens"):
+            page = authed_client.get(path)
+            assert page.status_code == 200, path
+            assert 'id="bill-drawer"' in page.text
+            assert 'id="bill-drawer-backdrop"' in page.text
+            assert 'src="/static/bills.js"' in page.text
+            rows = page.text.split('id="bills-rows"', 1)[1].split(
+                'id="bill-drawer"', 1
+            )[0]
+            assert "bill-drawer" not in rows

@@ -2,6 +2,88 @@
     var sortKey = "next_due_date";
     var sortDir = "asc";
     var pendingCloseFocus = null;
+    var pageInert = [];
+    var drawerWide = false;
+
+    function wideDrawer() {
+        return window.matchMedia("(min-width: 801px)").matches;
+    }
+
+    function focusables(root) {
+        return Array.prototype.filter.call(
+            root.querySelectorAll(
+                "a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex='-1'])"
+            ),
+            function (el) {
+                if (el.closest("[hidden]")) return false;
+                if (el.type === "hidden") return false;
+                var details = el.closest("details");
+                if (details && !details.open && el.tagName !== "SUMMARY") return false;
+                return true;
+            }
+        );
+    }
+
+    function clearPageInert() {
+        for (var i = 0; i < pageInert.length; i++) {
+            pageInert[i].removeAttribute("inert");
+        }
+        pageInert = [];
+        var sidebar = document.getElementById("gw-sidebar");
+        if (!sidebar) return;
+        sidebar.removeAttribute("inert");
+        if (window.matchMedia("(max-width: 800px)").matches && !sidebar.classList.contains("is-open")) {
+            sidebar.setAttribute("inert", "");
+        }
+    }
+
+    function holdPageInert() {
+        clearPageInert();
+        var drawer = document.getElementById("bill-drawer");
+        var backdrop = document.getElementById("bill-drawer-backdrop");
+        var main = document.querySelector("main.gw-main");
+        var sidebar = document.getElementById("gw-sidebar");
+        if (sidebar) sidebar.setAttribute("inert", "");
+        if (!drawer || !main) return;
+        var node = drawer;
+        while (node && node !== main) {
+            var parent = node.parentElement;
+            if (!parent) break;
+            for (var i = 0; i < parent.children.length; i++) {
+                var child = parent.children[i];
+                if (child === node || child === backdrop || child.contains(drawer)) continue;
+                child.setAttribute("inert", "");
+                pageInert.push(child);
+            }
+            node = parent;
+        }
+    }
+
+    function syncDrawerChrome(moveFocus) {
+        var drawer = document.getElementById("bill-drawer");
+        if (!drawer) return;
+        var id = drawer.getAttribute("data-bill-id");
+        var backdrop = document.getElementById("bill-drawer-backdrop");
+        var open = !drawer.hidden && drawer.querySelector("form[data-bill-id]");
+        if (wideDrawer() && open) {
+            drawer.setAttribute("role", "dialog");
+            drawer.setAttribute("aria-modal", "true");
+            if (id) drawer.setAttribute("aria-labelledby", "bill-editor-title-" + id);
+            if (backdrop) backdrop.hidden = false;
+            holdPageInert();
+            if (moveFocus && id) {
+                var name = document.getElementById("edit-name-" + id);
+                if (name) name.focus();
+            }
+        } else {
+            drawer.removeAttribute("role");
+            drawer.removeAttribute("aria-modal");
+            drawer.removeAttribute("aria-labelledby");
+            if (backdrop) backdrop.hidden = true;
+            clearPageInert();
+        }
+        if (window.syncPageOverflow) window.syncPageOverflow();
+    }
 
     var sortAttr = {
         next_due_date: "data-sort-next-due",
@@ -51,21 +133,27 @@
 
     function placeEditor() {
         var drawer = document.getElementById("bill-drawer");
-        var stack = document.getElementById("bills-stack");
-        if (!drawer || !stack || drawer.hidden) return;
-        var id = drawer.getAttribute("data-bill-id");
-        if (!id) return;
-        var row = document.getElementById("bill-row-" + id);
-        if (!row) return;
+        if (!drawer || drawer.hidden) return;
         var rows = document.querySelectorAll("#bills-rows > .gw-bill-row");
         for (var i = 0; i < rows.length; i++) {
             rows[i].style.marginBottom = "";
         }
+        drawer.style.position = "";
+        drawer.style.left = "";
+        drawer.style.width = "";
+        drawer.style.zIndex = "";
+        if (wideDrawer()) {
+            drawer.style.top = "";
+            return;
+        }
+        var stack = document.getElementById("bills-stack");
+        var id = drawer.getAttribute("data-bill-id");
+        var row = id && document.getElementById("bill-row-" + id);
+        if (!stack || !row) {
+            drawer.style.top = "";
+            return;
+        }
         var top = row.getBoundingClientRect().bottom - stack.getBoundingClientRect().top;
-        drawer.style.position = "absolute";
-        drawer.style.left = "0";
-        drawer.style.width = "100%";
-        drawer.style.zIndex = "1";
         drawer.style.top = top + "px";
         row.style.marginBottom = (drawer.offsetHeight + 8) + "px";
     }
@@ -79,13 +167,16 @@
         drawer.hidden = true;
         drawer.removeAttribute("data-bill-id");
         drawer.style.top = "";
+        drawer.style.position = "";
+        drawer.style.left = "";
+        drawer.style.width = "";
+        drawer.style.zIndex = "";
         drawer.removeAttribute("role");
         drawer.removeAttribute("aria-modal");
         drawer.removeAttribute("aria-labelledby");
         var backdrop = document.getElementById("bill-drawer-backdrop");
         if (backdrop) backdrop.hidden = true;
-        var main = document.querySelector("main.gw-main");
-        if (main) main.removeAttribute("inert");
+        clearPageInert();
         var rows = document.querySelectorAll(".gw-bill-row");
         for (var i = 0; i < rows.length; i++) {
             rows[i].style.marginBottom = "";
@@ -158,15 +249,34 @@
         closeEditor();
     }, true);
 
+    document.addEventListener("click", function (event) {
+        if (event.target && event.target.id === "bill-drawer-backdrop") closeEditor();
+    });
+
     document.addEventListener("keydown", function (event) {
-        if (event.key !== "Escape") return;
         var drawer = document.getElementById("bill-drawer");
         if (!drawer || !drawer.querySelector("form[data-bill-id]")) return;
-        var sidebar = document.getElementById("gw-sidebar");
-        var narrow = window.matchMedia("(max-width: 800px)").matches;
-        if (narrow && sidebar && sidebar.classList.contains("is-open")) return;
-        event.preventDefault();
-        closeEditor();
+        if (event.key === "Escape") {
+            var sidebar = document.getElementById("gw-sidebar");
+            var narrow = window.matchMedia("(max-width: 800px)").matches;
+            if (narrow && sidebar && sidebar.classList.contains("is-open")) return;
+            event.preventDefault();
+            closeEditor();
+            return;
+        }
+        if (event.key !== "Tab" || drawer.getAttribute("aria-modal") !== "true") return;
+        var items = focusables(drawer);
+        if (!items.length) return;
+        var first = items[0];
+        var last = items[items.length - 1];
+        var active = document.activeElement;
+        if (event.shiftKey && (active === first || !drawer.contains(active))) {
+            event.preventDefault();
+            last.focus();
+        } else if (!event.shiftKey && (active === last || !drawer.contains(active))) {
+            event.preventDefault();
+            first.focus();
+        }
     }, true);
 
     document.addEventListener("toggle", function (event) {
@@ -175,8 +285,31 @@
         }
     }, true);
 
-    window.addEventListener("resize", function () {
+    function syncOpenDrawer() {
+        var drawer = document.getElementById("bill-drawer");
+        var open = drawer && !drawer.hidden && drawer.querySelector("form[data-bill-id]");
+        var nowWide = wideDrawer();
+        if (!open) {
+            drawerWide = nowWide;
+            return;
+        }
+        var crossedUp = nowWide && !drawerWide;
+        drawerWide = nowWide;
+        syncDrawerChrome(crossedUp);
         placeEditor();
+    }
+
+    window.addEventListener("resize", syncOpenDrawer);
+    // The nav registers its 800px listener on DOMContentLoaded, before this one,
+    // and that listener clears the sidebar lock when the viewport grows.
+    // Re-apply after it so an open drawer keeps the sidebar inert.
+    document.addEventListener("DOMContentLoaded", function () {
+        var navBreakpoint = window.matchMedia("(max-width: 800px)");
+        if (navBreakpoint.addEventListener) {
+            navBreakpoint.addEventListener("change", syncOpenDrawer);
+        } else if (navBreakpoint.addListener) {
+            navBreakpoint.addListener(syncOpenDrawer);
+        }
     });
 
     document.body.addEventListener("htmx:beforeSwap", function (event) {
@@ -230,10 +363,11 @@
                 button.setAttribute("aria-expanded", "true");
             }
             target.hidden = false;
+            drawerWide = wideDrawer();
+            syncDrawerChrome(false);
             placeEditor();
             var name = document.getElementById("edit-name-" + id);
             if (name) name.focus();
-            if (window.syncPageOverflow) window.syncPageOverflow();
             return;
         }
         if (target.id === "bills-rows" || String(target.id || "").indexOf("bill-row-") === 0) {
