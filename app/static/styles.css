@@ -1467,6 +1467,35 @@ input[type="color"] {
     box-sizing: border-box;
 }
 
+@media (min-width: 801px) {
+    #bill-drawer:not([hidden]) {
+        position: fixed;
+        top: 0;
+        right: 0;
+        left: auto;
+        height: 100vh;
+        width: min(420px, 100vw);
+        overflow: auto;
+        z-index: 150;
+        background: var(--surface-1);
+        border-left: 1px solid var(--border-subtle);
+        border-radius: 0;
+        box-shadow: none;
+        padding: 24px 20px 40px;
+    }
+
+    #bill-drawer:not([hidden]) .gw-grid-2 {
+        grid-template-columns: repeat(2, 1fr);
+    }
+
+    #bill-drawer-backdrop:not([hidden]) {
+        position: fixed;
+        inset: 0;
+        z-index: 140;
+        background: rgba(0, 0, 0, 0.35);
+    }
+}
+
 #bill-drawer[hidden],
 #bill-drawer-backdrop[hidden] {
     display: none !important;
