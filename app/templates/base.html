@@ -48,6 +48,109 @@
                     localStorage.setItem('sidebar-collapsed', isCollapsed);
                 });
 
+                const menuBtn = document.getElementById('gw-menu-btn');
+                const navBackdrop = document.getElementById('gw-nav-backdrop');
+                const navQuery = window.matchMedia('(max-width: 800px)');
+
+                function navIsNarrow() {
+                    return navQuery.matches;
+                }
+
+                function syncPageOverflow() {
+                    var drawer = document.getElementById('bill-drawer');
+                    var menuOpen = navIsNarrow() && sidebar.classList.contains('is-open');
+                    var drawerModal = drawer && drawer.getAttribute('aria-modal') === 'true';
+                    document.body.style.overflow = (menuOpen || drawerModal) ? 'hidden' : '';
+                }
+
+                function focusables(root) {
+                    return Array.prototype.filter.call(
+                        root.querySelectorAll(
+                            'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+                        ),
+                        function (el) {
+                            if (el.closest('[hidden]')) return false;
+                            var details = el.closest('details');
+                            if (details && !details.open && el.tagName !== 'SUMMARY') return false;
+                            return true;
+                        }
+                    );
+                }
+
+                function applyNavHidden() {
+                    if (navIsNarrow() && !sidebar.classList.contains('is-open')) {
+                        sidebar.setAttribute('inert', '');
+                        sidebar.setAttribute('aria-hidden', 'true');
+                    } else {
+                        sidebar.removeAttribute('inert');
+                        sidebar.removeAttribute('aria-hidden');
+                    }
+                }
+
+                function openNav() {
+                    if (!navIsNarrow()) return;
+                    sidebar.classList.add('is-open');
+                    sidebar.removeAttribute('inert');
+                    sidebar.removeAttribute('aria-hidden');
+                    menuBtn.setAttribute('aria-expanded', 'true');
+                    navBackdrop.hidden = false;
+                    syncPageOverflow();
+                    var first = sidebar.querySelector('.gw-nav a');
+                    if (first) first.focus();
+                }
+
+                function closeNav(userAction) {
+                    var focusInside = sidebar.contains(document.activeElement);
+                    var willHide = navIsNarrow();
+                    if (userAction || (willHide && focusInside)) {
+                        menuBtn.focus();
+                    }
+                    sidebar.classList.remove('is-open');
+                    navBackdrop.hidden = true;
+                    menuBtn.setAttribute('aria-expanded', 'false');
+                    applyNavHidden();
+                    syncPageOverflow();
+                }
+
+                menuBtn.addEventListener('click', function () {
+                    if (sidebar.classList.contains('is-open')) closeNav(true);
+                    else openNav();
+                });
+                navBackdrop.addEventListener('click', function () {
+                    closeNav(true);
+                });
+
+                document.addEventListener('keydown', function (event) {
+                    var menuOpen = navIsNarrow() && sidebar.classList.contains('is-open');
+                    if (event.key === 'Escape' && menuOpen) {
+                        event.preventDefault();
+                        closeNav(true);
+                        return;
+                    }
+                    if (event.key !== 'Tab' || !menuOpen) return;
+                    var items = focusables(sidebar);
+                    if (!items.length) return;
+                    var first = items[0];
+                    var last = items[items.length - 1];
+                    if (event.shiftKey && document.activeElement === first) {
+                        event.preventDefault();
+                        last.focus();
+                    } else if (!event.shiftKey && document.activeElement === last) {
+                        event.preventDefault();
+                        first.focus();
+                    }
+                });
+
+                function onNavBreakpoint() {
+                    closeNav(false);
+                }
+                if (navQuery.addEventListener) {
+                    navQuery.addEventListener('change', onNavBreakpoint);
+                } else {
+                    navQuery.addListener(onNavBreakpoint);
+                }
+                applyNavHidden();
+
                 function showGwStrip(text, kind) {
                     var strip = document.getElementById('gw-error-strip');
                     if (!strip) {
@@ -191,6 +294,8 @@
                 </div>
             </div>
         </nav>
+        <button type="button" id="gw-menu-btn" class="gw-menu-btn" aria-controls="gw-sidebar" aria-expanded="false">Menu</button>
+        <div id="gw-nav-backdrop" class="gw-nav-backdrop" hidden></div>
         <button class="gw-collapse-btn" id="gw-collapse-btn" aria-label="Toggle sidebar">
             <svg class="gw-collapse-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
         </button>
