@@ -144,9 +144,12 @@
 
     <p class="gw-section">
         <a href="/bills?payment_method=none">No payment method: {{ unset_count }}</a>
-        {% if payment_filter or importance_filter %}
+        {% if payment_filter %}
         <a href="/bills" class="gw-text-muted">Show all</a>
         {% endif %}
+    </p>
+    <p class="gw-section" style="margin-top: 0;">
+        <a href="/bills/if-something-happens" class="gw-text-muted" style="font-size: 0.85rem;">If something happens to me</a>
     </p>
 
     {% include "_due_soon.html" %}

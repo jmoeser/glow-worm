@@ -921,6 +921,23 @@ def test_html_and_json_set_and_clear_the_mark(authed_client, db_session, sample_
     assert "Keep paying" not in saved.text
     assert "bill-notes-" not in saved.text
 
+    shown = authed_client.post(
+        f"/bills/{bill.id}?marks=1",
+        data=_edit_payload(
+            bill,
+            importance="essential",
+            cancel_note="Call 13 13 19",
+            if_stopped_note="The lights go out",
+        ),
+        headers=_csrf(authed_client),
+    )
+    assert shown.status_code == 200
+    assert "gw-badge--paid" in shown.text
+    assert "Keep paying" in shown.text
+    assert "How to cancel: Call 13 13 19" in shown.text
+    assert "If this stops: The lights go out" in shown.text
+    assert 'id="due-soon"' not in shown.text
+
     omitted = authed_client.put(f"/api/bills/{bill.id}", json={"name": "Rent plus"})
     assert omitted.status_code == 200
     db_session.refresh(bill)
@@ -1073,6 +1090,42 @@ def test_monthly_piles_sum_then_quantize_once():
         _summary([_bare_bill(frequency="nope")])
 
 
+def test_old_importance_links_redirect_to_the_quiet_view(
+    authed_client, db_session, sample_category
+):
+    moved = authed_client.get("/bills?importance=unset", follow_redirects=False)
+    assert moved.status_code == 303
+    assert moved.headers["location"] == "/bills/if-something-happens?importance=unset"
+
+    unknown = authed_client.get("/bills?importance=nope", follow_redirects=False)
+    assert unknown.status_code == 303
+    assert unknown.headers["location"] == "/bills/if-something-happens?importance=nope"
+
+    paired = authed_client.get(
+        "/bills?payment_method=none&importance=essential", follow_redirects=False
+    )
+    assert paired.status_code == 303
+    assert (
+        paired.headers["location"]
+        == "/bills/if-something-happens?payment_method=none&importance=essential"
+    )
+
+    stayed = authed_client.get("/bills?importance=", follow_redirects=False)
+    assert stayed.status_code == 200
+    assert 'id="bills-monthly-cost"' in stayed.text
+    assert 'href="/bills/if-something-happens"' in stayed.text
+
+    api = authed_client.get("/api/bills?importance=unset")
+    assert api.status_code == 200
+
+    only = _bare_bill(name="Plain", amount=8, category_id=sample_category.id)
+    db_session.add(only)
+    db_session.commit()
+    empty = authed_client.get("/bills/if-something-happens?importance=essential")
+    assert "No payments match." in empty.text
+    assert f'id="bill-row-{only.id}"' not in empty.text
+
+
 def test_page_splits_averages_and_filters(authed_client, db_session, sample_category):
     from app.models import PaymentMethod
 
@@ -1136,45 +1189,90 @@ def test_page_splits_averages_and_filters(authed_client, db_session, sample_cate
     assert "gw-badge--quiet" not in page.text
     assert "If this stops:" not in page.text
     assert "How to cancel:" not in page.text
+    assert 'href="/bills/if-something-happens"' in page.text
+    assert (
+        "Keep paying, safe to cancel, and not marked add up to every active payment."
+        not in page.text
+    )
 
-    unset = authed_client.get("/bills?importance=unset")
+    quiet = authed_client.get("/bills/if-something-happens")
+    assert quiet.status_code == 200
+    assert "<title>If something happens to me — Glow Worm</title>" in quiet.text
+    assert 'id="bills-essential-cost"' in quiet.text
+    assert 'id="bills-optional-cost"' in quiet.text
+    assert 'id="bills-unmarked-cost"' in quiet.text
+    assert 'id="bills-unmarked-count"' in quiet.text
+    assert "If this stops: Hidden on the list" in quiet.text
+    assert "How to cancel: Cancel in the app" in quiet.text
+    assert "If this stops: Mortgage stops" in quiet.text
+    assert "How to cancel: Draft cancel" in quiet.text
+    assert "If this stops: Draft stop" in quiet.text
+    assert "gw-badge--paid" in quiet.text
+    assert "gw-badge--quiet" in quiet.text
+    assert "Not set yet" in quiet.text
+    assert 'gw-badge--pending">Not set yet' not in quiet.text
+    assert "10,012.00" not in quiet.text
+    assert 'id="due-soon"' not in quiet.text
+    assert "No payment method:" not in quiet.text
+    assert 'id="bills-essential-cost">12.00<' in quiet.text
+
+    unset = authed_client.get("/bills/if-something-happens?importance=unset")
     assert f'id="bill-row-{loose.id}"' in unset.text
     assert f'id="bill-row-{carded.id}"' in unset.text
     assert f'id="bill-row-{drafted.id}"' in unset.text
     assert f'id="bill-row-{kept.id}"' not in unset.text
     assert f'id="bill-row-{optional.id}"' not in unset.text
     assert "Show all" in unset.text
+    assert 'id="bills-essential-cost">12.00<' in unset.text
+    assert "If this stops: Hidden on the list" not in unset.text
 
-    both = authed_client.get("/bills?payment_method=none&importance=unset")
+    both = authed_client.get(
+        "/bills/if-something-happens?payment_method=none&importance=unset"
+    )
     assert f'id="bill-row-{loose.id}"' in both.text
     assert f'id="bill-row-{drafted.id}"' in both.text
     assert f'id="bill-row-{carded.id}"' not in both.text
     assert "Show all" in both.text
+    assert "payment_method=none" in both.text
+    assert (
+        'href="/bills/if-something-happens?payment_method=none&amp;importance=essential"'
+        in both.text
+        or (
+            'href="/bills/if-something-happens?payment_method=none&importance=essential"'
+            in both.text
+        )
+    )
 
-    unknown = authed_client.get("/bills?importance=nope")
+    unknown = authed_client.get("/bills/if-something-happens?importance=nope")
     assert f'id="bill-row-{kept.id}"' in unknown.text
     assert f'id="bill-row-{loose.id}"' in unknown.text
     assert "Show all" in unknown.text
 
-    edit = authed_client.get(f"/bills/{loose.id}/edit?importance=unset")
+    edit = authed_client.get(f"/bills/{loose.id}/edit?importance=unset&marks=1")
     assert f'<form id="edit-form-{loose.id}"' in edit.text
     assert "If something happens to me" in edit.text
     assert 'name="cancel_note"' in edit.text
     assert 'name="if_stopped_note"' in edit.text
     assert "Both notes are optional on every payment" in edit.text
-    assert f"/bills/{loose.id}?importance=unset" in edit.text
+    assert f"/bills/{loose.id}?importance=unset&amp;marks=1" in edit.text or (
+        f"/bills/{loose.id}?importance=unset&marks=1" in edit.text
+    )
+    daily_edit = authed_client.get(f"/bills/{loose.id}/edit")
+    assert "?importance=" not in daily_edit.text
+    assert "marks=1" not in daily_edit.text
     assert "close_edit=1" not in edit.text
     assert 'colspan="9"' not in edit.text
     assert 'form="edit-form-' not in edit.text
 
     marked = authed_client.post(
-        f"/bills/{loose.id}?importance=unset",
+        f"/bills/{loose.id}?importance=unset&marks=1",
         data=_edit_payload(
             loose, importance="essential", cancel_note="", if_stopped_note=""
         ),
         headers=_csrf(authed_client),
     )
     assert marked.headers["hx-reswap"] == "delete"
+    assert "due-soon" not in marked.text
     trigger = json.loads(marked.headers["hx-trigger-after-swap"])["gwBillSuccess"]
     assert trigger["essential"] == "24.00"
     assert "unmarked_count" in trigger
@@ -1182,7 +1280,7 @@ def test_page_splits_averages_and_filters(authed_client, db_session, sample_cate
     assert "unmarked" in trigger
 
     stayed = authed_client.post(
-        f"/bills/{kept.id}?importance=essential",
+        f"/bills/{kept.id}?importance=essential&marks=1",
         data=_edit_payload(
             kept,
             importance="essential",
@@ -1193,7 +1291,15 @@ def test_page_splits_averages_and_filters(authed_client, db_session, sample_cate
     )
     assert "hx-reswap" not in stayed.headers
     assert "Kept" in stayed.text
+    assert "Keep paying" in stayed.text
+    assert "due-soon" not in stayed.text
     assert "hx-trigger-after-swap" not in stayed.headers
+
+    removed = authed_client.delete(
+        f"/bills/{drafted.id}?marks=1", headers=_csrf(authed_client)
+    )
+    assert removed.status_code == 200
+    assert "due-soon" not in removed.text
 
 
 def test_safe_to_cancel_stays_in_the_deposit(db_session, sample_category):
@@ -1264,6 +1370,8 @@ def test_create_and_delete_send_the_mark_totals(
     assert removed["unmarked_count"] == 0
     page = authed_client.get("/bills")
     assert "bills-unmarked-note" not in page.text
+    quiet = authed_client.get("/bills/if-something-happens")
+    assert 'id="bills-unmarked-count">0<' in quiet.text
 
 
 def _iso(offset: int) -> str:

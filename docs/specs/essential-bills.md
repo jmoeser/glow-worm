@@ -106,6 +106,8 @@ Hide that sentence when the count is zero, including after a create, update, or 
 
 ## Bills page
 
+The HTML layout in this section is superseded by `docs/specs/bills-redesign.md`.
+
 Add form and edit row (`app/templates/bills.html`):
 
 - A select, label "If something happens to me", options Keep paying (`essential`), Safe to cancel (`optional`), and Not set yet (blank value). Default Not set yet.
