@@ -21,6 +21,7 @@ from app.services.recurring_payments import (
     PaymentConflict,
     apply_paid_from,
     confirm_payment,
+    due_soon,
     due_to_confirm,
     pay_bills_fund,
     skip_payment,
@@ -890,6 +891,52 @@ class TestVariableBillsFund:
         )
         assert due_to_confirm(db_session, TODAY) == []
 
+    def test_due_soon_includes_the_window_and_skips_ended(
+        self, db_session, household, fixed_today
+    ):
+        overdue = _bill(
+            db_session,
+            household,
+            name="Overdue",
+            paid_from="bills_fund",
+            category_id=household["bills_cat"].id,
+            bill_type="fixed",
+            next_due_date="2026-10-01",
+        )
+        edge = _bill(
+            db_session,
+            household,
+            name="Edge",
+            paid_from="bills_fund",
+            category_id=household["bills_cat"].id,
+            bill_type="fixed",
+            next_due_date="2026-11-13",
+        )
+        later = _bill(
+            db_session,
+            household,
+            name="Later",
+            paid_from="bills_fund",
+            category_id=household["bills_cat"].id,
+            bill_type="fixed",
+            next_due_date="2026-11-14",
+        )
+        ended = _bill(
+            db_session,
+            household,
+            name="Past end",
+            paid_from="bills_fund",
+            category_id=household["bills_cat"].id,
+            bill_type="fixed",
+            next_due_date="2026-11-01",
+            end_date="2026-10-15",
+        )
+        listed = [bill.id for bill in due_soon(db_session, TODAY)]
+        assert listed == [overdue.id, edge.id]
+        assert later.id not in listed
+        assert ended.id not in listed
+        assert [row["bill_id"] for row in due_to_confirm(db_session, TODAY)] == []
+
 
 class TestApiShapes:
     def test_create_without_paid_from_defaults_and_due_route_is_not_a_bill_id(
@@ -1025,7 +1072,7 @@ class TestOccurrenceTransitions:
         bill = self._fixed(db_session, household, amount=Decimal(40))
         edit = authed_client.get(f"/bills/{bill.id}/edit")
         assert 'name="next_due_date_was"' in edit.text
-        assert f'form="edit-form-{bill.id}"' in edit.text
+        assert f'<form id="edit-form-{bill.id}"' in edit.text
         assert bill.next_due_date in edit.text
         paid = authed_client.post(
             f"/api/bills/{bill.id}/pay",
@@ -1274,7 +1321,7 @@ class TestOccurrenceTransitions:
             },
             headers={"x-csrftoken": authed_client.csrf_token},
         )
-        assert created.status_code == 400
+        assert created.status_code == 422
         assert (
             db_session.query(RecurringBill)
             .filter(RecurringBill.name == "Bad day")

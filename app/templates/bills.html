@@ -1,3 +1,4 @@
+{% extends "base.html" %}
 {% macro paid_from_options(selected) %}
 <option value="bills_fund" {{ 'selected' if selected == 'bills_fund' }}>Bills fund</option>
 {% if budget_categories %}
@@ -15,270 +16,8 @@
 </optgroup>
 {% endif %}
 {% endmacro %}
-{% macro bill_display_cells(bill) %}
-<td data-sort-value="{{ bill.name }}">{{ bill.name }}
-{%- if bill.importance == 'essential' %} <span class="gw-badge gw-badge--paid">Keep paying</span>
-{%- elif bill.importance == 'optional' %} <span class="gw-badge gw-badge--quiet">Safe to cancel</span>
-{%- endif %}
-{%- if bill.importance == 'optional' and bill.cancel_note %}
-<br><span class="gw-text-muted">How to cancel: {{ bill.cancel_note }}</span>
-{%- elif bill.importance == 'essential' and bill.if_stopped_note %}
-<br><span class="gw-text-muted">If this stops: {{ bill.if_stopped_note }}</span>
-{%- elif not bill.importance %}
-{%- if bill.cancel_note %}
-<br><span class="gw-text-muted">How to cancel: {{ bill.cancel_note }}</span>
-{%- endif %}
-{%- if bill.if_stopped_note %}
-<br><span class="gw-text-muted">If this stops: {{ bill.if_stopped_note }}</span>
-{%- endif %}
-{%- endif -%}
-</td>
-<td class="gw-text-muted" data-sort-value="{{ bill.debtor_provider }}">
-    {{ bill.debtor_provider }}
-    {% if bill.contract %}
-    <br><span class="gw-contract-label">{{ contract_label(bill.contract) }}</span>
-    {% if bill.contract.ended_on %}
-    <span class="gw-badge gw-badge--pending">Ended</span>
-    {% endif %}
-    {% endif %}
-</td>
-<td data-sort-value="{{ paid_with[bill.id].sort }}">
-    {% if paid_with[bill.id].label == "Not set" %}
-    <span class="gw-text-dim">Not set</span>
-    {% else %}
-    {{ paid_with[bill.id].label }}
-    {% if paid_with[bill.id].badge %}
-    <span class="gw-badge gw-badge--pending">{{ paid_with[bill.id].badge }}</span>
-    {% endif %}
-    {% endif %}
-</td>
-<td data-sort-value="{{ source_label(bill) }}" class="{{ 'gw-text-negative' if source_is_broken(bill) }}">{{ source_label(bill) }}</td>
-<td class="text-right" data-sort-value="{{ bill.amount }}">
-    ${{ bill.amount|money }}
-    {% if bill.foreign_amount and bill.foreign_currency %}
-    <br><span class="gw-foreign-amount">{{ "%.2f"|format(bill.foreign_amount) }} {{ bill.foreign_currency }}</span>
-    {% endif %}
-</td>
-<td class="gw-text-muted" data-sort-value="{{ frequency_labels.get(bill.frequency, bill.frequency) }}">{{ frequency_labels.get(bill.frequency, bill.frequency) }}</td>
-<td>
-    {% if bill.paid_from != 'bills_fund' %}
-    <span class="gw-badge gw-badge--pending">Confirm</span>
-    {% elif bill.bill_type == "variable" %}
-    <span class="gw-badge-variable">Variable</span>
-    {% else %}
-    <span class="gw-text-muted">Fixed</span>
-    {% endif %}
-</td>
-<td class="gw-text-muted" data-sort-value="{{ bill.next_due_date }}">{{ bill.next_due_date }}</td>
-<td>
-    {% if needs_confirm(bill) %}
-    <button hx-get="/bills/{{ bill.id }}/confirm" hx-target="#bill-row-{{ bill.id }}" hx-swap="outerHTML"
-            class="gw-action-pay">Confirm</button>
-    <button hx-post="/bills/{{ bill.id }}/skip"
-            hx-vals='{"due_date": "{{ bill.next_due_date }}"}'
-            hx-target="#bill-row-{{ bill.id }}" hx-swap="outerHTML"
-            hx-confirm="Skip the {{ bill.next_due_date|due_label }} payment?"
-            hx-disabled-elt="this"
-            class="gw-action-edit">Skip</button>
-    {% endif %}
-    <button hx-get="/bills/{{ bill.id }}/edit{{ filter_query|default('', true) }}" hx-target="#bill-row-{{ bill.id }}" hx-swap="outerHTML"
-            class="gw-action-edit">Edit</button>
-    <button hx-delete="/bills/{{ bill.id }}" hx-target="#bill-row-{{ bill.id }}" hx-swap="delete"
-            hx-confirm="Deactivate this bill?"
-            class="gw-action-delete">Delete</button>
-</td>
-{% endmacro %}
-{% if fragment == "table_body" %}
-{# --- Partial: full table body rows --- #}
-{% for bill in bills %}
-<tr id="bill-row-{{ bill.id }}">
-    {{ bill_display_cells(bill) }}
-</tr>
-{% endfor %}
-
-{% elif fragment == "bill_row" %}
-{# --- Partial: single display row --- #}
-<tr id="bill-row-{{ bill.id }}">
-    {{ bill_display_cells(bill) }}
-</tr>
-
-{% elif fragment == "edit_row" %}
-{# --- Partial: inline edit row --- #}
-{% if bill.paid_from == 'budget' %}
-{% set current_source = 'budget:' ~ bill.category_id %}
-{% elif bill.paid_from == 'sinking_fund' %}
-{% set current_source = 'fund:' ~ bill.paid_from_fund_id %}
-{% else %}
-{% set current_source = 'bills_fund' %}
-{% endif %}
-<tr class="gw-edit-row" id="bill-row-{{ bill.id }}">
-    <td>
-        <input type="text" name="name" value="{{ bill.name }}" form="edit-form-{{ bill.id }}"
-               class="gw-edit-input">
-    </td>
-    <td>
-        <input type="text" name="debtor_provider" value="{{ bill.debtor_provider }}" form="edit-form-{{ bill.id }}"
-               class="gw-edit-input">
-        <select name="contract_id" form="edit-form-{{ bill.id }}" class="gw-edit-input" style="margin-top: 4px;"
-                title="Only payments from now on are tied to this contract. Earlier ones stay off the plan.">
-            <option value="" {{ 'selected' if not bill.contract_id }}>No contract</option>
-            {% for contract in contracts %}
-            <option value="{{ contract.id }}" {{ 'selected' if bill.contract_id == contract.id }}>
-                {{ contract_choice_label(contract) }}
-            </option>
-            {% endfor %}
-        </select>
-        <p class="gw-text-muted" style="font-size: 0.75rem; margin-top: 4px;">Earlier payments stay off the plan.</p>
-    </td>
-    <td>
-        <select name="payment_method_id" form="edit-form-{{ bill.id }}" class="gw-edit-input">
-            <option value="" {{ 'selected' if not bill.payment_method_id }}>Not set</option>
-            {% for method in payment_methods %}
-            <option value="{{ method.id }}" {{ 'selected' if bill.payment_method_id == method.id }}>
-                {{ choice_label(method) }}
-            </option>
-            {% endfor %}
-        </select>
-    </td>
-    <td>
-        <select name="paid_from" form="edit-form-{{ bill.id }}" class="gw-edit-input"
-                data-bill-type="{{ bill.bill_type }}" onchange="gwPaidFromChanged(this)">
-            {{ paid_from_options(current_source) }}
-        </select>
-        <div data-fund-category style="{{ '' if bill.paid_from == 'sinking_fund' else 'display:none' }}; margin-top: 4px;">
-            <select name="category_id" form="edit-form-{{ bill.id }}" class="gw-edit-input"
-                    {{ '' if bill.paid_from == 'sinking_fund' else 'disabled' }}>
-                {% for cat in categories %}
-                <option value="{{ cat.id }}" {{ 'selected' if (bill.paid_from == 'sinking_fund' and bill.category_id == cat.id) or (bill.paid_from != 'sinking_fund' and bills_category_id == cat.id) }}>{{ cat.name }}</option>
-                {% endfor %}
-            </select>
-        </div>
-        <p data-overdue-note class="gw-text-muted" style="font-size: 0.75rem; margin-top: 4px;">
-            {% if bill.paid_from == 'bills_fund' and bill.bill_type == 'variable' %}Overdue payments will wait in Due to confirm.{% elif bill.paid_from == 'bills_fund' %}Overdue payments will then be paid from the Bills fund automatically.{% endif %}
-        </p>
-    </td>
-    <td>
-        <input type="number" name="amount" value="{{ "%.2f"|format(bill.amount) }}" step="0.01" min="0.01"
-               form="edit-form-{{ bill.id }}"
-               class="gw-edit-input" style="text-align: right;">
-        <div style="display: flex; gap: 4px; margin-top: 4px;">
-            <input type="number" name="foreign_amount" value="{{ "%.2f"|format(bill.foreign_amount) if bill.foreign_amount else "" }}"
-                   step="0.01" min="0.01" placeholder="Foreign amt"
-                   form="edit-form-{{ bill.id }}"
-                   class="gw-edit-input" style="text-align: right; width: 90px;">
-            <input type="text" name="foreign_currency" value="{{ bill.foreign_currency or "" }}"
-                   placeholder="USD" maxlength="3"
-                   form="edit-form-{{ bill.id }}"
-                   class="gw-edit-input" style="width: 44px; text-transform: uppercase;">
-        </div>
-    </td>
-    <td>
-        <select name="frequency" form="edit-form-{{ bill.id }}" class="gw-edit-input">
-            {% for val, label in frequency_labels.items() %}
-            <option value="{{ val }}" {{ 'selected' if bill.frequency == val }}>{{ label }}</option>
-            {% endfor %}
-            {% if bill.frequency not in frequency_labels %}
-            <option value="{{ bill.frequency }}" selected>{{ bill.frequency }}</option>
-            {% endif %}
-        </select>
-    </td>
-    <td data-bill-type>
-        <select name="bill_type" form="edit-form-{{ bill.id }}" class="gw-edit-input"
-                onchange="gwPaidFromChanged(this.closest('tr').querySelector('[name=paid_from]'))"
-                style="{{ '' if bill.paid_from == 'bills_fund' else 'display:none' }}"
-                {{ '' if bill.paid_from == 'bills_fund' else 'disabled' }}>
-            <option value="fixed" {{ 'selected' if bill.bill_type == 'fixed' }}>Fixed</option>
-            <option value="variable" {{ 'selected' if bill.bill_type == 'variable' }}>Variable</option>
-        </select>
-        <p data-confirm-help class="gw-text-muted" style="font-size: 0.75rem; {{ 'display:none' if bill.paid_from == 'bills_fund' }}">You'll confirm each one before it's logged.</p>
-    </td>
-    <td>
-        <input type="date" name="next_due_date" value="{{ bill.next_due_date }}" form="edit-form-{{ bill.id }}"
-               class="gw-edit-input">
-        <input type="hidden" name="next_due_date_was" value="{{ bill.next_due_date }}" form="edit-form-{{ bill.id }}">
-    </td>
-    <td>
-        <form id="edit-form-{{ bill.id }}" hx-post="/bills/{{ bill.id }}{{ filter_query|default('', true) }}" hx-target="#bill-row-{{ bill.id }}" hx-swap="outerHTML" style="display: inline;">
-            <button type="submit" class="gw-btn gw-btn-success gw-btn-sm">Save</button>
-        </form>
-        <button class="gw-btn gw-btn-ghost gw-btn-sm"
-                hx-get="/bills/{{ bill.id }}{{ close_query|default('', true) }}" hx-target="#bill-row-{{ bill.id }}" hx-swap="outerHTML">Cancel</button>
-    </td>
-</tr>
-<tr id="bill-notes-{{ bill.id }}">
-    <td colspan="9">
-        <label class="gw-label" for="importance-{{ bill.id }}">If something happens to me</label>
-        <select id="importance-{{ bill.id }}" name="importance" form="edit-form-{{ bill.id }}" class="gw-edit-input">
-            <option value="" {{ 'selected' if not bill.importance }}>Not set yet</option>
-            <option value="essential" {{ 'selected' if bill.importance == 'essential' }}>Keep paying</option>
-            <option value="optional" {{ 'selected' if bill.importance == 'optional' }}>Safe to cancel</option>
-        </select>
-        <p class="gw-text-muted" style="font-size: 0.75rem; margin-top: 4px;">Both notes are optional on every payment. Write where to cancel it, and what goes wrong if it stops.</p>
-        <div style="display: flex; gap: 12px; flex-wrap: wrap; margin-top: 8px;">
-            <div style="flex: 1; min-width: 220px;">
-                <label class="gw-label" for="cancel-note-{{ bill.id }}">How to cancel</label>
-                <textarea id="cancel-note-{{ bill.id }}" name="cancel_note" form="edit-form-{{ bill.id }}" maxlength="500" rows="2" class="gw-edit-input">{{ bill.cancel_note or '' }}</textarea>
-            </div>
-            <div style="flex: 1; min-width: 220px;">
-                <label class="gw-label" for="stopped-note-{{ bill.id }}">What happens if this stops</label>
-                <textarea id="stopped-note-{{ bill.id }}" name="if_stopped_note" form="edit-form-{{ bill.id }}" maxlength="500" rows="2" class="gw-edit-input">{{ bill.if_stopped_note or '' }}</textarea>
-            </div>
-        </div>
-    </td>
-</tr>
-
-{% elif fragment == "confirm_row" %}
-{# --- Partial: inline confirm row --- #}
-<tr class="gw-edit-row" id="bill-row-{{ bill.id }}">
-    <td colspan="9">
-        <form id="confirm-form-{{ bill.id }}" hx-post="/bills/{{ bill.id }}/confirm" hx-target="#bill-row-{{ bill.id }}" hx-swap="outerHTML" style="display: flex; gap: 12px; align-items: center; flex-wrap: wrap;">
-            <span>Due {{ bill.next_due_date|due_label }}</span>
-            <input type="number" name="amount" value="{{ "%.2f"|format(bill.amount) }}" step="0.01" min="0.01"
-                   class="gw-edit-input" style="text-align: right; max-width: 120px;" required>
-            <span>From {{ source_label(bill) }}{% if bill.paid_from == 'budget' %} ({{ bill.next_due_date|month_year }}){% endif %}</span>
-            <input type="hidden" name="due_date" value="{{ bill.next_due_date }}">
-            <button type="submit" class="gw-btn gw-btn-success gw-btn-sm" hx-disabled-elt="this">Confirm</button>
-            <button type="button" class="gw-btn gw-btn-ghost gw-btn-sm"
-                    hx-get="/bills/{{ bill.id }}" hx-target="#bill-row-{{ bill.id }}" hx-swap="outerHTML"
-                    hx-disabled-elt="this">Cancel</button>
-        </form>
-    </td>
-</tr>
-
-{% else %}
-{# --- Full page --- #}
-{% extends "base.html" %}
 {% block title %}Recurring payments — Glow Worm{% endblock %}
 {% block content %}
-<style>
-.gw-badge-variable {
-    display: inline-block;
-    padding: 2px 8px;
-    border-radius: 4px;
-    font-size: 0.75rem;
-    font-style: italic;
-    background-color: #dbeafe;
-    color: #1d4ed8;
-}
-.gw-action-pay {
-    display: inline-block;
-    padding: 2px 8px;
-    border-radius: 4px;
-    font-size: 0.75rem;
-    background-color: #dcfce7;
-    color: #15803d;
-    border: 1px solid #bbf7d0;
-    cursor: pointer;
-    margin-right: 4px;
-}
-.gw-action-pay:hover {
-    background-color: #bbf7d0;
-}
-.gw-foreign-amount {
-    font-size: 0.7rem;
-    color: #9ca3af;
-}
-</style>
 <div style="max-width: 1200px;">
     <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0;">
         <h2 class="gw-page-header" style="margin-bottom: 0;">Recurring payments</h2>
@@ -287,23 +26,22 @@
         {% endif %}
     </div>
 
-    <div id="bills-message" style="margin-bottom: 16px;"></div>
+    <p id="bills-count" class="gw-text-muted">{{ active_count }} active payments · {{ waiting_count }} waiting to confirm</p>
 
-    <!-- Add new (collapsible) -->
+    <div id="bills-message" style="margin-bottom: 16px;" aria-live="polite"></div>
+
     <details class="gw-details gw-section gw-add-form">
         <summary>Add new</summary>
-        <form hx-post="/bills" hx-target="#bills-table-body" hx-swap="innerHTML"
+        <form hx-post="/bills" hx-target="#bills-rows" hx-swap="innerHTML"
               hx-on::after-request="if(!event.detail.successful){ document.getElementById('bills-message').innerHTML=event.detail.xhr.responseText; }"
               autocomplete="off" class="gw-grid-2" style="margin-top: 16px;">
             <div>
                 <label for="bill-name" class="gw-label">Name</label>
-                <input type="text" id="bill-name" name="name" required
-                       class="gw-input" placeholder="e.g. Rent">
+                <input type="text" id="bill-name" name="name" required class="gw-input" placeholder="e.g. Rent">
             </div>
             <div>
                 <label for="bill-provider" class="gw-label">Provider</label>
-                <input type="text" id="bill-provider" name="debtor_provider" required
-                       class="gw-input" placeholder="e.g. Landlord">
+                <input type="text" id="bill-provider" name="debtor_provider" required class="gw-input" placeholder="e.g. Landlord">
                 <label for="bill-contract" class="gw-label" style="margin-top: 8px;">Contract</label>
                 <select id="bill-contract" name="contract_id" class="gw-select">
                     <option value="">No contract</option>
@@ -315,17 +53,14 @@
             </div>
             <div>
                 <label for="bill-amount" class="gw-label">Amount (local currency)</label>
-                <input type="number" id="bill-amount" name="amount" step="0.01" min="0.01" required
-                       class="gw-input" placeholder="0.00">
+                <input type="number" id="bill-amount" name="amount" step="0.01" min="0.01" required class="gw-input" placeholder="0.00">
                 <p class="gw-text-muted" style="font-size: 0.75rem; margin-top: 4px;">Amount each time it's due.</p>
             </div>
             <div>
                 <label class="gw-label">Foreign Currency (optional)</label>
                 <div style="display: flex; gap: 8px;">
-                    <input type="number" name="foreign_amount" step="0.01" min="0.01"
-                           class="gw-input" placeholder="0.00" style="flex: 1;">
-                    <input type="text" name="foreign_currency" maxlength="3"
-                           class="gw-input" placeholder="USD" style="width: 70px; text-transform: uppercase;">
+                    <input type="number" name="foreign_amount" step="0.01" min="0.01" class="gw-input" placeholder="0.00" style="flex: 1;">
+                    <input type="text" name="foreign_currency" maxlength="3" class="gw-input" placeholder="USD" style="width: 70px; text-transform: uppercase;">
                 </div>
                 <p class="gw-text-muted" style="font-size: 0.75rem; margin-top: 4px;">Displayed as a note only — not used in calculations.</p>
             </div>
@@ -367,22 +102,21 @@
                 <label for="bill-next-due" class="gw-label">Next Due Date</label>
                 <input type="date" id="bill-next-due" name="next_due_date" required class="gw-input">
             </div>
-            <div>
-                <label for="bill-importance" class="gw-label">If something happens to me</label>
-                <select id="bill-importance" name="importance" class="gw-select">
-                    <option value="" selected>Not set yet</option>
-                    <option value="essential">Keep paying</option>
-                    <option value="optional">Safe to cancel</option>
-                </select>
-                <p class="gw-text-muted" style="font-size: 0.75rem; margin-top: 4px;">Both notes are optional on every payment. Write where to cancel it, and what goes wrong if it stops.</p>
-            </div>
-            <div>
-                <label for="bill-cancel-note" class="gw-label">How to cancel</label>
-                <textarea id="bill-cancel-note" name="cancel_note" maxlength="500" rows="2" class="gw-input"></textarea>
-            </div>
-            <div>
-                <label for="bill-stopped-note" class="gw-label">What happens if this stops</label>
-                <textarea id="bill-stopped-note" name="if_stopped_note" maxlength="500" rows="2" class="gw-input"></textarea>
+            <div style="grid-column: 1 / -1;">
+                <details class="gw-details">
+                    <summary>If something happens to me</summary>
+                    <label for="bill-importance" class="gw-label">If something happens to me</label>
+                    <select id="bill-importance" name="importance" class="gw-select">
+                        <option value="" selected>Not set yet</option>
+                        <option value="essential">Keep paying</option>
+                        <option value="optional">Safe to cancel</option>
+                    </select>
+                    <p class="gw-text-muted" style="font-size: 0.75rem; margin-top: 4px;">Both notes are optional on every payment. Write where to cancel it, and what goes wrong if it stops.</p>
+                    <label for="bill-cancel-note" class="gw-label">How to cancel</label>
+                    <textarea id="bill-cancel-note" name="cancel_note" maxlength="500" rows="2" class="gw-input"></textarea>
+                    <label for="bill-stopped-note" class="gw-label">What happens if this stops</label>
+                    <textarea id="bill-stopped-note" name="if_stopped_note" maxlength="500" rows="2" class="gw-input"></textarea>
+                </details>
             </div>
             <div style="grid-column: 1 / -1;">
                 <button type="submit" class="gw-btn gw-btn-primary">Add Bill</button>
@@ -390,197 +124,56 @@
         </form>
     </details>
 
-    <!-- Summary bar -->
-    <div class="gw-summary-bar gw-section">
-        <div class="gw-summary-item">
-            <span class="gw-summary-label">Bills fund monthly cost:</span>
-            <span class="gw-summary-value" id="bills-monthly-cost">${{ total_monthly|money }}</span>
+    <div class="gw-grid-3 gw-section">
+        <div class="gw-stat gw-stat--amber">
+            <div class="gw-stat-label">Bills fund monthly</div>
+            <div class="gw-stat-value" id="bills-monthly-cost">${{ total_monthly|money }}</div>
+            <p class="gw-text-muted">Feeds the forecast</p>
         </div>
-        <div class="gw-summary-item">
-            <span class="gw-summary-label">Bills fund annual cost:</span>
-            <span class="gw-summary-value" id="bills-annual-cost">${{ total_annual|money }}</span>
+        <div class="gw-stat">
+            <div class="gw-stat-label">Bills fund annual</div>
+            <div class="gw-stat-value" id="bills-annual-cost">${{ total_annual|money }}</div>
+            <p class="gw-text-muted">Same bills, over a year</p>
         </div>
-        <div class="gw-summary-item">
-            <span class="gw-summary-label">Other recurring:</span>
-            <span class="gw-summary-value">$<span id="bills-other-cost">{{ other_monthly|money }}</span> a month</span>
-        </div>
-        <div class="gw-summary-item">
-            <span class="gw-summary-label">Split of the monthly averages:</span>
-        </div>
-        <div class="gw-summary-item">
-            <span class="gw-summary-label">Keep paying:</span>
-            <span class="gw-summary-value">$<span id="bills-essential-cost">{{ essential_monthly|money }}</span> a month</span>
-        </div>
-        <div class="gw-summary-item">
-            <span class="gw-summary-label">Safe to cancel:</span>
-            <span class="gw-summary-value">$<span id="bills-optional-cost">{{ optional_monthly|money }}</span> a month</span>
-        </div>
-        <div class="gw-summary-item">
-            <span class="gw-summary-label">Not marked:</span>
-            <span class="gw-summary-value">$<span id="bills-unmarked-cost">{{ unmarked_monthly|money }}</span> a month</span>
-        </div>
-        <div class="gw-summary-item">
-            <span class="gw-text-muted">Safe to cancel is still paid until someone cancels it with the provider.</span>
-        </div>
-        <div class="gw-summary-item">
-            <a href="/bills?payment_method=none">No payment method: {{ unset_count }}</a>
-            <a href="/bills?importance=unset">No keep-or-cancel mark: <span id="bills-unmarked-count">{{ unmarked_count }}</span></a>
-            {% if payment_filter or importance_filter %}
-            <a href="/bills" class="gw-text-muted">Show all</a>
-            {% endif %}
+        <div class="gw-stat">
+            <div class="gw-stat-label">Other recurring</div>
+            <div class="gw-stat-value">$<span id="bills-other-cost">{{ other_monthly|money }}</span> a month</div>
+            <p class="gw-text-muted">Budgets and other funds, a month</p>
         </div>
     </div>
 
-    {% include "_due_to_confirm.html" %}
+    <p class="gw-section">
+        <a href="/bills?payment_method=none">No payment method: {{ unset_count }}</a>
+        {% if payment_filter or importance_filter %}
+        <a href="/bills" class="gw-text-muted">Show all</a>
+        {% endif %}
+    </p>
 
-    <p id="bills-unmarked-note" class="gw-text-muted" style="margin: 0 0 12px;" {% if unmarked_count == 0 %}hidden{% endif %}>Mark each payment as keep paying or safe to cancel. The keep-paying total leaves out anything still unmarked.</p>
+    {% include "_due_soon.html" %}
 
-    <!-- Bills table -->
-    <div class="gw-table-wrap">
-        <div class="gw-overflow-x">
-            <table>
-                <thead>
-                    <tr>
-                        <th class="gw-sortable" onclick="sortBills('name')">Name <span class="gw-sort-indicator" id="sort-indicator-name"></span></th>
-                        <th class="gw-sortable" onclick="sortBills('provider')">Provider <span class="gw-sort-indicator" id="sort-indicator-provider"></span></th>
-                        <th class="gw-sortable" onclick="sortBills('paid_with')">Paid with <span class="gw-sort-indicator" id="sort-indicator-paid_with"></span></th>
-                        <th class="gw-sortable" onclick="sortBills('paid_from')">Paid from <span class="gw-sort-indicator" id="sort-indicator-paid_from"></span></th>
-                        <th class="text-right gw-sortable" onclick="sortBills('amount')">Amount <span class="gw-sort-indicator" id="sort-indicator-amount"></span></th>
-                        <th class="gw-sortable" onclick="sortBills('frequency')">Frequency <span class="gw-sort-indicator" id="sort-indicator-frequency"></span></th>
-                        <th>Type</th>
-                        <th class="gw-sortable" onclick="sortBills('next_due_date')">Next Due <span class="gw-sort-indicator" id="sort-indicator-next_due_date"></span></th>
-                        <th>Actions</th>
-                    </tr>
-                </thead>
-                <tbody id="bills-table-body">
-                    {% for bill in bills %}
-                    <tr id="bill-row-{{ bill.id }}">
-                        {{ bill_display_cells(bill) }}
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-        </div>
+    <div class="gw-section" style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+        <label for="bills-sort" class="gw-label" style="margin: 0;">Sort</label>
+        <select id="bills-sort" class="gw-select" aria-label="Sort payments">
+            <option value="next_due_date">Sort by next due</option>
+            <option value="name">Sort by name</option>
+            <option value="amount">Sort by amount</option>
+            <option value="paid_from">Sort by paid from</option>
+            <option value="paid_with">Sort by paid with</option>
+            <option value="provider">Sort by provider</option>
+            <option value="frequency">Sort by frequency</option>
+        </select>
+        <button type="button" id="bills-sort-reverse" class="gw-btn gw-btn-ghost gw-btn-sm" aria-pressed="false">Reverse</button>
     </div>
+
+    <div id="bills-stack">
+        <div id="bills-list">
+            <div id="bills-rows" class="gw-bill-list">
+                {% include "_bill_list.html" %}
+            </div>
+        </div>
+        <div id="bill-drawer" class="gw-drawer gw-card" hidden></div>
+    </div>
+    <div id="bill-drawer-backdrop" class="gw-drawer-backdrop" hidden></div>
 </div>
-<script>
-function gwPaidFromChanged(select) {
-    if (!select) { return; }
-    var root = select.closest('form') || select.closest('tr');
-    if (!root) { return; }
-    var value = select.value || '';
-    var isBills = value === 'bills_fund';
-    var isFund = value.indexOf('fund:') === 0;
-    var typeWrap = root.querySelector('[data-bill-type]');
-    var typeSelect = typeWrap ? typeWrap.querySelector('select') : null;
-    var help = root.querySelector('[data-confirm-help]');
-    var catWrap = root.querySelector('[data-fund-category]');
-    var note = root.querySelector('[data-overdue-note]');
-    if (typeSelect) {
-        typeSelect.style.display = isBills ? '' : 'none';
-        typeSelect.disabled = !isBills;
-    }
-    if (help) { help.style.display = isBills ? 'none' : ''; }
-    if (catWrap) {
-        catWrap.style.display = isFund ? '' : 'none';
-        var catSelect = catWrap.querySelector('select');
-        if (catSelect) { catSelect.disabled = !isFund; }
-    }
-    if (note) {
-        if (!isBills) {
-            note.textContent = '';
-        } else {
-            var billType = typeSelect && !typeSelect.disabled ? typeSelect.value : (select.getAttribute('data-bill-type') || 'fixed');
-            note.textContent = billType === 'variable'
-                ? 'Overdue payments will wait in Due to confirm.'
-                : 'Overdue payments will then be paid from the Bills fund automatically.';
-        }
-    }
-}
-(function() {
-    var currentSort = { key: null, dir: 'asc' };
-
-    var colMap = { name: 0, provider: 1, paid_with: 2, paid_from: 3, amount: 4, frequency: 5, next_due_date: 7 };
-
-    window.sortBills = function(key) {
-        var tbody = document.getElementById('bills-table-body');
-        var rows = Array.from(tbody.querySelectorAll('tr[id^="bill-row-"]'));
-
-        if (currentSort.key === key) {
-            currentSort.dir = currentSort.dir === 'asc' ? 'desc' : 'asc';
-        } else {
-            currentSort.key = key;
-            currentSort.dir = 'asc';
-        }
-
-        var colIndex = colMap[key];
-
-        rows.sort(function(a, b) {
-            var aVal = a.children[colIndex].getAttribute('data-sort-value');
-            var bVal = b.children[colIndex].getAttribute('data-sort-value');
-            var cmp;
-            if (key === 'amount') {
-                cmp = parseFloat(aVal) - parseFloat(bVal);
-            } else {
-                cmp = aVal.localeCompare(bVal);
-            }
-            return currentSort.dir === 'asc' ? cmp : -cmp;
-        });
-
-        rows.forEach(function(row) { tbody.appendChild(row); });
-
-        document.querySelectorAll('.gw-sort-indicator').forEach(function(el) { el.textContent = ''; });
-        var indicator = document.getElementById('sort-indicator-' + key);
-        if (indicator) {
-            indicator.textContent = currentSort.dir === 'asc' ? ' \u25B2' : ' \u25BC';
-        }
-    };
-})();
-document.body.addEventListener('gwBillSuccess', function(e) {
-    var detail = e.detail || {};
-    var message = detail.message || '';
-    if (message === 'Bill added.') {
-        document.querySelectorAll('.gw-add-form[open]').forEach(function(details) {
-            var form = details.querySelector('form');
-            if (form) { form.reset(); }
-            details.removeAttribute('open');
-        });
-    }
-    var box = document.getElementById('bills-message');
-    if (box && message) {
-        box.textContent = '';
-        var note = document.createElement('p');
-        note.className = 'gw-msg-success';
-        note.textContent = message;
-        box.appendChild(note);
-        box.scrollIntoView({behavior: 'smooth', block: 'nearest'});
-    }
-    if (detail.monthly) {
-        var monthly = document.getElementById('bills-monthly-cost');
-        if (monthly) { monthly.textContent = '$' + detail.monthly; }
-    }
-    if (detail.annual) {
-        var annual = document.getElementById('bills-annual-cost');
-        if (annual) { annual.textContent = '$' + detail.annual; }
-    }
-    if (detail.other != null && detail.other !== '') {
-        var other = document.getElementById('bills-other-cost');
-        if (other) { other.textContent = detail.other; }
-    }
-    function setPile(id, value) {
-        var el = document.getElementById(id);
-        if (el && value != null && value !== '') { el.textContent = value; }
-    }
-    setPile('bills-essential-cost', detail.essential);
-    setPile('bills-optional-cost', detail.optional);
-    setPile('bills-unmarked-cost', detail.unmarked);
-    if (detail.unmarked_count != null && detail.unmarked_count !== '') {
-        var count = document.getElementById('bills-unmarked-count');
-        if (count) { count.textContent = String(detail.unmarked_count); }
-        var note = document.getElementById('bills-unmarked-note');
-        if (note) { note.hidden = Number(detail.unmarked_count) === 0; }
-    }
-});
-</script>
+<script src="/static/bills.js"></script>
 {% endblock %}
-{% endif %}

@@ -45,10 +45,13 @@ from app.services.recurring_payments import (
     PaidFromError,
     PaymentBlocked,
     PaymentConflict,
+    _problem,
+    _today,
     apply_paid_from,
     cas_save_bill,
     confirm_payment,
     confirm_transaction_payload,
+    due_soon,
     due_to_confirm,
     find_bills_fund,
     pay_bills_fund,
@@ -166,6 +169,8 @@ def _bill_context(db: Session) -> dict[str, Any]:
     categories = _expense_categories(db)
     bills_category = _bills_category(db)
     bills_fund = find_bills_fund(db)
+    today = _today()
+    due_rows = due_to_confirm(db, today)
     return {
         "bills": bills,
         "categories": categories,
@@ -173,7 +178,7 @@ def _bill_context(db: Session) -> dict[str, Any]:
         "payable_funds": _payable_funds(db),
         "bills_category_id": bills_category.id if bills_category else None,
         "frequency_labels": FREQUENCY_LABELS,
-        "due_payments": due_to_confirm(db),
+        "due_payments": due_rows,
         "due_from": "bills",
         **_summary(bills),
         "bills_fund_id": bills_fund.id if bills_fund else None,
@@ -183,6 +188,12 @@ def _bill_context(db: Session) -> dict[str, Any]:
         "payment_filter": None,
         "importance_filter": None,
         "filter_query": "",
+        "query": "",
+        "today": today.isoformat(),
+        "show_marks": False,
+        "active_count": len(bills),
+        "waiting_count": len(due_rows),
+        "chips": _chip_rows(db, today),
     }
 
 
@@ -240,14 +251,50 @@ def _read_importance(value: object) -> str | None:
     )
 
 
-def _note_html_error(message: str) -> HTMLResponse:
-    """Show the message only. The submitted note is not in the body."""
-    response = HTMLResponse(
+def _create_error(message: str, status: int = 422) -> HTMLResponse:
+    """The same paragraph for every create failure, with no HX-Trigger."""
+    return HTMLResponse(
         f'<p class="text-red-600 text-sm">{message}</p>',
-        status_code=422,
+        status_code=status,
     )
-    response.headers["HX-Trigger"] = json.dumps({"gwError": message})
+
+
+def _editor_error(
+    message: str,
+    status: int,
+    *,
+    focus: str | None = None,
+    retarget: str = "#bill-editor-errors",
+    extra: str = "",
+) -> HTMLResponse:
+    """Drawer or strip error. No HX-Trigger, so the sentence is not shown twice."""
+    response = HTMLResponse(
+        f'<p class="gw-msg-error">{message}</p>{extra}',
+        status_code=status,
+    )
+    response.headers["HX-Retarget"] = retarget
+    response.headers["HX-Reswap"] = "innerHTML"
+    if focus:
+        response.headers["HX-Focus"] = focus
     return response
+
+
+def _error_target(origin: str, bill_id: int) -> str:
+    if origin == "strip":
+        return f"#due-soon-errors-{bill_id}"
+    return "#bill-editor-errors"
+
+
+def _occurrence_error(
+    origin: str, bill_id: int, message: str, status: int
+) -> HTMLResponse:
+    """Dashboard and card keep today's body and status. The bills page retargets."""
+    if origin in {"dashboard", "card"}:
+        return HTMLResponse(
+            f'<p class="text-red-600 text-sm">{message}</p>',
+            status_code=status,
+        )
+    return _editor_error(message, status, retarget=_error_target(origin, bill_id))
 
 
 def _parse_mark_fields(form) -> tuple[str | None, str | None, str | None]:
@@ -265,15 +312,38 @@ def _parse_mark_fields(form) -> tuple[str | None, str | None, str | None]:
     return importance, cancel_note, if_stopped_note
 
 
-def _render_table_body(request: Request, db: Session, ctx: dict | None = None) -> str:
+def _html(request: Request, name: str, context: dict[str, Any]) -> str:
+    return bytes(templates.TemplateResponse(request, name, context).body).decode()
+
+
+def _chip_rows(db: Session, today: date | None = None) -> list[dict[str, Any]]:
+    today = today or _today()
+    confirm = {row["bill_id"]: row for row in due_to_confirm(db, today)}
+    chips: list[dict[str, Any]] = []
+    for bill in due_soon(db, today):
+        row = confirm.get(bill.id)
+        blocked = _problem(db, bill, date.fromisoformat(bill.next_due_date))
+        problem = None
+        if blocked is not None:
+            problem = {
+                "code": blocked.code,
+                "detail": blocked.detail,
+                "href": blocked.href,
+            }
+        chips.append(
+            {
+                "bill": bill,
+                "in_confirm": row is not None,
+                "more_due": row["more_due"] if row else 0,
+                "problem": problem,
+            }
+        )
+    return chips
+
+
+def _render_bill_list(request: Request, db: Session, ctx: dict | None = None) -> str:
     context = _bill_context(db) if ctx is None else ctx
-    return bytes(
-        templates.TemplateResponse(
-            request,
-            "bills.html",
-            {**context, "fragment": "table_body"},
-        ).body
-    ).decode()
+    return _html(request, "_bill_list.html", context)
 
 
 def _render_bill_row(
@@ -281,20 +351,33 @@ def _render_bill_row(
     db: Session,
     bill: RecurringBill,
     filter_query: str = "",
+    *,
+    show_marks: bool = False,
 ) -> str:
-    return bytes(
-        templates.TemplateResponse(
-            request,
-            "bills.html",
-            {
-                "bill": bill,
-                "frequency_labels": FREQUENCY_LABELS,
-                "paid_with": paid_with_for(db, [bill]),
-                "filter_query": filter_query,
-                "fragment": "bill_row",
-            },
-        ).body
-    ).decode()
+    return _html(
+        request,
+        "_bill_line.html",
+        {
+            "bill": bill,
+            "frequency_labels": FREQUENCY_LABELS,
+            "paid_with": paid_with_for(db, [bill]),
+            "query": filter_query,
+            "today": _today().isoformat(),
+            "show_marks": show_marks,
+        },
+    )
+
+
+def _render_due_soon(request: Request, db: Session) -> str:
+    today = _today()
+    return _html(
+        request,
+        "_due_soon.html",
+        {"chips": _chip_rows(db, today), "today": today.isoformat()},
+    )
+
+
+_EMPTY_DRAWER = '<div id="bill-drawer" hx-swap-oob="innerHTML"></div>'
 
 
 def _choice_context(db: Session) -> dict[str, Any]:
@@ -315,49 +398,36 @@ def _render_edit_row(
     categories,
     *,
     filter_query: str = "",
-    close_query: str = "",
 ) -> str:
-    return bytes(
-        templates.TemplateResponse(
-            request,
-            "bills.html",
-            {
-                "bill": bill,
-                "categories": categories,
-                "frequency_labels": FREQUENCY_LABELS,
-                "payment_methods": payment_method_choices(db, bill.payment_method_id),
-                "contracts": contract_choices(db, bill.contract_id),
-                "budget_categories": _budget_categories(db),
-                "payable_funds": _payable_funds(db),
-                "bills_category_id": (
-                    bills_category.id
-                    if (bills_category := _bills_category(db)) is not None
-                    else None
-                ),
-                "filter_query": filter_query,
-                "close_query": close_query,
-                "fragment": "edit_row",
-            },
-        ).body
-    ).decode()
+    bills_category = _bills_category(db)
+    return _html(
+        request,
+        "_bill_editor.html",
+        {
+            "bill": bill,
+            "categories": categories,
+            "frequency_labels": FREQUENCY_LABELS,
+            "payment_methods": payment_method_choices(db, bill.payment_method_id),
+            "contracts": contract_choices(db, bill.contract_id),
+            "budget_categories": _budget_categories(db),
+            "payable_funds": _payable_funds(db),
+            "bills_category_id": bills_category.id if bills_category else None,
+            "query": filter_query,
+            "today": _today().isoformat(),
+        },
+    )
 
 
-def _render_confirm_row(
-    request: Request, db: Session, bill: RecurringBill, origin: str
-) -> str:
-    return bytes(
-        templates.TemplateResponse(
-            request,
-            "bills.html",
-            {
-                "bill": bill,
-                "frequency_labels": FREQUENCY_LABELS,
-                "paid_with": paid_with_for(db, [bill]),
-                "due_from": origin,
-                "fragment": "confirm_row",
-            },
-        ).body
-    ).decode()
+def _render_confirm_fields(request: Request, bill: RecurringBill) -> str:
+    return _html(
+        request,
+        "_bill_confirm.html",
+        {"bill": bill, "confirm_cancel": "row"},
+    )
+
+
+def _render_strip_confirm(request: Request, bill: RecurringBill) -> str:
+    return _html(request, "_due_soon_confirm.html", {"bill": bill})
 
 
 def _render_due_card(
@@ -398,18 +468,35 @@ def _html_error(exc: PaymentBlocked | PaymentConflict | PaidFromError) -> HTMLRe
     return response
 
 
-def _summary_trigger(ctx: dict[str, Any], message: str) -> str:
+def _summary_trigger(
+    ctx: dict[str, Any], message: str, bill_id: int | None = None
+) -> str:
+    payload: dict[str, Any] = {
+        "monthly": str(ctx["total_monthly"]),
+        "annual": str(ctx["total_annual"]),
+        "other": str(ctx["other_monthly"]),
+        "essential": _money_format(ctx["essential_monthly"]),
+        "optional": _money_format(ctx["optional_monthly"]),
+        "unmarked": _money_format(ctx["unmarked_monthly"]),
+        "unmarked_count": ctx["unmarked_count"],
+        "active_count": ctx["active_count"],
+        "waiting_count": ctx["waiting_count"],
+        "message": message,
+    }
+    if bill_id is not None:
+        payload["billId"] = bill_id
+    return json.dumps({"gwBillSuccess": payload})
+
+
+def _payment_trigger(db: Session, message: str, bill_id: int) -> str:
+    ctx = _bill_context(db)
     return json.dumps(
         {
             "gwBillSuccess": {
-                "monthly": str(ctx["total_monthly"]),
-                "annual": str(ctx["total_annual"]),
-                "other": str(ctx["other_monthly"]),
-                "essential": _money_format(ctx["essential_monthly"]),
-                "optional": _money_format(ctx["optional_monthly"]),
-                "unmarked": _money_format(ctx["unmarked_monthly"]),
-                "unmarked_count": ctx["unmarked_count"],
                 "message": message,
+                "billId": bill_id,
+                "active_count": ctx["active_count"],
+                "waiting_count": ctx["waiting_count"],
             }
         }
     )
@@ -445,32 +532,53 @@ def _oob(html: str, swap: str) -> str:
             f'id="due-to-confirm" hx-swap-oob="{swap}"',
             1,
         )
+    if stripped.startswith("<"):
+        end = stripped.find(">")
+        space = stripped.find(" ")
+        if space != -1 and (end == -1 or space < end):
+            return stripped[:space] + f' hx-swap-oob="{swap}"' + stripped[space:]
+        if end != -1:
+            return stripped[:end] + f' hx-swap-oob="{swap}"' + stripped[end:]
     return html
 
 
+def _list_query(
+    payment_method: str | None, importance: str | None, marks: str | None
+) -> str:
+    extra = {"marks": marks} if marks == "1" else {}
+    return _page_query(payment_method, importance, **extra)
+
+
 def _after_payment(
-    request: Request, db: Session, bill: RecurringBill, origin: str, message: str
+    request: Request,
+    db: Session,
+    bill: RecurringBill,
+    origin: str,
+    message: str,
+    *,
+    payment_method: str | None = None,
+    importance: str | None = None,
+    marks: str | None = None,
 ) -> HTMLResponse:
     """Return the row or the Due to confirm card, and keep the other in step."""
-    row = _render_bill_row(request, db, bill)
-    card = _render_due_card(
-        request, db, "dashboard" if origin == "dashboard" else "bills"
-    )
+    query = _list_query(payment_method, importance, marks)
+    row = _render_bill_row(request, db, bill, query, show_marks=marks == "1")
     if origin == "dashboard":
-        body = card
+        body = _render_due_card(request, db, "dashboard")
+        trigger = json.dumps({"gwBillSuccess": {"message": message}})
     elif origin == "card":
-        extra = _oob(row, "outerHTML")
-        body = card + extra
+        card = _render_due_card(request, db, "bills")
+        body = card + _oob(row, "outerHTML")
+        trigger = json.dumps({"gwBillSuccess": {"message": message}})
+    elif origin == "strip":
+        body = _render_due_soon(request, db) + _oob(row, "outerHTML")
+        trigger = _payment_trigger(db, message, bill.id)
     else:
-        if card.strip():
-            extra = _oob(card, "outerHTML")
-        else:
-            extra = '<div id="due-to-confirm" hx-swap-oob="delete"></div>'
-        body = row + extra
+        strip = "" if marks == "1" else _oob(_render_due_soon(request, db), "outerHTML")
+        body = row + strip + _EMPTY_DRAWER
+        trigger = _payment_trigger(db, message, bill.id)
     response = HTMLResponse(body)
-    response.headers["HX-Trigger-After-Swap"] = json.dumps(
-        {"gwBillSuccess": {"message": message}}
-    )
+    response.headers["HX-Trigger-After-Swap"] = trigger
     return response
 
 
@@ -508,7 +616,10 @@ async def bills_page(
     ctx["payment_filter"] = payment_method
     ctx["importance_filter"] = importance
     ctx["filter_query"] = _page_query(payment_method, importance)
+    ctx["query"] = ctx["filter_query"]
     ctx["bills"] = _filter_bills(ctx["bills"], payment_method, importance)
+    visible = {bill.id for bill in ctx["bills"]}
+    ctx["chips"] = [chip for chip in ctx["chips"] if chip["bill"].id in visible]
     return templates.TemplateResponse(
         request,
         "bills.html",
@@ -528,35 +639,26 @@ async def bills_create(request: Request, db: Session = Depends(get_db)):
     bill_type = str(form.get("bill_type") or "fixed").strip()
 
     if not name or not provider:
-        return HTMLResponse(
-            '<p class="text-red-600 text-sm">Name and provider are required.</p>'
-        )
+        return _create_error("Name and provider are required.")
 
     try:
         amount = Decimal(str(form.get("amount") or "0"))
     except InvalidOperation, TypeError:
-        return HTMLResponse('<p class="text-red-600 text-sm">Invalid amount.</p>')
+        return _create_error("Invalid amount.")
 
     if amount <= 0:
-        return HTMLResponse(
-            '<p class="text-red-600 text-sm">Amount must be greater than zero.</p>'
-        )
+        return _create_error("Amount must be greater than zero.")
 
     if frequency not in _VALID_FREQUENCIES:
-        return HTMLResponse('<p class="text-red-600 text-sm">Choose a frequency.</p>')
+        return _create_error("Choose a frequency.")
 
     if not start_date or not next_due_date:
-        return HTMLResponse(
-            '<p class="text-red-600 text-sm">Start date and next due date are required.</p>'
-        )
+        return _create_error("Start date and next due date are required.")
     try:
         date.fromisoformat(start_date)
         date.fromisoformat(next_due_date)
     except ValueError:
-        return HTMLResponse(
-            '<p class="text-red-600 text-sm">Enter a real start date and next due date.</p>',
-            status_code=400,
-        )
+        return _create_error("Enter a real start date and next due date.")
 
     if bill_type not in ("fixed", "variable"):
         bill_type = "fixed"
@@ -564,16 +666,16 @@ async def bills_create(request: Request, db: Session = Depends(get_db)):
     try:
         importance, cancel_note, if_stopped_note = _parse_mark_fields(form)
     except BillFieldError as exc:
-        return _note_html_error(exc.message)
+        return _create_error(exc.message)
 
     try:
         paid_from, fund_id, category_id = _resolve_paid_from_form(
             db, str(form.get("paid_from") or "bills_fund"), form
         )
     except PaidFromError as exc:
-        return _html_error(exc)
+        return _create_error(exc.message, 400)
     except ValueError:
-        return _html_error(PaidFromError("Choose where this is paid from."))
+        return _create_error("Choose where this is paid from.", 400)
 
     foreign_amount_raw = form.get("foreign_amount")
     foreign_currency_raw = (
@@ -613,7 +715,7 @@ async def bills_create(request: Request, db: Session = Depends(get_db)):
         )
     except PaidFromError as exc:
         db.rollback()
-        return _html_error(exc)
+        return _create_error(exc.message, 400)
     db.add(bill)
     if "contract_id" in form:
         raw_contract = str(form.get("contract_id") or "").strip()
@@ -621,22 +723,19 @@ async def bills_create(request: Request, db: Session = Depends(get_db)):
             contract_id = int(raw_contract) if raw_contract else None
         except ValueError:
             db.rollback()
-            return HTMLResponse(
-                '<p class="text-red-600 text-sm">Contract not found or ended.</p>',
-                status_code=422,
-            )
+            return _create_error("Contract not found or ended.")
         try:
             assign_contract(db, bill, contract_id)
         except ContractError as exc:
             db.rollback()
-            return HTMLResponse(
-                f'<p class="text-red-600 text-sm">{exc.message}</p>',
-                status_code=exc.status,
-            )
+            return _create_error(exc.message, exc.status)
     db.commit()
 
     ctx = _bill_context(db)
-    response = HTMLResponse(_render_table_body(request, db, ctx))
+    body = _render_bill_list(request, db, ctx) + _oob(
+        _render_due_soon(request, db), "outerHTML"
+    )
+    response = HTMLResponse(body)
     response.headers["HX-Trigger-After-Swap"] = _summary_trigger(ctx, "Bill added.")
     return response
 
@@ -650,22 +749,32 @@ async def bills_due_card(
     return HTMLResponse(_render_due_card(request, db, origin))
 
 
+@router.get("/bills/due-soon", response_class=HTMLResponse)
+async def bills_due_soon(request: Request, db: Session = Depends(get_db)):
+    return HTMLResponse(_render_due_soon(request, db))
+
+
 @router.get("/bills/{bill_id}", response_class=HTMLResponse)
 async def bills_get_row(
     request: Request,
     bill_id: int,
     payment_method: str | None = None,
     importance: str | None = None,
-    close_edit: str | None = None,
+    marks: str | None = None,
     db: Session = Depends(get_db),
 ):
     bill = db.query(RecurringBill).filter(RecurringBill.id == bill_id).first()
     if not bill:
         return HTMLResponse("Not found", status_code=404)
-    html = _render_bill_row(request, db, bill, _page_query(payment_method, importance))
-    if close_edit:
-        html += f'<tr id="bill-notes-{bill.id}" hx-swap-oob="delete"></tr>'
-    return HTMLResponse(html)
+    return HTMLResponse(
+        _render_bill_row(
+            request,
+            db,
+            bill,
+            _list_query(payment_method, importance, marks),
+            show_marks=marks == "1",
+        )
+    )
 
 
 @router.get("/bills/{bill_id}/edit", response_class=HTMLResponse)
@@ -674,6 +783,7 @@ async def bills_edit_form(
     bill_id: int,
     payment_method: str | None = None,
     importance: str | None = None,
+    marks: str | None = None,
     db: Session = Depends(get_db),
 ):
     bill = db.query(RecurringBill).filter(RecurringBill.id == bill_id).first()
@@ -686,8 +796,7 @@ async def bills_edit_form(
             db,
             bill,
             categories,
-            filter_query=_page_query(payment_method, importance),
-            close_query=_page_query(payment_method, importance, close_edit="1"),
+            filter_query=_list_query(payment_method, importance, marks),
         )
     )
 
@@ -706,7 +815,9 @@ async def bills_confirm_form(
         return HTMLResponse(
             _render_due_card(request, db, origin, fragment="form", bill=bill)
         )
-    return HTMLResponse(_render_confirm_row(request, db, bill, origin))
+    if origin == "strip":
+        return HTMLResponse(_render_strip_confirm(request, bill))
+    return HTMLResponse(_render_confirm_fields(request, bill))
 
 
 @router.post("/bills/{bill_id}/confirm", response_class=HTMLResponse)
@@ -714,19 +825,23 @@ async def bills_confirm(
     request: Request,
     bill_id: int,
     origin: str = Query("bills", alias="from"),
+    payment_method: str | None = None,
+    importance: str | None = None,
+    marks: str | None = None,
     db: Session = Depends(get_db),
 ):
     bill = db.query(RecurringBill).filter(RecurringBill.id == bill_id).first()
     if not bill:
         return HTMLResponse("Not found", status_code=404)
     form = await request.form()
+    kept_status = 200 if origin in {"dashboard", "card"} else 422
     try:
         amount = Decimal(str(form.get("amount") or "0"))
     except InvalidOperation, TypeError:
-        return HTMLResponse('<p class="text-red-600 text-sm">Invalid amount.</p>')
+        return _occurrence_error(origin, bill_id, "Invalid amount.", kept_status)
     if amount <= 0:
-        return HTMLResponse(
-            '<p class="text-red-600 text-sm">Amount must be greater than zero.</p>'
+        return _occurrence_error(
+            origin, bill_id, "Amount must be greater than zero.", kept_status
         )
     due_date = str(form.get("due_date") or "").strip()
     try:
@@ -738,11 +853,25 @@ async def bills_confirm(
         return _unknown_frequency_html(exc)
     except (PaymentBlocked, PaymentConflict) as exc:
         db.rollback()
-        return _html_error(exc)
+        if origin in {"dashboard", "card"}:
+            return _html_error(exc)
+        status = 400 if isinstance(exc, PaymentBlocked) else 409
+        return _editor_error(
+            exc.detail, status, retarget=_error_target(origin, bill_id)
+        )
     except ValueError:
         db.rollback()
-        return HTMLResponse('<p class="text-red-600 text-sm">Invalid due date.</p>')
-    return _after_payment(request, db, result.bill, origin, result.message)
+        return _occurrence_error(origin, bill_id, "Invalid due date.", kept_status)
+    return _after_payment(
+        request,
+        db,
+        result.bill,
+        origin,
+        result.message,
+        payment_method=payment_method,
+        importance=importance,
+        marks=marks,
+    )
 
 
 @router.post("/bills/{bill_id}/skip", response_class=HTMLResponse)
@@ -750,6 +879,9 @@ async def bills_skip(
     request: Request,
     bill_id: int,
     origin: str = Query("bills", alias="from"),
+    payment_method: str | None = None,
+    importance: str | None = None,
+    marks: str | None = None,
     db: Session = Depends(get_db),
 ):
     bill = db.query(RecurringBill).filter(RecurringBill.id == bill_id).first()
@@ -757,6 +889,7 @@ async def bills_skip(
         return HTMLResponse("Not found", status_code=404)
     form = await request.form()
     due_date = str(form.get("due_date") or "").strip()
+    kept_status = 200 if origin in {"dashboard", "card"} else 422
     try:
         result = skip_payment(db, bill, due_date)
         db.commit()
@@ -766,11 +899,25 @@ async def bills_skip(
         return _unknown_frequency_html(exc)
     except (PaymentBlocked, PaymentConflict) as exc:
         db.rollback()
-        return _html_error(exc)
+        if origin in {"dashboard", "card"}:
+            return _html_error(exc)
+        status = 400 if isinstance(exc, PaymentBlocked) else 409
+        return _editor_error(
+            exc.detail, status, retarget=_error_target(origin, bill_id)
+        )
     except ValueError:
         db.rollback()
-        return HTMLResponse('<p class="text-red-600 text-sm">Invalid due date.</p>')
-    return _after_payment(request, db, result.bill, origin, result.message)
+        return _occurrence_error(origin, bill_id, "Invalid due date.", kept_status)
+    return _after_payment(
+        request,
+        db,
+        result.bill,
+        origin,
+        result.message,
+        payment_method=payment_method,
+        importance=importance,
+        marks=marks,
+    )
 
 
 @router.post("/bills/{bill_id}", response_class=HTMLResponse)
@@ -779,6 +926,7 @@ async def bills_update(
     bill_id: int,
     payment_method: str | None = None,
     importance: str | None = None,
+    marks: str | None = None,
     db: Session = Depends(get_db),
 ):
     bill = db.query(RecurringBill).filter(RecurringBill.id == bill_id).first()
@@ -801,12 +949,18 @@ async def bills_update(
         parsed_importance = (
             _read_importance(form.get("importance")) if importance_set else None
         )
+    except BillFieldError as exc:
+        return _editor_error(exc.message, 422, focus=f"#importance-{bill.id}")
+    try:
         parsed_cancel = clean_bill_note(form.get("cancel_note")) if cancel_set else None
+    except BillFieldError as exc:
+        return _editor_error(exc.message, 422, focus=f"#cancel-note-{bill.id}")
+    try:
         parsed_stopped = (
             clean_bill_note(form.get("if_stopped_note")) if stopped_set else None
         )
     except BillFieldError as exc:
-        return _note_html_error(exc.message)
+        return _editor_error(exc.message, 422, focus=f"#stopped-note-{bill.id}")
 
     next_due_raw = str(form.get("next_due_date") or "").strip()
     was_raw = str(form.get("next_due_date_was") or "").strip()
@@ -814,10 +968,7 @@ async def bills_update(
         next_due = date.fromisoformat(next_due_raw).isoformat()
         expected_due = date.fromisoformat(was_raw).isoformat()
     except ValueError:
-        return HTMLResponse(
-            '<p class="text-red-600 text-sm">Enter a real next due date.</p>',
-            status_code=400,
-        )
+        return _editor_error("Enter a real next due date.", 400)
 
     name = str(form.get("name") or "").strip()
     provider = str(form.get("debtor_provider") or "").strip()
@@ -840,10 +991,7 @@ async def bills_update(
     if frequency:
         if str(frequency) not in _VALID_FREQUENCIES:
             db.rollback()
-            return HTMLResponse(
-                '<p class="text-red-600 text-sm">Choose a frequency.</p>',
-                status_code=400,
-            )
+            return _editor_error("Choose a frequency.", 400)
         bill.frequency = str(frequency)
 
     bill_type = form.get("bill_type")
@@ -868,18 +1016,12 @@ async def bills_update(
             new_id = int(raw) if raw else None
         except ValueError:
             db.rollback()
-            return HTMLResponse(
-                '<p class="text-red-600 text-sm">Payment method not found or archived.</p>',
-                status_code=422,
-            )
+            return _editor_error("Payment method not found or archived.", 422)
         try:
             assign_payment_method(db, bill, new_id)
         except PaymentMethodError as exc:
             db.rollback()
-            return HTMLResponse(
-                f'<p class="text-red-600 text-sm">{exc.message}</p>',
-                status_code=exc.status,
-            )
+            return _editor_error(exc.message, exc.status)
 
     if "contract_id" in form:
         raw_contract = str(form.get("contract_id") or "").strip()
@@ -887,18 +1029,12 @@ async def bills_update(
             contract_id = int(raw_contract) if raw_contract else None
         except ValueError:
             db.rollback()
-            return HTMLResponse(
-                '<p class="text-red-600 text-sm">Contract not found or ended.</p>',
-                status_code=422,
-            )
+            return _editor_error("Contract not found or ended.", 422)
         try:
             assign_contract(db, bill, contract_id)
         except ContractError as exc:
             db.rollback()
-            return HTMLResponse(
-                f'<p class="text-red-600 text-sm">{exc.message}</p>',
-                status_code=exc.status,
-            )
+            return _editor_error(exc.message, exc.status)
 
     if "paid_from" in form:
         try:
@@ -914,10 +1050,10 @@ async def bills_update(
             )
         except PaidFromError as exc:
             db.rollback()
-            return _html_error(exc)
+            return _editor_error(exc.message, 400)
         except ValueError:
             db.rollback()
-            return _html_error(PaidFromError("Choose where this is paid from."))
+            return _editor_error("Choose where this is paid from.", 400)
 
     if importance_set:
         bill.importance = parsed_importance
@@ -933,20 +1069,29 @@ async def bills_update(
         cas_save_bill(db, bill, values, expected_due)
     except PaymentConflict as exc:
         db.rollback()
-        return _html_error(exc)
+        fresh = db.query(RecurringBill).filter(RecurringBill.id == bill_id).first()
+        expected = fresh.next_due_date if fresh is not None else ""
+        extra = (
+            f'<input id="edit-due-was-{bill_id}" hx-swap-oob="outerHTML" '
+            f'type="hidden" name="next_due_date_was" value="{expected}">'
+        )
+        return _editor_error(exc.detail, 409, extra=extra)
 
     db.commit()
     db.refresh(bill)
 
-    filter_query = _page_query(payment_method, importance)
-    notes_oob = f'<tr id="bill-notes-{bill.id}" hx-swap-oob="delete"></tr>'
+    filter_query = _list_query(payment_method, importance, marks)
+    show_marks = marks == "1"
+    strip = "" if show_marks else _oob(_render_due_soon(request, db), "outerHTML")
     still_listed = bill in _filter_bills([bill], payment_method, importance)
     if (payment_method or importance) and not still_listed:
-        response = HTMLResponse(notes_oob)
+        response = HTMLResponse(strip + _EMPTY_DRAWER)
         response.headers["HX-Reswap"] = "delete"
     else:
         response = HTMLResponse(
-            _render_bill_row(request, db, bill, filter_query) + notes_oob
+            _render_bill_row(request, db, bill, filter_query, show_marks=show_marks)
+            + strip
+            + _EMPTY_DRAWER
         )
     after = (
         Decimal(str(bill.amount)),
@@ -958,21 +1103,27 @@ async def bills_update(
     )
     if before != after:
         response.headers["HX-Trigger-After-Swap"] = _summary_trigger(
-            _bill_context(db), "Saved."
+            _bill_context(db), "Saved.", bill.id
         )
     return response
 
 
 @router.delete("/bills/{bill_id}", response_class=HTMLResponse)
-async def bills_delete(request: Request, bill_id: int, db: Session = Depends(get_db)):
+async def bills_delete(
+    request: Request,
+    bill_id: int,
+    marks: str | None = None,
+    db: Session = Depends(get_db),
+):
     bill = db.query(RecurringBill).filter(RecurringBill.id == bill_id).first()
     if not bill:
         return HTMLResponse("Not found", status_code=404)
     bill.is_active = False
     db.commit()
-    response = HTMLResponse("")
+    strip = "" if marks == "1" else _oob(_render_due_soon(request, db), "outerHTML")
+    response = HTMLResponse(strip + _EMPTY_DRAWER)
     response.headers["HX-Trigger-After-Swap"] = _summary_trigger(
-        _bill_context(db), "Saved."
+        _bill_context(db), "Saved.", bill_id
     )
     return response
 

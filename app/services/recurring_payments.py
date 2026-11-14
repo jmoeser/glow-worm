@@ -14,7 +14,7 @@ import calendar
 import logging
 from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 
 from sqlalchemy import inspect as sa_inspect
@@ -993,6 +993,35 @@ def due_to_confirm(db: Session, today: date | None = None) -> list[dict]:
         )
     rows.sort(key=lambda row: (row["due_date"], row["bill_id"]))
     return rows
+
+
+DUE_SOON_DAYS = 10
+
+
+def due_soon(
+    db: Session, today: date | None = None, days: int = DUE_SOON_DAYS
+) -> list[RecurringBill]:
+    """Active bills whose next occurrence falls on or before today + days.
+
+    Overdue bills are included. An occurrence past ``end_date`` is not.
+    Order is the next due date, then the bill id.
+    """
+    today = today or _today()
+    horizon = (today + timedelta(days=days)).isoformat()
+    bills = (
+        db.query(RecurringBill)
+        .filter(
+            RecurringBill.is_active == True,
+            RecurringBill.next_due_date <= horizon,
+        )
+        .order_by(RecurringBill.next_due_date, RecurringBill.id)
+        .all()
+    )
+    return [
+        bill
+        for bill in bills
+        if not (bill.end_date and bill.next_due_date > bill.end_date)
+    ]
 
 
 def confirm_transaction_payload(txn: Transaction) -> dict:

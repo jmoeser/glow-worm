@@ -1,0 +1,7 @@
+<div id="due-soon-{{ bill.id }}" class="gw-card gw-due-chip">
+    <div id="due-soon-errors-{{ bill.id }}" tabindex="-1" aria-live="assertive"></div>
+    <form hx-post="/bills/{{ bill.id }}/confirm?from=strip" hx-target="#due-soon" hx-swap="outerHTML">
+        {% set confirm_cancel = "strip" %}
+        {% include "_bill_confirm.html" %}
+    </form>
+</div>

@@ -111,8 +111,9 @@ class TestBillsPagePost:
             data={"name": "", "debtor_provider": "", "amount": "100"},
             headers={"x-csrftoken": authed_client.csrf_token},
         )
-        assert response.status_code == 200
+        assert response.status_code == 422
         assert "required" in response.text.lower()
+        assert "hx-trigger" not in response.headers
 
     def test_error_on_invalid_amount(self, authed_client, sample_category):
         response = authed_client.post(
@@ -127,8 +128,9 @@ class TestBillsPagePost:
             },
             headers={"x-csrftoken": authed_client.csrf_token},
         )
-        assert response.status_code == 200
+        assert response.status_code == 422
         assert "Invalid amount" in response.text
+        assert "hx-trigger" not in response.headers
 
     def test_403_without_csrf(self, authed_client, sample_category):
         response = authed_client.post(
@@ -223,7 +225,10 @@ class TestBillsDelete:
             f"/bills/{bill.id}",
             headers={"x-csrftoken": authed_client.csrf_token},
         )
-        assert response.text == ""
+        assert response.text != ""
+        assert 'id="due-soon"' in response.text
+        assert 'id="bill-drawer"' in response.text
+        assert "hx-swap-oob" in response.text
 
     def test_404_for_nonexistent_bill(self, authed_client):
         response = authed_client.delete(
@@ -513,7 +518,7 @@ class TestProcessDueBillsVariableSkip:
 
 class TestBillsConfirmRow:
     def test_variable_row_has_confirm_and_skip_not_pay(
-        self, authed_client, variable_bill
+        self, authed_client, variable_bill, bills_fund
     ):
         page = authed_client.get("/bills")
         assert "Confirm" in page.text
@@ -566,8 +571,9 @@ class TestBillsConfirmRow:
             data={"amount": "abc", "due_date": variable_bill.next_due_date},
             headers={"x-csrftoken": authed_client.csrf_token},
         )
-        assert response.status_code == 200
+        assert response.status_code == 422
         assert "Invalid amount" in response.text
+        assert response.headers["hx-retarget"] == "#bill-editor-errors"
 
     def test_403_without_csrf(self, authed_client, variable_bill, bills_fund):
         response = authed_client.post(
@@ -660,14 +666,15 @@ class TestPaidWith:
         sample_bills[0].payment_method_id = method.id
         db_session.commit()
         page = authed_client.get("/bills")
-        assert "Paid with" in page.text
-        assert "Everyday Visa ending 4321" in page.text
-        assert "Expired" in page.text
-        assert "Not set" in page.text
-        assert "paid_with: 2" in page.text
-        assert "paid_from: 3" in page.text
-        assert "next_due_date: 7" in page.text
+        assert ">Expired<" in page.text
         assert "No payment method: 1" in page.text
+        assert 'value="paid_with"' in page.text
+        assert 'value="paid_from"' in page.text
+        assert 'value="next_due_date"' in page.text
+        edit = authed_client.get(f"/bills/{sample_bills[0].id}/edit")
+        assert "Paid with" in edit.text
+        assert "Everyday Visa ending 4321" in edit.text
+        assert "Not set" in edit.text
 
     def test_edit_keeps_link_when_key_missing_and_blank_clears(
         self, authed_client, db_session, sample_bills
@@ -775,8 +782,9 @@ def test_amount_help_summary_and_success_event(
 ):
     page = authed_client.get("/bills")
     assert "Amount each time it's due." in page.text
-    assert "Bills fund monthly cost" in page.text
-    assert "Other recurring:" in page.text
+    assert "Bills fund monthly" in page.text
+    assert "Other recurring" in page.text
+    assert "Feeds the forecast" in page.text
     assert "Paid from" in page.text
     created = authed_client.post(
         "/bills",
@@ -811,7 +819,9 @@ def test_amount_help_summary_and_success_event(
         },
         headers={"x-csrftoken": authed_client.csrf_token},
     )
+    assert rejected.status_code == 422
     assert "Choose a frequency." in rejected.text
+    assert "hx-trigger" not in rejected.headers
 
 
 def _csrf(client):
@@ -907,8 +917,9 @@ def test_html_and_json_set_and_clear_the_mark(authed_client, db_session, sample_
     assert bill.importance == "essential"
     assert bill.cancel_note == "Call 13 13 19"
     assert bill.if_stopped_note == "The lights go out"
-    assert "Keep paying" in saved.text
-    assert f'id="bill-notes-{bill.id}" hx-swap-oob="delete"' in saved.text
+    assert bill.name in saved.text
+    assert "Keep paying" not in saved.text
+    assert "bill-notes-" not in saved.text
 
     omitted = authed_client.put(f"/api/bills/{bill.id}", json={"name": "Rent plus"})
     assert omitted.status_code == 200
@@ -1109,55 +1120,52 @@ def test_page_splits_averages_and_filters(authed_client, db_session, sample_cate
 
     page = authed_client.get("/bills")
     assert page.status_code == 200
-    assert "Split of the monthly averages" in page.text
+    assert "Split of the monthly averages" not in page.text
     assert (
         "Safe to cancel is still paid until someone cancels it with the provider."
-        in page.text
+        not in page.text
     )
-    assert "No keep-or-cancel mark:" in page.text
-    assert 'id="bills-essential-cost">12.00' in page.text
-    assert 'id="bills-optional-cost">12.00' in page.text
+    assert "No keep-or-cancel mark" not in page.text
+    assert "bills-essential-cost" not in page.text
+    assert "bills-optional-cost" not in page.text
+    assert "bills-unmarked-cost" not in page.text
+    assert "bills-unmarked-count" not in page.text
+    assert "bills-unmarked-note" not in page.text
     assert "10,012.00" not in page.text
-    assert "gw-badge--paid" in page.text
-    assert "gw-badge--quiet" in page.text
-    assert "If this stops: Mortgage stops" in page.text
-    assert "How to cancel: Cancel in the app" in page.text
-    assert "Hidden on the list" not in page.text
-    assert "How to cancel: Draft cancel" in page.text
-    assert "If this stops: Draft stop" in page.text
-    assert 'id="bills-unmarked-note"' in page.text
-    assert "Mark each payment as keep paying or safe to cancel." in page.text
+    assert "gw-badge--paid" not in page.text
+    assert "gw-badge--quiet" not in page.text
+    assert "If this stops:" not in page.text
+    assert "How to cancel:" not in page.text
 
     unset = authed_client.get("/bills?importance=unset")
-    assert "Loose" in unset.text
-    assert "Carded" in unset.text
-    assert "Draft" in unset.text
-    assert "Kept" not in unset.text
-    assert "Stream" not in unset.text
-    assert 'id="bills-essential-cost">12.00' in unset.text
+    assert f'id="bill-row-{loose.id}"' in unset.text
+    assert f'id="bill-row-{carded.id}"' in unset.text
+    assert f'id="bill-row-{drafted.id}"' in unset.text
+    assert f'id="bill-row-{kept.id}"' not in unset.text
+    assert f'id="bill-row-{optional.id}"' not in unset.text
     assert "Show all" in unset.text
 
     both = authed_client.get("/bills?payment_method=none&importance=unset")
-    assert "Loose" in both.text
-    assert "Draft" in both.text
-    assert "Carded" not in both.text
+    assert f'id="bill-row-{loose.id}"' in both.text
+    assert f'id="bill-row-{drafted.id}"' in both.text
+    assert f'id="bill-row-{carded.id}"' not in both.text
     assert "Show all" in both.text
-    assert 'id="bills-unmarked-cost">' in both.text
 
     unknown = authed_client.get("/bills?importance=nope")
-    assert "Kept" in unknown.text
-    assert "Loose" in unknown.text
+    assert f'id="bill-row-{kept.id}"' in unknown.text
+    assert f'id="bill-row-{loose.id}"' in unknown.text
     assert "Show all" in unknown.text
 
     edit = authed_client.get(f"/bills/{loose.id}/edit?importance=unset")
-    assert 'colspan="9"' in edit.text
+    assert f'<form id="edit-form-{loose.id}"' in edit.text
     assert "If something happens to me" in edit.text
-    assert f'form="edit-form-{loose.id}"' in edit.text
     assert 'name="cancel_note"' in edit.text
     assert 'name="if_stopped_note"' in edit.text
     assert "Both notes are optional on every payment" in edit.text
     assert f"/bills/{loose.id}?importance=unset" in edit.text
-    assert "close_edit=1" in edit.text
+    assert "close_edit=1" not in edit.text
+    assert 'colspan="9"' not in edit.text
+    assert 'form="edit-form-' not in edit.text
 
     marked = authed_client.post(
         f"/bills/{loose.id}?importance=unset",
@@ -1167,7 +1175,6 @@ def test_page_splits_averages_and_filters(authed_client, db_session, sample_cate
         headers=_csrf(authed_client),
     )
     assert marked.headers["hx-reswap"] == "delete"
-    assert "Loose" not in marked.text
     trigger = json.loads(marked.headers["hx-trigger-after-swap"])["gwBillSuccess"]
     assert trigger["essential"] == "24.00"
     assert "unmarked_count" in trigger
@@ -1186,7 +1193,6 @@ def test_page_splits_averages_and_filters(authed_client, db_session, sample_cate
     )
     assert "hx-reswap" not in stayed.headers
     assert "Kept" in stayed.text
-    assert "Keep paying" in stayed.text
     assert "hx-trigger-after-swap" not in stayed.headers
 
 
@@ -1257,7 +1263,329 @@ def test_create_and_delete_send_the_mark_totals(
     assert removed["optional"] == "0.00"
     assert removed["unmarked_count"] == 0
     page = authed_client.get("/bills")
-    assert (
-        'id="bills-unmarked-note" class="gw-text-muted" style="margin: 0 0 12px;" hidden'
-        in page.text
-    )
+    assert "bills-unmarked-note" not in page.text
+
+
+def _iso(offset: int) -> str:
+    from datetime import timedelta
+
+    from app.services.recurring_payments import _today
+
+    return (_today() + timedelta(days=offset)).isoformat()
+
+
+def _chip(html: str, bill_id: int) -> str:
+    import re
+
+    marker = f'id="due-soon-{bill_id}"'
+    at = html.index(marker)
+    start = html.rfind("<div", 0, at)
+    nxt = None
+    for match in re.finditer(r'id="due-soon-(\d+)"', html):
+        if match.start() > at:
+            nxt = match.start()
+            break
+    if nxt is None:
+        nxt = html.find('id="bills-sort"', start)
+    return html[start:nxt]
+
+
+def _row(html: str, bill_id: int) -> str:
+    start = html.index(f'id="bill-row-{bill_id}"')
+    start = html.rfind("<article", 0, start)
+    return html[start : html.index("</article>", start)]
+
+
+class TestSlice2ListStripAndEditor:
+    def test_page_has_the_list_strip_cards_and_an_outside_drawer(self, authed_client):
+        page = authed_client.get("/bills")
+        text = page.text
+        for marker in (
+            'id="due-soon"',
+            'id="bills-rows"',
+            'id="bills-list"',
+            'id="bill-drawer"',
+            'id="bills-sort"',
+            'id="bills-count"',
+            'id="bills-monthly-cost"',
+            'id="bills-annual-cost"',
+            'id="bills-other-cost"',
+        ):
+            assert marker in text
+        assert 'hx-target="#bills-rows"' in text
+        assert 'id="due-to-confirm"' not in text
+        assert "<table" not in text
+        assert text.index('id="bills-list"') < text.index('id="bills-rows"')
+        assert text.index('id="bills-rows"') < text.index('id="bill-drawer"')
+        between = text.split('id="bills-rows"', 1)[1].split('id="bill-drawer"', 1)[0]
+        assert between.count("<div") < between.count("</div>")
+
+    def test_fixed_chip_wording_and_no_fixed_word_on_the_line(
+        self, authed_client, db_session, sample_category
+    ):
+        fund = SinkingFund(name="Bills", color="#FF0000", current_balance=100)
+        db_session.add(fund)
+        soon = _bare_bill(
+            name="Soon fixed",
+            category_id=sample_category.id,
+            next_due_date=_iso(3),
+            bill_type="fixed",
+        )
+        late = _bare_bill(
+            name="Late fixed",
+            category_id=sample_category.id,
+            next_due_date=_iso(-2),
+            bill_type="fixed",
+        )
+        db_session.add_all([soon, late])
+        db_session.commit()
+        page = authed_client.get("/bills").text
+        soon_chip = _chip(page, soon.id)
+        late_chip = _chip(page, late.id)
+        assert "Pays from the Bills fund" in soon_chip
+        assert "Not logged yet" not in soon_chip
+        assert "Not logged yet. It pays from the Bills fund." in late_chip
+        assert ">Confirm<" not in soon_chip
+        assert ">Confirm<" not in late_chip
+        assert ">Skip<" not in soon_chip
+        assert f'id="due-soon-errors-{soon.id}"' in soon_chip
+        assert f'id="due-soon-errors-{late.id}"' in late_chip
+        assert "Fixed" not in _row(page, soon.id)
+        assert "Fixed" not in _row(page, late.id)
+
+    def test_budget_chip_buttons_and_a_future_bill_confirms_in_the_editor(
+        self, authed_client, db_session
+    ):
+        from app.models import Budget, Category
+
+        groceries = Category(
+            name="Groceries",
+            type="expense",
+            color="#22C55E",
+            is_budget_category=True,
+        )
+        db_session.add(groceries)
+        db_session.flush()
+        yesterday = _iso(-1)
+        year, month, _day = (int(part) for part in yesterday.split("-"))
+        db_session.add(
+            Budget(
+                category_id=groceries.id,
+                month=month,
+                year=year,
+                allocated_amount=100,
+                spent_amount=0,
+                fund_balance=0,
+            )
+        )
+        due = _bare_bill(
+            name="Groceries run",
+            category_id=groceries.id,
+            paid_from="budget",
+            next_due_date=yesterday,
+        )
+        later_date = _iso(30)
+        later = _bare_bill(
+            name="Later shop",
+            category_id=groceries.id,
+            paid_from="budget",
+            next_due_date=later_date,
+        )
+        db_session.add_all([due, later])
+        db_session.commit()
+        page = authed_client.get("/bills").text
+        chip = _chip(page, due.id)
+        assert ">Confirm<" in chip
+        assert ">Skip<" in chip
+        assert f'id="due-soon-{later.id}"' not in page
+        row = _row(page, later.id)
+        assert ">Confirm</button>" not in row
+        assert f"/bills/{later.id}/confirm" not in row
+        edit = authed_client.get(f"/bills/{later.id}/edit").text
+        name_at = edit.index('id="edit-name-')
+        confirm_at = edit.index(f'id="confirm-form-{later.id}"')
+        assert name_at < confirm_at
+        confirm_html = edit[confirm_at:]
+        assert 'name="name"' not in confirm_html
+        assert f'name="due_date" value="{later_date}"' in confirm_html
+        assert ">Skip<" in confirm_html
+        assert f'id="confirm-form-{later.id}"' in edit
+        skip_at = confirm_html.index(">Skip<")
+        assert "</form>" not in confirm_html[:skip_at]
+        assert "Confirm or skip the" in edit
+
+    def test_missing_budget_links_the_budgets_page_once(
+        self, authed_client, db_session
+    ):
+        from app.models import Category
+
+        groceries = Category(
+            name="Groceries",
+            type="expense",
+            color="#22C55E",
+            is_budget_category=True,
+        )
+        db_session.add(groceries)
+        db_session.flush()
+        bill = _bare_bill(
+            name="No budget",
+            category_id=groceries.id,
+            paid_from="budget",
+            next_due_date=_iso(-1),
+        )
+        db_session.add(bill)
+        db_session.commit()
+        page = authed_client.get("/bills").text
+        import re
+
+        chip = _chip(page, bill.id)
+        text = re.sub(r"<[^>]+>", "", chip)
+        assert text.count("Set it on the Budgets page") == 1
+        assert ">Confirm<" not in chip
+        assert ">Skip<" in chip
+
+    def test_confirm_type_word_is_not_a_pending_badge(
+        self, authed_client, db_session, sample_category
+    ):
+        from app.models import Category
+
+        groceries = Category(
+            name="Groceries",
+            type="expense",
+            color="#22C55E",
+            is_budget_category=True,
+        )
+        db_session.add(groceries)
+        db_session.flush()
+        bill = _bare_bill(
+            name="Needs a person",
+            category_id=groceries.id,
+            paid_from="budget",
+            next_due_date=_iso(40),
+        )
+        db_session.add(bill)
+        db_session.commit()
+        page = authed_client.get("/bills").text
+        row = _row(page, bill.id)
+        assert ">Confirm<" in row
+        assert 'gw-badge--pending">Confirm' not in page
+        assert f'data-sort-next-due="{bill.next_due_date}"' in row
+
+    def test_create_refreshes_rows_and_the_strip_not_the_drawer(
+        self, authed_client, sample_category
+    ):
+        created = authed_client.post(
+            "/bills",
+            data={
+                "name": "Yesterday water",
+                "debtor_provider": "Water Co",
+                "amount": "20.00",
+                "frequency": "monthly",
+                "start_date": "2026-01-01",
+                "next_due_date": _iso(-1),
+                "paid_from": "bills_fund",
+            },
+            headers=_csrf(authed_client),
+        )
+        assert created.status_code == 200
+        assert "Yesterday water" in created.text
+        assert 'id="due-soon"' in created.text
+        assert "hx-swap-oob" in created.text
+        assert 'id="bill-drawer"' not in created.text
+
+    def test_delete_sends_the_strip_the_drawer_and_bill_id(
+        self, authed_client, db_session, sample_category
+    ):
+        bill = _bare_bill(name="Going", category_id=sample_category.id)
+        db_session.add(bill)
+        db_session.commit()
+        deleted = authed_client.delete(
+            f"/bills/{bill.id}", headers=_csrf(authed_client)
+        )
+        assert 'id="due-soon"' in deleted.text
+        assert 'id="bill-drawer"' in deleted.text
+        assert "hx-swap-oob" in deleted.text
+        payload = json.loads(deleted.headers["hx-trigger-after-swap"])["gwBillSuccess"]
+        assert payload["billId"] == bill.id
+        assert payload["message"] == "Saved."
+
+    def test_save_sends_bill_id_and_clears_the_drawer(
+        self, authed_client, db_session, sample_category
+    ):
+        bill = _bare_bill(name="Rename me", category_id=sample_category.id, amount=15)
+        db_session.add(bill)
+        db_session.commit()
+        saved = authed_client.post(
+            f"/bills/{bill.id}",
+            data=_edit_payload(bill, name="Renamed", amount="20.00"),
+            headers=_csrf(authed_client),
+        )
+        assert saved.status_code == 200
+        payload = json.loads(saved.headers["hx-trigger-after-swap"])["gwBillSuccess"]
+        assert payload["billId"] == bill.id
+        assert 'id="bill-drawer" hx-swap-oob="innerHTML"' in saved.text
+        assert ">Edit</button>" in saved.text
+        assert "Renamed" in saved.text
+
+    def test_stale_edit_retargets_and_refreshes_the_expected_date(
+        self, authed_client, db_session, sample_category
+    ):
+        bill = _bare_bill(name="Cursor", category_id=sample_category.id)
+        db_session.add(bill)
+        db_session.commit()
+        stale = authed_client.post(
+            f"/bills/{bill.id}",
+            data={
+                "name": "Moved",
+                "amount": "10.00",
+                "next_due_date": "2026-12-01",
+                "next_due_date_was": "2020-01-01",
+            },
+            headers=_csrf(authed_client),
+        )
+        assert stale.status_code == 409
+        assert stale.headers["hx-retarget"] == "#bill-editor-errors"
+        assert "hx-trigger" not in stale.headers
+        assert f'id="edit-due-was-{bill.id}"' in stale.text
+        assert f'value="{bill.next_due_date}"' in stale.text
+        assert 'form="edit-form-' not in stale.text
+        db_session.refresh(bill)
+        assert bill.name == "Cursor"
+
+    def test_confirm_and_skip_from_the_bills_page_refresh_the_strip(
+        self, authed_client, db_session, variable_bill, bills_fund
+    ):
+        other = _bare_bill(
+            name="Skip me",
+            category_id=variable_bill.category_id,
+            bill_type="variable",
+            next_due_date=variable_bill.next_due_date,
+        )
+        db_session.add(other)
+        db_session.commit()
+        confirmed = authed_client.post(
+            f"/bills/{variable_bill.id}/confirm",
+            data={"amount": "12.00", "due_date": variable_bill.next_due_date},
+            headers=_csrf(authed_client),
+        )
+        assert confirmed.status_code == 200
+        assert 'id="due-soon"' in confirmed.text
+        assert f'id="bill-row-{variable_bill.id}"' in confirmed.text
+        assert "due-to-confirm" not in confirmed.text
+        confirmed_payload = json.loads(confirmed.headers["hx-trigger-after-swap"])[
+            "gwBillSuccess"
+        ]
+        assert confirmed_payload["billId"] == variable_bill.id
+        skipped = authed_client.post(
+            f"/bills/{other.id}/skip?from=bills",
+            data={"due_date": other.next_due_date},
+            headers=_csrf(authed_client),
+        )
+        assert skipped.status_code == 200
+        assert 'id="due-soon"' in skipped.text
+        assert f'id="bill-row-{other.id}"' in skipped.text
+        assert "due-to-confirm" not in skipped.text
+        skipped_payload = json.loads(skipped.headers["hx-trigger-after-swap"])[
+            "gwBillSuccess"
+        ]
+        assert skipped_payload["billId"] == other.id

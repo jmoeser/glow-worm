@@ -1,0 +1,49 @@
+<article id="bill-row-{{ bill.id }}" class="gw-bill-row"
+         data-sort-name="{{ bill.name }}"
+         data-sort-provider="{{ bill.debtor_provider }}"
+         data-sort-paid-with="{{ paid_with[bill.id].sort }}"
+         data-sort-paid-from="{{ source_label(bill) }}"
+         data-sort-amount="{{ bill.amount }}"
+         data-sort-frequency="{{ frequency_labels.get(bill.frequency, bill.frequency) }}"
+         data-sort-next-due="{{ bill.next_due_date }}">
+    <div class="gw-bill-line">
+        <strong>{{ bill.name }}</strong>
+        {% if paid_with[bill.id].badge %}
+        <span class="gw-badge gw-badge--pending">{{ paid_with[bill.id].badge }}</span>
+        {% endif %}
+        {% if bill.contract and bill.contract.ended_on %}
+        <span class="gw-badge gw-badge--pending">Ended</span>
+        {% endif %}
+        {% if show_marks %}
+        {% if bill.importance == 'essential' %}
+        <span class="gw-badge gw-badge--paid">Keep paying</span>
+        {% elif bill.importance == 'optional' %}
+        <span class="gw-badge gw-badge--quiet">Safe to cancel</span>
+        {% else %}
+        <span class="gw-text-muted">Not set yet</span>
+        {% endif %}
+        {% endif %}
+        {% if bill.paid_from != 'bills_fund' %}
+        <span class="gw-text-muted">Confirm</span>
+        {% elif bill.bill_type == 'variable' %}
+        <span class="gw-badge-variable">Variable</span>
+        {% endif %}
+        <span class="gw-bill-amount">${{ bill.amount|money }}</span>
+        <button id="bill-edit-{{ bill.id }}" type="button" class="gw-action-edit"
+                hx-get="/bills/{{ bill.id }}/edit{{ query|default('', true) }}"
+                hx-target="#bill-drawer" hx-swap="innerHTML"
+                aria-expanded="false" aria-controls="bill-drawer">Edit</button>
+    </div>
+    <p class="gw-bill-meta gw-text-muted">
+        {{ bill.debtor_provider }}
+        · {{ frequency_labels.get(bill.frequency, bill.frequency) }}
+        · <span class="{{ 'gw-text-negative' if source_is_broken(bill) }}">{{ source_label(bill) }}</span>
+        · <time datetime="{{ bill.next_due_date }}" class="{{ 'gw-text-negative' if bill.next_due_date < today }}">{{ bill.next_due_date|due_label }}</time>
+    </p>
+    {% if show_marks and bill.cancel_note %}
+    <p class="gw-text-muted">How to cancel: {{ bill.cancel_note }}</p>
+    {% endif %}
+    {% if show_marks and bill.if_stopped_note %}
+    <p class="gw-text-muted">If this stops: {{ bill.if_stopped_note }}</p>
+    {% endif %}
+</article>

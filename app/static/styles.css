@@ -1385,3 +1385,89 @@ input[type="color"] {
         background: rgba(0, 0, 0, 0.35);
     }
 }
+
+/* --- Recurring payments list (slice 2: in-flow editor at every width) --- */
+.gw-badge-variable {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 0.75rem;
+    font-style: italic;
+    background-color: #dbeafe;
+    color: #1d4ed8;
+}
+
+.gw-action-pay {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 0.75rem;
+    background-color: #dcfce7;
+    color: #15803d;
+    border: 1px solid #bbf7d0;
+    cursor: pointer;
+    margin-right: 4px;
+}
+
+.gw-action-pay:hover {
+    background-color: #bbf7d0;
+}
+
+.gw-foreign-amount {
+    font-size: 0.7rem;
+    color: #9ca3af;
+}
+
+.gw-due-soon {
+    display: flex;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    gap: 12px;
+}
+
+.gw-due-chip {
+    flex: 0 0 auto;
+    min-width: 220px;
+}
+
+.gw-bill-row {
+    border-bottom: 1px solid var(--border-dim);
+    padding: 10px 0;
+}
+
+.gw-bill-line {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px 12px;
+    align-items: baseline;
+}
+
+.gw-bill-amount {
+    margin-left: auto;
+}
+
+.gw-bill-meta {
+    margin: 4px 0 0;
+    font-size: 0.85rem;
+}
+
+#bills-stack {
+    position: relative;
+}
+
+#bills-rows {
+    display: flow-root;
+}
+
+#bill-drawer {
+    position: absolute;
+    left: 0;
+    width: 100%;
+    z-index: 1;
+    box-sizing: border-box;
+}
+
+#bill-drawer[hidden],
+#bill-drawer-backdrop[hidden] {
+    display: none !important;
+}

@@ -1,0 +1,162 @@
+{% macro paid_from_options(selected) %}
+<option value="bills_fund" {{ 'selected' if selected == 'bills_fund' }}>Bills fund</option>
+{% if budget_categories %}
+<optgroup label="Budgets">
+    {% for cat in budget_categories %}
+    <option value="budget:{{ cat.id }}" {{ 'selected' if selected == 'budget:' ~ cat.id }}>{{ cat.name }}</option>
+    {% endfor %}
+</optgroup>
+{% endif %}
+{% if payable_funds %}
+<optgroup label="Sinking funds">
+    {% for fund in payable_funds %}
+    <option value="fund:{{ fund.id }}" {{ 'selected' if selected == 'fund:' ~ fund.id }}>{{ fund.name }}</option>
+    {% endfor %}
+</optgroup>
+{% endif %}
+{% endmacro %}
+{% if bill.paid_from == 'budget' %}
+{% set current_source = 'budget:' ~ bill.category_id %}
+{% elif bill.paid_from == 'sinking_fund' %}
+{% set current_source = 'fund:' ~ bill.paid_from_fund_id %}
+{% else %}
+{% set current_source = 'bills_fund' %}
+{% endif %}
+<h3 id="bill-editor-title-{{ bill.id }}">Edit {{ bill.name }}</h3>
+<p class="gw-text-muted">{{ bill.debtor_provider }} · {{ frequency_labels.get(bill.frequency, bill.frequency) }} · {{ source_label(bill) }}</p>
+<div id="bill-editor-errors" tabindex="-1" aria-live="assertive"></div>
+<form id="edit-form-{{ bill.id }}" data-bill-id="{{ bill.id }}"
+      hx-post="/bills/{{ bill.id }}{{ query|default('', true) }}"
+      hx-target="#bill-row-{{ bill.id }}" hx-swap="outerHTML"
+      autocomplete="off" class="gw-grid-2">
+    <div>
+        <label for="edit-name-{{ bill.id }}" class="gw-label">Name</label>
+        <input type="text" id="edit-name-{{ bill.id }}" name="name" value="{{ bill.name }}" required class="gw-input">
+    </div>
+    <div>
+        <label for="edit-provider-{{ bill.id }}" class="gw-label">Provider</label>
+        <input type="text" id="edit-provider-{{ bill.id }}" name="debtor_provider" value="{{ bill.debtor_provider }}" class="gw-input">
+    </div>
+    <div style="grid-column: 1 / -1;">
+        <label for="edit-contract-{{ bill.id }}" class="gw-label">Contract</label>
+        <select id="edit-contract-{{ bill.id }}" name="contract_id" class="gw-select"
+                title="Only payments from now on are tied to this contract. Earlier ones stay off the plan.">
+            <option value="" {{ 'selected' if not bill.contract_id }}>No contract</option>
+            {% for contract in contracts %}
+            <option value="{{ contract.id }}" {{ 'selected' if bill.contract_id == contract.id }}>{{ contract_choice_label(contract) }}</option>
+            {% endfor %}
+        </select>
+        <p class="gw-text-muted" style="font-size: 0.75rem; margin-top: 4px;">Earlier payments stay off the plan.</p>
+    </div>
+    <div style="grid-column: 1 / -1;">
+        <label for="edit-paid-with-{{ bill.id }}" class="gw-label">Paid with</label>
+        <select id="edit-paid-with-{{ bill.id }}" name="payment_method_id" class="gw-select">
+            <option value="" {{ 'selected' if not bill.payment_method_id }}>Not set</option>
+            {% for method in payment_methods %}
+            <option value="{{ method.id }}" {{ 'selected' if bill.payment_method_id == method.id }}>{{ choice_label(method) }}</option>
+            {% endfor %}
+        </select>
+    </div>
+    <div>
+        <label for="edit-paid-from-{{ bill.id }}" class="gw-label">Paid from</label>
+        <select id="edit-paid-from-{{ bill.id }}" name="paid_from" class="gw-select"
+                data-bill-type="{{ bill.bill_type }}" onchange="gwPaidFromChanged(this)">
+            {{ paid_from_options(current_source) }}
+        </select>
+        <div data-fund-category style="{{ '' if bill.paid_from == 'sinking_fund' else 'display:none' }}; margin-top: 8px;">
+            <label class="gw-label">Category</label>
+            <select name="category_id" class="gw-select" {{ '' if bill.paid_from == 'sinking_fund' else 'disabled' }}>
+                {% for cat in categories %}
+                <option value="{{ cat.id }}" {{ 'selected' if (bill.paid_from == 'sinking_fund' and bill.category_id == cat.id) or (bill.paid_from != 'sinking_fund' and bills_category_id == cat.id) }}>{{ cat.name }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <p data-overdue-note class="gw-text-muted" style="font-size: 0.75rem; margin-top: 4px;">
+            {% if bill.paid_from == 'bills_fund' and bill.bill_type == 'variable' %}Overdue payments will wait in Due to confirm.{% elif bill.paid_from == 'bills_fund' %}Overdue payments will then be paid from the Bills fund automatically.{% endif %}
+        </p>
+    </div>
+    <div>
+        <label for="edit-amount-{{ bill.id }}" class="gw-label">Amount</label>
+        <input type="number" id="edit-amount-{{ bill.id }}" name="amount" value="{{ '%.2f'|format(bill.amount) }}"
+               step="0.01" min="0.01" class="gw-input">
+    </div>
+    <div>
+        <label class="gw-label">Foreign amount</label>
+        <input type="number" name="foreign_amount" value="{{ '%.2f'|format(bill.foreign_amount) if bill.foreign_amount else '' }}"
+               step="0.01" min="0.01" placeholder="0.00" class="gw-input">
+    </div>
+    <div>
+        <label class="gw-label">Currency</label>
+        <input type="text" name="foreign_currency" value="{{ bill.foreign_currency or '' }}"
+               maxlength="3" placeholder="USD" class="gw-input" style="text-transform: uppercase;">
+    </div>
+    <div>
+        <label for="edit-frequency-{{ bill.id }}" class="gw-label">Frequency</label>
+        <select id="edit-frequency-{{ bill.id }}" name="frequency" class="gw-select">
+            {% for val, label in frequency_labels.items() %}
+            <option value="{{ val }}" {{ 'selected' if bill.frequency == val }}>{{ label }}</option>
+            {% endfor %}
+            {% if bill.frequency not in frequency_labels %}
+            <option value="{{ bill.frequency }}" selected>{{ bill.frequency }}</option>
+            {% endif %}
+        </select>
+    </div>
+    <div data-bill-type>
+        <label class="gw-label">Bill type</label>
+        <select name="bill_type" class="gw-select"
+                onchange="gwPaidFromChanged(this.closest('form').querySelector('[name=paid_from]'))"
+                style="{{ '' if bill.paid_from == 'bills_fund' else 'display:none' }}"
+                {{ '' if bill.paid_from == 'bills_fund' else 'disabled' }}>
+            <option value="fixed" {{ 'selected' if bill.bill_type == 'fixed' }}>Fixed</option>
+            <option value="variable" {{ 'selected' if bill.bill_type == 'variable' }}>Variable</option>
+        </select>
+        <p data-confirm-help class="gw-text-muted" style="font-size: 0.75rem; margin-top: 4px; {{ 'display:none' if bill.paid_from == 'bills_fund' }}">You'll confirm each one before it's logged.</p>
+    </div>
+    <div>
+        <label for="edit-due-{{ bill.id }}" class="gw-label">Next due</label>
+        <input type="date" id="edit-due-{{ bill.id }}" name="next_due_date" value="{{ bill.next_due_date }}" class="gw-input">
+        <input id="edit-due-was-{{ bill.id }}" type="hidden" name="next_due_date_was" value="{{ bill.next_due_date }}">
+    </div>
+    <div style="grid-column: 1 / -1;">
+        <details class="gw-details" id="bill-mark-{{ bill.id }}">
+            <summary>If something happens to me</summary>
+            <label class="gw-label" for="importance-{{ bill.id }}">If something happens to me</label>
+            <select id="importance-{{ bill.id }}" name="importance" class="gw-select">
+                <option value="" {{ 'selected' if not bill.importance }}>Not set yet</option>
+                <option value="essential" {{ 'selected' if bill.importance == 'essential' }}>Keep paying</option>
+                <option value="optional" {{ 'selected' if bill.importance == 'optional' }}>Safe to cancel</option>
+            </select>
+            <p class="gw-text-muted" style="font-size: 0.75rem; margin-top: 4px;">Both notes are optional on every payment. Write where to cancel it, and what goes wrong if it stops.</p>
+            <label class="gw-label" for="cancel-note-{{ bill.id }}">How to cancel</label>
+            <textarea id="cancel-note-{{ bill.id }}" name="cancel_note" maxlength="500" rows="2" class="gw-input">{{ bill.cancel_note or '' }}</textarea>
+            <label class="gw-label" for="stopped-note-{{ bill.id }}">What happens if this stops</label>
+            <textarea id="stopped-note-{{ bill.id }}" name="if_stopped_note" maxlength="500" rows="2" class="gw-input">{{ bill.if_stopped_note or '' }}</textarea>
+        </details>
+    </div>
+    <div style="grid-column: 1 / -1; display: flex; gap: 8px; flex-wrap: wrap;">
+        <button type="submit" class="gw-btn gw-btn-success gw-btn-sm">Save</button>
+        <button type="button" class="gw-btn gw-btn-ghost gw-btn-sm" onclick="closeEditor()">Cancel</button>
+        <button type="button" class="gw-action-delete"
+                hx-delete="/bills/{{ bill.id }}{{ query|default('', true) }}"
+                hx-target="#bill-row-{{ bill.id }}" hx-swap="delete"
+                hx-confirm="Deactivate this bill?">Delete</button>
+    </div>
+</form>
+{% if needs_confirm(bill) %}
+<form id="confirm-form-{{ bill.id }}"
+      hx-post="/bills/{{ bill.id }}/confirm?from=editor{% if query %}&{{ query[1:] }}{% endif %}"
+      hx-target="#bill-row-{{ bill.id }}" hx-swap="outerHTML">
+    <p class="gw-label">This occurrence</p>
+    {% if today and bill.next_due_date > today %}
+    <p>Confirm or skip the {{ bill.next_due_date|due_label }} payment</p>
+    {% endif %}
+    {% set confirm_cancel = "editor" %}
+    {% include "_bill_confirm.html" %}
+    <button type="button" class="gw-action-edit"
+            hx-post="/bills/{{ bill.id }}/skip?from=editor{% if query %}&{{ query[1:] }}{% endif %}"
+            hx-target="#bill-row-{{ bill.id }}" hx-swap="outerHTML"
+            hx-vals='{"due_date": "{{ bill.next_due_date }}"}'
+            hx-confirm="Skip the {{ bill.next_due_date|due_label }} payment?"
+            hx-disabled-elt="this">Skip</button>
+</form>
+{% endif %}
